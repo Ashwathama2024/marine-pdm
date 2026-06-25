@@ -1,0 +1,9 @@
+# Vite cache (root-level CWD workaround config)
+.vite/
+
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+*.tsbuildinfo

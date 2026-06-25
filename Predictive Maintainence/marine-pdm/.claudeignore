@@ -1,0 +1,13 @@
+# Build artifacts — never read compiled output
+**/dist/
+**/.vite/
+
+# Dependencies
+**/node_modules/
+
+# Process logs
+**/*.out.log
+**/*.err.log
+
+# Lock files (large, not useful for edits)
+pnpm-lock.yaml

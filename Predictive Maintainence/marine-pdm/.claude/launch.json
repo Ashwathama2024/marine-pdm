@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "marine-pdm-ui",
+      "runtimeExecutable": "cmd.exe",
+      "runtimeArgs": ["/c", "cd /d \"D:\\MASTER_PROJECTS\\Predictive Maintainence\\marine-pdm\\packages\\ui\" && pnpm dev --port 5174"],
+      "port": 5174
+    }
+  ]
+}

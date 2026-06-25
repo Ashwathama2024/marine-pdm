@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "paths": {
+      "@marine-pdm/shared":    ["../../shared/src/index.ts"],
+      "@marine-pdm/simulator": ["../simulator/src/index.ts"],
+      "@marine-pdm/knowledge": ["../knowledge/src/index.ts"],
+      "@marine-pdm/features":  ["../features/src/index.ts"],
+      "@marine-pdm/decision":  ["../decision/src/index.ts"],
+      "@marine-pdm/ingestion": ["../ingestion/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*"]
+}

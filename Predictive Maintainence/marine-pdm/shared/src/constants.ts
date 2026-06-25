@@ -1,0 +1,289 @@
+// shared/constants.ts — Tag names, physics limits, alarm thresholds
+// Calibrated to: 20-cylinder 4-stroke medium-speed engine
+// Idle: 400 RPM / ~4% load; rated: 1150 RPM / 85% load (MTU 8000 Group 1B continuous)
+// Exhaust mean at rated: 440°C, LO pressure: 6.82 bar, Charge air: 3.04 bar
+import { CYLINDER_COUNT } from './interfaces';
+export { CYLINDER_COUNT };
+
+export const TICK_MS = 1000;
+export const ENGINE_MCR_KW = 9100; // kW at 100% MCR — MTU 8000 M71L
+
+// 20-cylinder spread (A1-A10 = index 0-9, B1-B10 = index 10-19)
+// MTU 8000 M71/M71L real commissioning values at 85% load / 1150 RPM.
+// Source: MTU 8000 commissioning records (PDF upgrade spec §2.3)
+export const CYL_SPREAD: number[] = [
+  // A-side (driving end → free end): A1–A10
+  -8, +12, -4, +16, -6, +10, -3, +14, -9, +7,
+  // B-side (driving end → free end): B1–B10
+  +5, -11, +9, -5, +13, -7, +11, -2, +8, -4,
+];
+
+// ── ALARM LEVEL DEFINITIONS ────────────────────────────────────────────────
+// L1 PRE-ALARM — operator attention, no automatic action
+// L2 ALARM     — audible/visual, must acknowledge
+// L3 SLOWDOWN  — automatic slowdown if not overridden
+// L4 SHUTDOWN  — automatic shutdown
+
+export const ALARM_LIMITS = {
+  exhaustTemp: {
+    physMin: 200,   // °C
+    physMax: 600,   // °C
+    normalMin: 350,
+    normalMax: 540,
+    preAlarmHigh: 530,  // L1
+    alarmHigh:    545,  // L2
+    slowdownHigh: 560,  // L3
+    shutdownHigh: 575,  // L4
+  },
+  cylinderTemp: {
+    physMin: 200,
+    physMax: 620,
+    preAlarmHigh:  540,  // L1
+    alarmHigh:     555,  // L2
+    slowdownHigh:  570,  // L3
+    shutdownHigh:  585,  // L4
+  },
+  cylImbalance: {
+    // MTU 8000 M71L CYL_SPREAD constants produce a natural healthy spread of ~26°C.
+    // Limits raised to avoid false L1 alarm at normal operating conditions.
+    preAlarmHigh:  30,  // L1 — cyl spread °C (was 25, natural spread ~26°C)
+    alarmHigh:     40,  // L2 (was 35)
+    slowdownHigh:  50,  // L3 (was 45)
+  },
+  lubeOilPressure: {
+    physMin: 2.5,
+    physMax: 9.0,
+    alarmHigh:    8.5,  // L2 — overpressure
+    preAlarmLow:  5.5,  // L1
+    alarmLow:     5.0,  // L2
+    slowdownLow:  4.5,  // L3
+    shutdownLow:  4.0,  // L4
+  },
+  jacketOutlet: {
+    physMin: 50,
+    physMax: 105,
+    preAlarmHigh:  87,  // L1
+    alarmHigh:     90,  // L2
+    slowdownHigh:  93,  // L3
+    shutdownHigh:  97,  // L4
+  },
+  scavengeAir: {
+    physMin: 0,
+    physMax: 4.5,
+    alarmHigh:   3.8,
+    alarmLow:    0.8,
+  },
+  tcRPM: {
+    physMin: 0,
+    physMax: 42000,
+    preAlarmHigh: 40500,   // Overspeed L1 — Yellow alarm (MTU 20V 8000 spec)
+    alarmHigh:    41000,   // Overspeed L2 — Power limitation
+    shutdownHigh: 42000,
+  },
+  sfoc: {
+    physMin: 155,
+    physMax: 240,
+    preAlarmHigh: 210,
+    alarmHigh:    220,
+  },
+  rpm: {
+    physMin: 0,
+    physMax: 1200,   // MTU 8000 rated 1150, max 1200 RPM
+    alarmHigh:    1200,
+    shutdownHigh: 1210,
+  },
+  fuelRack: {
+    physMin: 0,
+    physMax: 115,
+    alarmHigh:    100,
+  },
+  // New sensors
+  chargeAirTemp: {
+    physMin: 15,
+    physMax: 90,
+    preAlarmHigh: 72,  // L1 — charge air too hot (fouled cooler)
+    alarmHigh:    78,  // L2
+    shutdownHigh: 85,  // L4
+    alarmLow:     25,  // L2 — too cold (overcooling, condensation risk)
+  },
+  fuelOilPressure: {
+    physMin: 3.0,
+    physMax: 12.0,
+    alarmHigh:   10.5,  // L2 — high FO pressure
+    preAlarmLow:  5.5,  // L1
+    alarmLow:     5.0,  // L2
+    shutdownLow:  3.5,  // L4 — fuel starvation
+  },
+  fuelOilTemp: {
+    physMin: 20,
+    physMax: 55,
+    preAlarmHigh: 45,  // L1 — FO temp high
+    alarmHigh:    50,  // L2
+    alarmLow:     25,  // L2 — FO too cold (high viscosity)
+  },
+  loFilterDP: {
+    physMin: 0,
+    physMax: 2.0,
+    preAlarmHigh: 0.8,  // L1 — filter partially blocked
+    alarmHigh:    1.2,  // L2 — filter blocked, bypass opening
+    shutdownHigh: 1.8,  // L4 — critical filter blockage
+  },
+  pistonCoolingPress: {
+    physMin: 2.0,
+    physMax: 10.0,
+    alarmHigh:    8.5,  // L2 — overpressure
+    preAlarmLow:  4.0,  // L1 (was 4.5 — physics gives ~4.35 bar at rated with hot oil)
+    alarmLow:     3.5,  // L2 (was 4.0)
+    shutdownLow:  3.0,  // L4
+  },
+  shaftPower: {
+    physMin: 0,
+    physMax: 10000,
+    alarmHigh:    9500,  // L2 — overload (MTU 8000 M71L max 9100 kW)
+  },
+};
+
+// Safety hard limits — decision engine OVERRIDE layer
+export const HARD_LIMITS = {
+  lubePressurePreAlarm: 5.5,
+  lubePressureMin:      5.0,
+  lubePressureSlowdown: 4.5,
+  lubePressureShutdown: 4.0,
+
+  exhaustTempPreAlarm:  530,
+  exhaustTempMax:       545,
+  exhaustTempSlowdown:  560,
+  exhaustTempShutdown:  575,
+
+  jacketOutletPreAlarm: 87,
+  jacketOutletMax:      90,
+  jacketOutletSlowdown: 93,
+  jacketOutletShutdown: 97,
+
+  cylImbalanceMax:      35,
+  cylImbalanceSlowdown: 45,
+};
+
+// Physics coefficients — calibrated to real engine at 885 RPM / 61.37% load
+// Verified: exhaustTemp→504°C, LO→7.21 bar, chargeAir→2.79 bar, jacket→77.76°C
+export const PHYSICS_COEFFICIENTS = {
+  exhaustTemp: {
+    base: 350,
+    loadFactor: 2.3,
+    rpmFactor: 16,
+    rpmDivisor: 700,
+    lagAlpha: 0.08,
+    noiseAmplitude: 1.5,
+  },
+  lubeOilPressure: {
+    base: 5.6,
+    rpmFactor: 1.4,
+    rpmDivisor: 700,
+    loadFactor: 0.004,
+    faultFactor: 2.5,
+    lagAlpha: 0.05,
+    noiseAmplitude: 0.05,
+  },
+  fuelRack: {
+    base: 18,
+    loadFactor: 0.62,
+    rpmOffset: 600,
+    rpmFactor: 0.02,
+    lagAlpha: 0.12,
+    noiseAmplitude: 0.3,
+  },
+  scavengeAir: {
+    base: 1.0,
+    loadFactor: 2.0,
+    rpmFactor: 0.45,
+    rpmDivisor: 700,
+    lagAlpha: 0.10,
+    noiseAmplitude: 0.025,
+  },
+  tcRPM: {
+    base: 500,
+    loadFactor: 12000,
+    rpmFactor: 17300,
+    lagAlpha: 0.06,
+    noiseAmplitude: 100,
+  },
+  jacketOutlet: {
+    base: 62,
+    loadFactor: 0.26,
+    lagAlpha: 0.04,
+    noiseAmplitude: 0.3,
+  },
+  sfoc: {
+    base: 190,
+    loadFactor: 0.38,
+    rpmOffset: 700,
+    rpmFactor: 0.08,
+    coolingFactor: 18,
+    lagAlpha: 0.03,
+    noiseAmplitude: 0.8,
+  },
+  chargeAirTemp: {
+    base: 29.5,
+    rpmFactor: 2.5,
+    rpmDivisor: 700,
+    loadFactor: 0.18,
+    lagAlpha: 0.06,
+    noiseAmplitude: 0.4,
+  },
+  fuelOilPressure: {
+    base: 6.0,
+    loadFactor: 0.018,
+    lagAlpha: 0.08,
+    noiseAmplitude: 0.08,
+  },
+  fuelOilTemp: {
+    base: 29.5,
+    rpmFactor: 2.5,
+    rpmDivisor: 700,
+    lagAlpha: 0.04,
+    noiseAmplitude: 0.15,
+  },
+  loFilterDP: {
+    base: 0.08,
+    rpmFactor: 0.09,
+    rpmDivisor: 700,
+    faultFactor: 0.8,
+    lagAlpha: 0.05,
+    noiseAmplitude: 0.008,
+  },
+  pistonCoolingPress: {
+    base: 3.7,
+    rpmFactor: 2.1,
+    rpmDivisor: 700,
+    lagAlpha: 0.05,
+    noiseAmplitude: 0.06,
+  },
+};
+
+// Tag IDs
+export const TAG = {
+  RPM:                'ME.RPM',
+  LOAD:               'ME.Load',
+  EXHAUST_TEMP:       'ME.ExhaustTemp',
+  LUBE_OIL_PRESSURE:  'ME.LubeOilPressure',
+  FUEL_RACK:          'ME.FuelRack',
+  SCAVENGE_AIR:       'ME.ScavengeAirPressure',
+  TC_SPEED:           'ME.TCSpeed',
+  JACKET_OUTLET:      'ME.JacketCoolingOutlet',
+  SFOC:               'ME.SFOC',
+  CHARGE_AIR_TEMP:    'ME.ChargeAirTemp',
+  FUEL_OIL_PRESSURE:  'ME.FuelOilPressure',
+  FUEL_OIL_TEMP:      'ME.FuelOilTemp',
+  LO_FILTER_DP:       'ME.LOFilterDP',
+  PISTON_COOLING:     'ME.PistonCoolingPress',
+  SHAFT_POWER:        'ME.ShaftPower',
+  CYL_IMBALANCE:      'ME.CylImbalance',
+  SYSTEM_RISK:        'ME.SystemRisk',
+  EXHAUST_RISK:       'ME.ExhaustRisk',
+  LUBE_RISK:          'ME.LubeRisk',
+  COOLING_RISK:       'ME.CoolingRisk',
+  COOLING_EFF:        'ME.CoolingEfficiency',
+  DATA_FRESHNESS:     'ME.DataFreshness',
+  SENSOR_HEALTH:      'ME.SensorHealthScore',
+  cylTemp: (n: number) => `ME.Cyl${n}.ExhaustTemp`,
+};

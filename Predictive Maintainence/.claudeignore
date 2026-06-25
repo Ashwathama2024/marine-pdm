@@ -1,0 +1,10 @@
+# Stray Vite cache at parent level
+.vite/
+
+# Compiled outputs in marine-pdm subtree
+marine-pdm/**/dist/
+marine-pdm/**/node_modules/
+marine-pdm/**/.vite/
+marine-pdm/**/*.out.log
+marine-pdm/**/*.err.log
+marine-pdm/pnpm-lock.yaml
