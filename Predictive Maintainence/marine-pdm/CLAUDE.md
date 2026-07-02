@@ -77,8 +77,10 @@ cd packages/ui && pnpm dev
 # TypeScript check all packages
 pnpm tsc --noEmit
 
-# Run simulator unit tests
-cd packages/simulator && pnpm test
+# Run unit tests (all packages)
+pnpm -r test                    # simulator: physics + degradation-matrix (finite-diff) ; ui: regression math
+cd packages/simulator && pnpm test   # simulator only
+cd packages/ui && pnpm test          # ui only (regression OLS/linregress)
 
 # Rebuild shared (required when shared types change)
 cd shared && pnpm build
@@ -117,6 +119,8 @@ cd shared && pnpm build
 | 8 | `packages/decision` | Bearing thresholds: SS=130°C / HI=115°C (hot oil at rated = 107°C — old 120/100 fired false) |
 | 9 | `packages/decision` | LO pressure HI check uses `lubeOilPressure` (main gallery), not `lubeLastBearingPressure` |
 | 10 | root | Parent-level `vite.config.ts` exists only for preview tool CWD workaround — canonical is `packages/ui/vite.config.ts` |
+| 11 | `packages/simulator` | `degradation-matrix.ts` is the model SPEC — its `weight`s must equal the `mtu8000-physics.ts` partials. `tests/degradation-matrix.test.ts` (finite-difference) fails on drift. See `simulator/CLAUDE.md` → Degradation Model |
+| 12 | `shared` / `packages/simulator` | `chargeAirTemp_MTU8000` rated ≈ 63°C is intended (LT-cooled). `MTU8000_LIMITS.chargeAir` alarm band is hi 75 / max 80 (above rated), NOT 50/55. Don't lower the physics to match old limits — it desyncs the `seed.ts` baseline mirror. See `simulator/CLAUDE.md` |
 
 ---
 

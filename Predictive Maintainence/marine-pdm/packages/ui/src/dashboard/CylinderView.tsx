@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { EngineSnapshot, DecisionOutput } from '@marine-pdm/shared';
+import { useSensorFocus, CYLINDER_FOCUS_SENSOR } from '../context/SensorFocusContext';
 
 function riskColor(risk: number): string {
   if (risk >= 75) return 'var(--risk-critical)';
@@ -111,7 +112,7 @@ function CylinderBank({ label, cylTemps, cylRisks, offset, bankLetter, activeFau
                   zIndex: 2,
                 }} />
               )}
-              <div style={{ fontSize: 8, fontWeight: 700, color: hasFault ? fc.dot : color, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
+              <div style={{ fontSize: 9, fontWeight: 700, color: hasFault ? fc.dot : color, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
                 {temp.toFixed(0)}
               </div>
               <div style={{
@@ -133,16 +134,16 @@ function CylinderBank({ label, cylTemps, cylRisks, offset, bankLetter, activeFau
                 }} />
               </div>
               <div style={{
-                fontSize: 7.5, color: Math.abs(devFromMean) > 8 ? 'var(--risk-warning)' : 'var(--text-muted)',
+                fontSize: 9, color: Math.abs(devFromMean) > 8 ? 'var(--risk-warning)' : 'var(--text-muted)',
                 fontWeight: 600, fontVariantNumeric: 'tabular-nums', lineHeight: 1,
               }}>
                 {devFromMean >= 0 ? '+' : ''}{devFromMean.toFixed(0)}
               </div>
-              <div style={{ fontSize: 7, color: hasFault ? fc.dot : 'var(--text-dim)', fontWeight: 600, letterSpacing: '0.05em' }}>
+              <div style={{ fontSize: 9, color: hasFault ? fc.dot : 'var(--text-dim)', fontWeight: 600, letterSpacing: '0.05em' }}>
                 {bankLetter}{i + 1}
               </div>
               {mtuFault && (
-                <div style={{ fontSize: 6, color: fc.dot, fontWeight: 700, lineHeight: 1, letterSpacing: '0.03em' }}>
+                <div style={{ fontSize: 8, color: fc.dot, fontWeight: 700, lineHeight: 1, letterSpacing: '0.03em' }}>
                   {mtuFault.faultType} {mtuFault.intensity}%
                 </div>
               )}
@@ -156,6 +157,11 @@ function CylinderBank({ label, cylTemps, cylRisks, offset, bankLetter, activeFau
 
 export function CylinderView({ snap, decision, activeFaults = {}, mtuCylFaults = {}, onCylinderClick }: Props) {
   const [expanded, setExpanded] = useState(false);
+  const { focus } = useSensorFocus();
+  const exhaustFocused = focus === CYLINDER_FOCUS_SENSOR;
+  // Per-cylinder temps ARE the exhaust breakdown — when the workspace focuses Exhaust,
+  // drill in automatically. (No provider on the Dashboard → focus null → no effect.)
+  useEffect(() => { if (exhaustFocused) setExpanded(true); }, [exhaustFocused]);
 
   const bankA = snap.cylTemps.slice(0, 10);
   const bankB = snap.cylTemps.slice(10, 20);
@@ -175,6 +181,7 @@ export function CylinderView({ snap, decision, activeFaults = {}, mtuCylFaults =
   const hasMtuFaults  = mtuFaultCount > 0;
   const borderColor   = hasMtuFaults
     ? 'rgba(239,68,68,0.45)'
+    : exhaustFocused ? 'rgba(56,189,248,0.45)'
     : spread > 25 ? 'var(--risk-warning)' : 'var(--border-dim)';
 
   return (
@@ -198,6 +205,15 @@ export function CylinderView({ snap, decision, activeFaults = {}, mtuCylFaults =
           <div className="label-sm" style={{ color: hasMtuFaults ? 'var(--risk-critical)' : undefined }}>
             Cylinder Exhaust Temps — 20V
           </div>
+          {exhaustFocused && (
+            <span style={{
+              fontSize: 8, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--accent-blue)',
+              background: 'rgba(56,189,248,0.14)', border: '1px solid rgba(56,189,248,0.45)',
+              borderRadius: 4, padding: '1px 6px',
+            }}>
+              ◎ EXHAUST FOCUS
+            </span>
+          )}
           <div style={{ display: 'flex', gap: 5 }}>
             <span style={{ fontSize: 8, padding: '1px 6px', borderRadius: 3, background: 'var(--bg-inset)', color: 'var(--text-dim)', border: '1px solid var(--border-dim)' }}>BANK A</span>
             <span style={{ fontSize: 8, padding: '1px 6px', borderRadius: 3, background: 'var(--bg-inset)', color: 'var(--text-dim)', border: '1px solid var(--border-dim)' }}>BANK B</span>
@@ -289,7 +305,7 @@ export function CylinderView({ snap, decision, activeFaults = {}, mtuCylFaults =
               const rng   = Math.max(maxT - minT, 8);
               return (
                 <div key={bank} style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                  <div style={{ fontSize: 7.5, color: 'var(--text-dim)', fontWeight: 700, width: 12, flexShrink: 0 }}>{bank}</div>
+                  <div style={{ fontSize: 9, color: 'var(--text-dim)', fontWeight: 700, width: 12, flexShrink: 0 }}>{bank}</div>
                   {temps.map((temp, i) => {
                     const globalIdx = (bi * 10) + i;
                     const risk = decision.cylRisks[globalIdx] ?? 0;
@@ -327,7 +343,7 @@ export function CylinderView({ snap, decision, activeFaults = {}, mtuCylFaults =
                           minHeight: 3,
                           transition: 'height 0.4s ease',
                         }} />
-                        <div style={{ fontSize: 6.5, color: hasFault ? fc.dot : 'var(--text-dim)', lineHeight: 1 }}>
+                        <div style={{ fontSize: 8, color: hasFault ? fc.dot : 'var(--text-dim)', lineHeight: 1 }}>
                           {i + 1}
                         </div>
                       </div>

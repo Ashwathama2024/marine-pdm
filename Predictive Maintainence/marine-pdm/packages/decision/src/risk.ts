@@ -4,7 +4,7 @@ export const MTU8000_ALARM_BANDS: Record<string, { dev: number; rate: number }> 
   // Thermal — °C deviation from baseline to pre-alarm threshold
   exhaustTemp:     { dev: 20,   rate: 5    },  // rated 440°C → HI at +20°C; 5°C/min fault rate
   jacketOutlet:    { dev: 8,    rate: 2    },  // rated 82°C  → HI at 90°C
-  chargeAirTemp:   { dev: 12,   rate: 2.5  },  // rated 38°C  → HI at 50°C
+  chargeAirTemp:   { dev: 12,   rate: 2.5  },  // rated ~63°C → HI at 75°C (dev = 75−63)
   fuelOilTemp:     { dev: 15,   rate: 3    },  // rated 65°C  → HI at 80°C
   cylTemp:         { dev: 25,   rate: 3    },  // per-cylinder → alarm at +25°C above bank mean
 

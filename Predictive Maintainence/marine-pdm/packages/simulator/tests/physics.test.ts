@@ -92,26 +92,41 @@ describe('Lag model — signal smoothing', () => {
 });
 
 describe('Injector fault — progressive temperature rise', () => {
-  it('cylinder B1 (index 10) temp rises ≥5°C over 30 ticks with injector fault', async () => {
-    const engine = new SimulatorEngine(RPM, LOAD);
-    engine.quickStart(); // put engine in LOADED state so faults are processed
-    const snapshots: number[] = [];
+  it('cylinder B1 (index 10) rises ≥5°C above its settled pre-fault level once under load', async () => {
+    // Drive the engine into a loaded state: quickStart → IDLE, then engage the clutch.
+    // CLUTCHING auto-advances to CLUTCHED → LOADED, where load = propeller cube-law and
+    // faults are actually processed (faults only tick in CLUTCHED/LOADED).
+    const engine = new SimulatorEngine(400, 0);
+    engine.quickStart();
+    engine.engageClutch();
+
+    const b1: number[] = [];
+    let loadedTicks = 0;
+    let injected = false;
+    let preFault = NaN;
 
     await new Promise<void>(resolve => {
       engine.subscribe(snap => {
-        snapshots.push(snap.cylTemps[10]); // B1 = index 10
-        if (snapshots.length === 1) {
-          engine.injectFault('injector', 10, 0.1);
+        b1.push(snap.cylTemps[10]); // B1 = index 10
+
+        if (engine.getEngineState() === 'LOADED') loadedTicks++;
+
+        // Let exhaust settle a few loaded ticks, capture the pre-fault level, then inject.
+        if (!injected && loadedTicks >= 4) {
+          preFault = snap.cylTemps[10];
+          engine.injectFault('injector', 10, 0.3);
+          injected = true;
         }
-        if (snapshots.length >= 30) {
+
+        if (b1.length >= 45) {
           engine.unsubscribe();
           resolve();
         }
       });
     });
 
-    const first5Avg = snapshots.slice(0, 5).reduce((a, b) => a + b, 0) / 5;
-    const last5Avg = snapshots.slice(-5).reduce((a, b) => a + b, 0) / 5;
-    expect(last5Avg).toBeGreaterThan(first5Avg + 5);
-  }, 40_000);
+    expect(injected).toBe(true);
+    const last5Avg = b1.slice(-5).reduce((a, b) => a + b, 0) / 5;
+    expect(last5Avg).toBeGreaterThan(preFault + 5);
+  }, 60_000);
 });

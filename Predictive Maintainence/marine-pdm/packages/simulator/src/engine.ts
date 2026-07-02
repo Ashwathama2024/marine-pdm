@@ -21,6 +21,8 @@ import {
   clutchRpmDip,
 } from './mtu8000-start-physics';
 import type { StartPhysicsState } from './mtu8000-start-physics';
+import { cylExhaustTemp_MTU8000 } from './mtu8000-physics';
+import { CYLINDER_COUNT } from '@marine-pdm/shared';
 
 export type SimMode = 'NORMAL' | 'STRESS' | 'FAULT';
 
@@ -29,6 +31,21 @@ const GOV_RPM_IDLE      = 400;   // MTU 8000 M71 governed idle — 400 RPM, clut
 const GOV_RPM_RATED     = 1150;
 const GOV_RPM_STEP      = 15;    // per SPEED INC/DEC button press
 const STOPPING_RPM_RATE = 8;     // RPM/s linear coast-down
+const PROP_LOAD_RATED   = 85;    // % MCR a clean fixed-pitch propeller absorbs at rated RPM (light-running margin)
+
+// Fixed-pitch propeller law: absorbed power ∝ N³ (cube law). Anchored so rated 1150 RPM → 85 % load (CSR).
+// Load is therefore a CONSEQUENCE of RPM once the clutch is engaged — never set independently.
+function propellerLoad(rpm: number): number {
+  const ld = PROP_LOAD_RATED * Math.pow(rpm / GOV_RPM_RATED, 3);
+  return Math.max(0, Math.min(100, ld));
+}
+
+// No-load idle steady-state cylinder temps (used to seed lag state on entry to IDLE,
+// so the live no-load baselines see zero deviation instead of a warm-up false alarm).
+function noLoadCylTemps(rpm: number): number[] {
+  const mean = exhaustTemp_noLoad(rpm);
+  return Array.from({ length: CYLINDER_COUNT }, (_, i) => cylExhaustTemp_MTU8000(mean, i, {}));
+}
 
 export class SimulatorEngine implements IDataSource {
   // ── Physics / fault state ─────────────────────────────────────────────────────
@@ -165,9 +182,13 @@ export class SimulatorEngine implements IDataSource {
     this.interlocks.values.il7_primingSeconds = 200;
     this.interlocks.setToggle('il8_fuelReady', true);
 
-    // Seed physics at idle steady-state (post-warmup, declutched, no load)
+    // Seed physics at idle steady-state (post-warmup, declutched, no load).
+    // Exhaust/cyls seeded on the NO-LOAD curve so the live no-load baselines read zero
+    // deviation on the first tick instead of a warm-up false alarm.
     this.state = {
       ...makeInitialPhysicsState(400, 0),
+      lagExhaust:          exhaustTemp_noLoad(GOV_RPM_IDLE),
+      lagCyls:             noLoadCylTemps(GOV_RPM_IDLE),
       lagCoolantTemp:      52,   // jacket water warmed at idle (thermostat closed)
     };
     this._govRpm = GOV_RPM_IDLE;
@@ -185,18 +206,16 @@ export class SimulatorEngine implements IDataSource {
     this.state   = { ...this.state, rpm: Math.max(400, Math.min(1150, rpm)) };
   }
 
-  setLoad(load: number): void {
-    // Auto-advance CLUTCHED → LOADED when load is applied
-    if (this.stateMachine.current === 'CLUTCHED' && load > 0) {
-      this.stateMachine.transition('LOADED');
-    }
-    this.state = { ...this.state, load: Math.max(0, Math.min(100, load)) };
-  }
+  /** @deprecated Load is no longer set independently — it follows the propeller cube-law from RPM
+   *  once the clutch is engaged (see applyPhaseSetpoints). Kept as a no-op for API compatibility. */
+  setLoad(_load: number): void { /* load is derived from RPM via propellerLoad() */ }
 
   setMode(mode: SimMode): void {
     this.mode = mode;
     if (mode === 'STRESS') {
-      this.state = { ...this.state, rpm: 1100, load: 74 };
+      // High-speed stress point: 1100 RPM. Load follows the propeller law (~74 %) once clutched.
+      this._govRpm = 1100;
+      this.state   = { ...this.state, rpm: 1100 };
     }
   }
 
@@ -255,6 +274,24 @@ export class SimulatorEngine implements IDataSource {
   }
 
   getMTUFaultList(): FaultConfig[] { return [...this.mtuFaults]; }
+
+  /** Live independent root-factor values (the degradation X-vector for regression).
+   *  Each is the actual PhysicsState excursion driving the dependent sensors. */
+  getRootFactors(): {
+    injFaultMax: number; coolingEffDrop: number; tcEffDrop: number;
+    lubeFault: number; bearingFaultMax: number; pistonBlowby: number;
+  } {
+    const inj = Object.values(this.state.injFaults);
+    const brg = Object.values(this.state.bearingFaults);
+    return {
+      injFaultMax:     inj.length ? Math.max(...inj) : 0,
+      coolingEffDrop:  1 - this.state.coolingEff,
+      tcEffDrop:       1 - Math.min(...this.state.tcEffs),
+      lubeFault:       this.state.lubeFault,
+      bearingFaultMax: brg.length ? Math.max(...brg) : 0,
+      pistonBlowby:    this.state.pistonBlowby,
+    };
+  }
 
   subscribe(cb: (snap: EngineSnapshot) => void): void {
     this.subscribers.push(cb);
@@ -320,13 +357,15 @@ export class SimulatorEngine implements IDataSource {
   private initPhysicsForIdle(): void {
     const s = this.startState;
     this._govRpm = GOV_RPM_IDLE;
+    // Seed exhaust/cyls at the no-load idle steady-state (not the low cranking value) so the
+    // live no-load baselines see ~zero deviation — avoids a post-crank warm-up false alarm.
     this.state = {
       ...this.state,
       rpm:                    Math.max(200, s.rpm),
       load:                   0,
-      lagExhaust:             s.exhaustMean,
+      lagExhaust:             exhaustTemp_noLoad(GOV_RPM_IDLE),
       lagLube:                s.lubePress,
-      lagCyls:                [...s.cylTemps],
+      lagCyls:                noLoadCylTemps(GOV_RPM_IDLE),
       lagTcSpeeds:            [...s.tcSpeeds],
       lagBearingTemps:        [...s.bearingTemps],
       lagCoolantTemp:         s.coolantTemp,
@@ -395,19 +434,24 @@ export class SimulatorEngine implements IDataSource {
   private applyPhaseSetpoints(phase: string, elapsedS: number): void {
     switch (phase) {
       case 'IDLE': {
-        // ECU governor raises RPM from cranking speed to 400 (governed idle) — alpha 0.15 per spec
-        const next = applyLag(this.state.rpm, GOV_RPM_IDLE, 0.15);
+        // Governor brings cranking speed up to the operator setpoint (idle default 400). The speed
+        // lever is live from the moment the engine is running — load stays 0 (clutch out).
+        const next = applyLag(this.state.rpm, this._govRpm, 0.15);
         this.state = { ...this.state, rpm: next, load: 0 };
+        // Operator revved above idle while declutched → enter the warm-up/run-up phase.
+        if (this._govRpm > GOV_RPM_IDLE) this.stateMachine.transition('WARMING');
         break;
       }
       case 'WARMING': {
-        // Operator uses SPEED INC/DEC; _govRpm holds setpoint
-        const next = applyLag(this.state.rpm, this._govRpm, 0.04);
+        // Declutched run-up — RPM chases the speed-lever setpoint, load stays 0.
+        const next = applyLag(this.state.rpm, this._govRpm, 0.12);
         this.state = { ...this.state, rpm: next, load: 0 };
+        // Once RPM has settled at the setpoint, hold as steady declutched running.
+        if (next >= this._govRpm - 15) this.stateMachine.transition('DECLUTCHED_RUN');
         break;
       }
       case 'DECLUTCHED_RUN': {
-        // Hold at governor setpoint — speed lever controls RPM, no auto-ramp
+        // Steady declutched running — speed lever controls RPM directly, no propeller load.
         this.state = { ...this.state, rpm: this._govRpm, load: 0 };
         break;
       }
@@ -418,12 +462,14 @@ export class SimulatorEngine implements IDataSource {
         break;
       }
       case 'CLUTCHED': {
-        // Hold at governor setpoint — RPM increases only via speed lever
-        this.state = { ...this.state, rpm: this._govRpm, load: 0 };
+        // Clutch engaged — propeller now absorbs power per the cube law; load follows RPM.
+        this.state = { ...this.state, rpm: this._govRpm, load: propellerLoad(this._govRpm) };
+        if (this.state.load > 0) this.stateMachine.transition('LOADED');
         break;
       }
       case 'LOADED': {
-        // Normal operation — setRPM/setLoad already updated this.state
+        // Normal driving — RPM from the speed lever, load = propeller cube-law(RPM).
+        this.state = { ...this.state, rpm: this._govRpm, load: propellerLoad(this._govRpm) };
         break;
       }
       case 'STOPPING': {

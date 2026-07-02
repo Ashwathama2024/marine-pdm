@@ -43,7 +43,7 @@ export class InterlockSystem {
   get il3(): boolean { return this.values.il3_lubeLevel > 20; }
   get il4(): boolean { return this.values.il4_coolantLevel; }
   get il5(): boolean { return this.values.il5_startAirBar >= 14 && this.values.il5_startAirBar <= 30; }
-  get il6(): boolean { return this.values.il6_coolantTemp > 20; }
+  get il6(): boolean { return this.values.il6_coolantTemp >= 40; }  // min preheat to start (MTU high-speed diesel practice)
   get il7(): boolean { return this.values.il7_primingSeconds >= 180; }
   get il8(): boolean { return this.values.il8_fuelReady; }
 
@@ -83,9 +83,9 @@ export class InterlockSystem {
     if (this._primingActive) {
       this.values.il7_primingSeconds = Math.min(300, this.values.il7_primingSeconds + elapsedS);
     }
-    // IL-6: preheater slowly raises coolant toward 55 °C (tau ≈ 600 s)
+    // IL-6: preheater slowly raises coolant toward 45 °C start setpoint (tau ≈ 600 s)
     if (this._preheaterOn) {
-      const target = 55;
+      const target = 45;
       this.values.il6_coolantTemp += (1 / 600) * (target - this.values.il6_coolantTemp) * elapsedS;
     }
   }

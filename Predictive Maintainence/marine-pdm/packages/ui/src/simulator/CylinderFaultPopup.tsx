@@ -145,7 +145,7 @@ export function CylinderFaultPopup({ cylIndex, currentFault, onInject, onClear, 
           />
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 2 }}>
             {['Incipient', 'Developing', 'Significant', 'Severe', 'Critical'].map((l, i) => (
-              <span key={i} style={{ fontSize: 7, color: 'var(--text-muted)', fontWeight: 600 }}>{l}</span>
+              <span key={i} style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 600 }}>{l}</span>
             ))}
           </div>
         </div>

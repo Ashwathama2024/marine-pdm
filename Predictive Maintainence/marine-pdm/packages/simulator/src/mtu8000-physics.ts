@@ -57,7 +57,7 @@ export function lubeOilPressure_MTU8000(
   const loadDrop   = loadN(load) * 0.8;
   const viscDrop   = Math.max(0, (oilTemp - 85) * 0.018);  // hot oil: lower viscosity → lower press
   const coldDrop   = Math.max(0, (65 - oilTemp) * 0.056);  // cold oil: high filter ΔP → lower gallery press
-  const faultDrop  = lubeFault * 3.5;
+  const faultDrop  = lubeFault * 3.8;   // lubeFault normalised 0–1; max drop 3.8 bar (F03 full)
   return Math.max(0.5, base - loadDrop - viscDrop - coldDrop - filterDp - faultDrop);
 }
 
@@ -71,8 +71,10 @@ export function bearingTemp_MTU8000(
   rpm: number,
   lubeOilTemp: number,
   lubePressure: number,
-  bearingIndex: number,  // 0–10 (bearing 1 = driving end)
-  lubeFault: number = 0,
+  bearingIndex: number,     // 0–10 (bearing 1 = driving end)
+  bearingFault: number = 0, // 0–1 per-bearing overtemp severity (F04). ONLY ever receives
+                            // bearingFaults[i] — F03 lube loss reaches bearings via pressureDef,
+                            // F05 cooler fouling via oilHeat (lubeOilTemp), not through this term.
 ): number {
   const base        = 58;  // recalibrated: idle target 60-70°C at 400 RPM / no load
   const loadHeat    = loadN(load) * 28;
@@ -80,7 +82,9 @@ export function bearingTemp_MTU8000(
   const oilHeat     = (lubeOilTemp - 85) * 0.4;
   const pressureDef = Math.max(0, (6.5 - lubePressure)) * 4.5;
   const positionBias = bearingIndex === 10 ? 5 : bearingIndex > 7 ? 3 : 0;
-  const faultHeat   = lubeFault * 20;
+  const faultHeat   = bearingFault * 45;  // F04 spec = +45°C at full severity (reaches SS T-Bearing >130°C).
+                                          // Was 20 — under-delivered so the SS trip never fired. Zero at
+                                          // healthy (fault=0) so rated bearing temps are unchanged.
   return base + loadHeat + rpmHeat + oilHeat + pressureDef + positionBias + faultHeat;
 }
 
@@ -97,7 +101,10 @@ export function chargeAirPressure_MTU8000(
   return 1.35 + boost * tcEff;
 }
 
-// Target: at 85%, 1150 RPM → ~3.2 bar
+// Charge air temperature after the LT-cooled intercooler.
+// LT coolant (~36°C, seawater-cooled) + ~12°C cooler approach + load-driven boost heat.
+// Rated (85% load, 1150 RPM, LT_COOLANT=36): 48 + 15.3 ≈ 63°C — this is the intended
+// physical value; a real intercooler cannot pull charge air down to ~38°C (2°C approach).
 export function chargeAirTemp_MTU8000(
   load: number,
   rpm: number,
@@ -106,7 +113,7 @@ export function chargeAirTemp_MTU8000(
   const base     = coolantTemp + 12;
   const loadHeat = loadN(load) * 18;
   return base + loadHeat;
-  // Target: < 55 °C — HI T-Charge Air alarm at 50 °C
+  // Rated ~63°C — HI T-Charge Air alarm at 75°C, B9 max 80°C (see MTU8000_LIMITS.chargeAir).
 }
 
 // ── 3.7 Lube Oil Temperature ──────────────────────────────────────────────────
@@ -147,14 +154,19 @@ export function sfoc_MTU8000(
   rpm: number,
   injectorFaults: Record<number, number>,
   coolingEff: number = 1.0,
+  tcEffMean: number = 1.0,     // TC fouling lowers charge density → worse combustion (0 at healthy)
+  pistonBlowby: number = 0,    // blow-by loses compression/combustion gas → worse efficiency (0 at healthy)
 ): number {
   const base            = 180;   // calibrated: 180 + (100-85)×0.333 = 185 at rated point
   const loadPenalty     = (100 - load) * 0.333;
   const rpmPenalty      = (MTU8000.RATED_RPM - rpm) * 0.08;
   const coolingPenalty  = (1 - coolingEff) * 18;
+  const tcPenalty       = (1 - tcEffMean) * 25;   // +10 g/kWh at F06 full (tcEff 0.6 → Δ0.4)
+  const blowbyPenalty   = pistonBlowby * 2;       // +2 g/kWh at F08 full — matches impact preview
   const injFaultPenalty = Object.values(injectorFaults)
     .reduce((s, v) => s + v * 4.5, 0);
-  return base + loadPenalty + rpmPenalty + coolingPenalty + injFaultPenalty;
+  // New terms are zero at healthy (tcEff=1, blowby=0) → rated SFOC stays 185 g/kWh (test-safe).
+  return base + loadPenalty + rpmPenalty + coolingPenalty + tcPenalty + blowbyPenalty + injFaultPenalty;
 }
 
 // ── 3.10 Crankcase Pressure ───────────────────────────────────────────────────

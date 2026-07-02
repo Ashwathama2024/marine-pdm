@@ -163,7 +163,7 @@ function FaultChip({ category, label, detail, bg, borderColor, textColor, onClea
       background: bg, border: `1px solid ${borderColor}`,
       borderRadius: 5,
     }}>
-      <span style={{ fontSize: 7, fontWeight: 700, letterSpacing: '0.1em', color: textColor, opacity: 0.7 }}>
+      <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', color: textColor, opacity: 0.7 }}>
         {category}
       </span>
       <span style={{ fontSize: 10, fontWeight: 700, color: textColor }}>{label}</span>

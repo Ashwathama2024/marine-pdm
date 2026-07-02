@@ -80,11 +80,11 @@ export function StartAirGauge() {
             style={{ width: '100%', accentColor: color }}
           />
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
-            <span style={{ fontSize: 7, color: 'var(--text-dim)' }}>0 bar</span>
-            <span style={{ fontSize: 7, color: ok ? '#00C878' : '#ef4444', fontWeight: 700 }}>
+            <span style={{ fontSize: 9, color: 'var(--text-dim)' }}>0 bar</span>
+            <span style={{ fontSize: 9, color: ok ? '#00C878' : '#ef4444', fontWeight: 700 }}>
               MIN {MIN_START_BAR} bar required
             </span>
-            <span style={{ fontSize: 7, color: 'var(--text-dim)' }}>30 bar</span>
+            <span style={{ fontSize: 9, color: 'var(--text-dim)' }}>30 bar</span>
           </div>
           <div style={{ marginTop: 8, fontSize: 8, color: 'var(--text-secondary)' }}>
             Attempts remaining:{' '}

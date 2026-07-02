@@ -6,6 +6,7 @@ import { buildSensorAnalysisPrompt, buildBatchDeviationPrompt } from '../service
 import { getCauseChain } from '../services/cause-chains';
 import { buildContextString, loadDocuments } from '../services/knowledge-store';
 import { isOpenAIConfigured } from '../services/openai-client';
+import { useSensorFocus } from '../context/SensorFocusContext';
 
 interface DeviationRow {
   sensorId: string;
@@ -111,6 +112,7 @@ function RowAI({ row, load, rpm }: { row: DeviationRow; load: number; rpm: numbe
 export function DeviationTable() {
   const { snapshot, baseline, decision, history } = useEngine();
   const { analyze: analyzeAll, result: batchResult, analyzing: batchAnalyzing, reset } = useGPTAnalysis();
+  const { focus } = useSensorFocus();
 
   if (!snapshot || !baseline || !decision) {
     return <div style={{ padding: 24, color: 'var(--text-muted)', fontSize: 12 }}>Waiting for engine data…</div>;
@@ -228,7 +230,7 @@ export function DeviationTable() {
               </tr>
             </thead>
             <tbody>
-              {rows.map(row => (
+              {(focus ? rows.filter(r => r.sensorId === focus) : rows).map(row => (
                 <RowAI key={row.sensorId} row={row} load={snapshot!.load} rpm={snapshot!.rpm} />
               ))}
             </tbody>

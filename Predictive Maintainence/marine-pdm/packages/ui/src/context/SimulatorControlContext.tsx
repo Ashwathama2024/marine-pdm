@@ -3,75 +3,46 @@ import { engine } from './EngineContext';
 
 export type EngineMode = 'NORMAL' | 'STRESS';
 
+// Speed-lever only console. Load is NOT operator-set — it follows the propeller cube-law from RPM
+// once the clutch is engaged (declutched → 0). The engine owns that ratio internally; there is no
+// load UI. `rpm` here mirrors the operator's speed-lever setpoint; live load is read from the snapshot.
 interface SimulatorControlCtx {
-  rpm:      number;
-  load:     number;
-  coupled:  boolean;
-  mode:     EngineMode;
-  setRpm:   (v: number) => void;
-  setLoad:  (v: number) => void;
-  setCoupled: (v: boolean) => void;
-  setMode:  (m: EngineMode) => void;
-  applyPreset: (rpm: number, load: number) => void;
+  rpm:         number;
+  mode:        EngineMode;
+  setRpm:      (v: number) => void;
+  setMode:     (m: EngineMode) => void;
+  applyPreset: (rpm: number) => void;
 }
 
 const Ctx = createContext<SimulatorControlCtx | null>(null);
 
-function propellerLoad(rpm: number): number {
-  return Math.round(85 * Math.pow(rpm / 1150, 3));
-}
-
 export function SimulatorControlProvider({ children }: { children: React.ReactNode }) {
-  const [rpm,     setRpmState]     = useState(400);
-  const [load,    setLoadState]    = useState(4);
-  const [coupled, setCoupledState] = useState(true);
-  const [mode,    setModeState]    = useState<EngineMode>('NORMAL');
+  const [rpm,  setRpmState]  = useState(400);
+  const [mode, setModeState] = useState<EngineMode>('NORMAL');
 
   const setRpm = useCallback((v: number) => {
     setRpmState(v);
-    engine.setRPM(v);
-    setCoupledState(prev => {
-      if (prev) {
-        const cl = Math.max(0, Math.min(100, propellerLoad(v)));
-        setLoadState(cl);
-        engine.setLoad(cl);
-      }
-      return prev;
-    });
-  }, []);
-
-  const setLoad = useCallback((v: number) => {
-    setLoadState(v);
-    engine.setLoad(v);
-  }, []);
-
-  const setCoupled = useCallback((v: boolean) => {
-    setCoupledState(v);
+    engine.setRPM(v);   // engine derives load from RPM via the propeller law when clutched
   }, []);
 
   const setMode = useCallback((m: EngineMode) => {
     setModeState(m);
     engine.setMode(m);
     if (m === 'STRESS') {
-      setRpmState(1100);  engine.setRPM(1100);
-      setLoadState(74);   engine.setLoad(74);
-      setCoupledState(false);
+      setRpmState(1100); engine.setRPM(1100);   // load follows (~74% once clutched)
     } else {
-      setRpmState(1000);  engine.setRPM(1000);
-      setLoadState(56);   engine.setLoad(56);
+      setRpmState(1000); engine.setRPM(1000);
     }
   }, []);
 
-  const applyPreset = useCallback((r: number, l: number) => {
-    setRpmState(r);  engine.setRPM(r);
-    setLoadState(l); engine.setLoad(l);
-    setCoupledState(false);
+  const applyPreset = useCallback((r: number) => {
+    setRpmState(r); engine.setRPM(r);
     setModeState('NORMAL');
     engine.setMode('NORMAL');
   }, []);
 
   return (
-    <Ctx.Provider value={{ rpm, load, coupled, mode, setRpm, setLoad, setCoupled, setMode, applyPreset }}>
+    <Ctx.Provider value={{ rpm, mode, setRpm, setMode, applyPreset }}>
       {children}
     </Ctx.Provider>
   );

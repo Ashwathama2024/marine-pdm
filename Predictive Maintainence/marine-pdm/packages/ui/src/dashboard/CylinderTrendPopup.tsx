@@ -300,7 +300,7 @@ export function CylinderTrendPopup({ cylIndex, history, cylRisks, bankMean, onCl
                     border: `1px solid ${hi ? 'var(--risk-warning)' : 'var(--border-dim)'}`,
                     borderRadius: 6, padding: '7px 8px', textAlign: 'center',
                   }}>
-                    <div style={{ fontSize: 7.5, color: 'var(--text-dim)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 4 }}>
+                    <div style={{ fontSize: 9, color: 'var(--text-dim)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 4 }}>
                       {label}
                     </div>
                     <div style={{ fontSize: 13, fontWeight: 700, color: hi ? 'var(--risk-warning)' : 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>

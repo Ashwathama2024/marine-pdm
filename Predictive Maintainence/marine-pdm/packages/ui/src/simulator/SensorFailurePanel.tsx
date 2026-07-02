@@ -186,29 +186,39 @@ export function SensorFailurePanel({ registry, onRegistryChange }: Props) {
               boxSizing: 'border-box',
             }}
           />
-          <select
-            value={selectedSensor}
-            onChange={e => setSelected(e.target.value)}
-            size={4}
-            style={{
-              width: '100%', padding: '4px 8px',
-              background: 'var(--bg-elevated)', border: '1px solid var(--border-dim)',
-              borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', fontSize: 10,
-            }}
-          >
+          {/* Search-filtered scrollable list (replaces the cramped size=4 native select) */}
+          <div style={{
+            maxHeight: 170, overflowY: 'auto',
+            background: 'var(--bg-elevated)', border: '1px solid var(--border-dim)',
+            borderRadius: 'var(--radius-sm)',
+          }}>
+            {filteredTags.length === 0 && (
+              <div style={{ padding: '8px 10px', fontSize: 10, color: 'var(--text-dim)' }}>No tags match “{search}”</div>
+            )}
             {filteredTags.map(tag => {
-              const health = registry.getHealth(tag, 1.5);
+              const health   = registry.getHealth(tag, 1.5);
               const isActive = activeIds.includes(tag);
+              const isSel    = selectedSensor === tag;
               return (
-                <option key={tag} value={tag} style={{
-                  color: isActive ? '#f59e0b' : undefined,
-                }}>
-                  {isActive ? `⚠ ` : ''}{tag}
-                  {isActive ? `  [H:${health}]` : ''}
-                </option>
+                <div
+                  key={tag}
+                  onClick={() => setSelected(tag)}
+                  style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8,
+                    padding: '5px 10px', cursor: 'pointer', fontSize: 10,
+                    background: isSel ? 'rgba(56,189,248,0.12)' : 'transparent',
+                    color: isActive ? '#f59e0b' : isSel ? 'var(--accent-blue)' : 'var(--text-secondary)',
+                    borderLeft: `2px solid ${isSel ? 'var(--accent-blue)' : 'transparent'}`,
+                  }}
+                >
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {isActive ? '⚠ ' : ''}{tag}
+                  </span>
+                  {isActive && <span style={{ fontSize: 9, color: '#f59e0b', flexShrink: 0 }}>H:{health}</span>}
+                </div>
               );
             })}
-          </select>
+          </div>
         </div>
 
         {/* Failure mode selector */}

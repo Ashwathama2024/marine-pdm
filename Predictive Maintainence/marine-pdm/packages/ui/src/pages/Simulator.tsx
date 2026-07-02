@@ -127,44 +127,39 @@ export function Simulator() {
         onRegistryChange={forceUpdate}
       />
 
-      {/* ── Section A: Engine Operations ── */}
-      <SectionDivider label="ENGINE OPERATIONS" color="#00D4AA" />
+      {/* ── Local Operating Panel — full-width console (LCD display + buttons) ── */}
+      <LOPPanel />
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
-        <LOPPanel />
+      {/* Two intent columns: OPERATE & OVERRIDE | FAULT INJECTION — halves scrolling, groups by intent */}
+      <div className="sim-cols" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'start', marginTop: 16 }}>
+
+        {/* LEFT — run the engine + manual value overrides */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <SectionDivider label="OPERATE & OVERRIDE" color="#00D4AA" />
+          <EngineControlPanel />
           <StartAirGauge />
           <InterlockPanel />
+          <ValueInjectionPanel />
+        </div>
+
+        {/* RIGHT — inject faults & sensor failures */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <SectionDivider label="FAULT INJECTION" color="#F97316" />
+          <CylinderInjectorPanel
+            cylFaultMap={cylFaultMap}
+            onInjectFault={injectCylFault}
+            onClearFault={clearCylFault}
+            onClearAll={clearAllCylFaults}
+          />
+          <FaultInjector
+            engine={engine}
+            activeFaultIds={activeFaultIds}
+            onActiveFaultIdsChange={setActiveFaultIds}
+            onResetAll={handleFaultInjectorReset}
+          />
+          <SensorFailurePanel registry={sensorRegistry} onRegistryChange={forceUpdate} />
         </div>
       </div>
-
-      {/* Engine control — RPM, Load, Mode, Presets */}
-      <EngineControlPanel />
-
-      {/* ── Section B: Simulation / Fault Injection ── */}
-      <SectionDivider label="SIMULATION — FAULT INJECTION" color="#F97316" />
-
-      {/* Cylinder fault injector — visual bank layout */}
-      <CylinderInjectorPanel
-        cylFaultMap={cylFaultMap}
-        onInjectFault={injectCylFault}
-        onClearFault={clearCylFault}
-        onClearAll={clearAllCylFaults}
-      />
-
-      {/* MTU scenario faults + sensor failures */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'start', marginBottom: 16 }}>
-        <FaultInjector
-          engine={engine}
-          activeFaultIds={activeFaultIds}
-          onActiveFaultIdsChange={setActiveFaultIds}
-          onResetAll={handleFaultInjectorReset}
-        />
-        <SensorFailurePanel registry={sensorRegistry} onRegistryChange={forceUpdate} />
-      </div>
-
-      {/* Value injection — manual sensor override */}
-      <ValueInjectionPanel />
     </div>
   );
 }

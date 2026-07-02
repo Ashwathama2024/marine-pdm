@@ -1,5 +1,5 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { useAlerts } from '../context/AlertContext';
 import { useDegradation } from '../context/DegradationContext';
 import { useEngine } from '../context/EngineContext';
@@ -16,16 +16,32 @@ function Icon({ d, size = 16 }: { d: string; size?: number }) {
   );
 }
 
-const NAV_ITEMS = [
-  { to: '/',            label: 'Dashboard',      icon: 'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z',                                                             color: '#00D4AA', glow: '0,212,170'   },
-  { to: '/deviations',  label: 'Deviations',     icon: 'M2 12h20M12 2v20M5 5l14 14',                                                                               color: '#38BDF8', glow: '56,189,248'  },
-  { to: '/table',       label: 'Analysis Table', icon: 'M3 6h18M3 12h18M3 18h18',                                                                                   color: '#818CF8', glow: '129,140,248' },
-  { to: '/alerts',      label: 'Alert Analytics',icon: 'M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z',                     color: '#EF4444', glow: '239,68,68'   },
-  { to: '/degradation', label: 'Degradation Log',icon: 'M13 17H3m10 0l-4-4m4 4l-4 4M21 7H11m10 0l-4-4m4 4l-4 4',                                                   color: '#F59E0B', glow: '245,158,11'  },
-  { to: '/knowledge',   label: 'Knowledge Base', icon: 'M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z',                            color: '#A78BFA', glow: '167,139,250' },
-  { to: '/baselines',   label: 'Baselines',      icon: 'M3 3v18h18M7 16l4-4 4 4 5-5',                                                                               color: '#10B981', glow: '16,185,129'  },
-  { to: '/management',  label: 'Management',     icon: 'M12 20h9 M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z',                                           color: '#6366F1', glow: '99,102,241'  },
-  { to: '/simulator',   label: 'Simulator',      icon: 'M9.5 2A2.5 2.5 0 017 4.5v1A2.5 2.5 0 009.5 8h5A2.5 2.5 0 0017 5.5v-1A2.5 2.5 0 0014.5 2h-5zM4 10h16M4 14h16M4 18h16', color: '#F97316', glow: '249,115,22'  },
+// Grouped by intent: OPERATE (run the plant) vs ANALYZE (exploratory analysis).
+const NAV_GROUPS: { group: string; items: { to: string; label: string; icon: string; color: string; glow: string }[] }[] = [
+  {
+    group: 'OPERATE',
+    items: [
+      { to: '/',          label: 'Dashboard', icon: 'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z', color: '#00D4AA', glow: '0,212,170'  },
+      { to: '/simulator', label: 'Simulator', icon: 'M9.5 2A2.5 2.5 0 017 4.5v1A2.5 2.5 0 009.5 8h5A2.5 2.5 0 0017 5.5v-1A2.5 2.5 0 0014.5 2h-5zM4 10h16M4 14h16M4 18h16', color: '#F97316', glow: '249,115,22' },
+    ],
+  },
+  {
+    group: 'ANALYZE',
+    items: [
+      // Deviations / Table / Alerts / Degradation are now TABS inside the Analysis workspace (one screen, no hopping).
+      { to: '/analysis',    label: 'Analysis',       icon: 'M3 3h7v7H3z M14 3h7v7h-7z M14 14h7v7h-7z M3 14h7v7H3z',                          color: '#38BDF8', glow: '56,189,248'  },
+      { to: '/degradation', label: 'Degradation BI', icon: 'M13 17H3m10 0l-4-4m4 4l-4 4M21 7H11m10 0l-4-4m4 4l-4 4',                       color: '#F59E0B', glow: '245,158,11'  },
+      { to: '/knowledge',   label: 'Knowledge Base', icon: 'M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z', color: '#A78BFA', glow: '167,139,250' },
+      { to: '/baselines',  label: 'Baselines',      icon: 'M3 3v18h18M7 16l4-4 4 4 5-5',                                                   color: '#10B981', glow: '16,185,129'  },
+      { to: '/management', label: 'Management',     icon: 'M12 20h9 M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z',                color: '#6366F1', glow: '99,102,241'  },
+    ],
+  },
+  {
+    group: 'HELP',
+    items: [
+      { to: '/help', label: 'User Manual', icon: 'M12 22a10 10 0 100-20 10 10 0 000 20z M9.5 9a2.5 2.5 0 015 0c0 1.5-2.5 2-2.5 3.5 M12 17h.01', color: '#38BDF8', glow: '56,189,248' },
+    ],
+  },
 ];
 
 function ctrlBtn(enabled: boolean, color: string): React.CSSProperties {
@@ -49,7 +65,13 @@ export function Sidebar({ collapsed, onToggle }: Props) {
   const { unacknowledgedCount } = useAlerts();
   const { activeEvents } = useDegradation();
   const { engineState, engineControls, interlocks, snapshot } = useEngine();
-  const { rpm, load, setRpm, setLoad } = useSimulatorControl();
+  const { rpm, setRpm } = useSimulatorControl();
+  const { pathname } = useLocation();
+  const isOperateRoute = pathname === '/' || pathname === '/simulator';
+  // Engine control is open on OPERATE routes, collapsed on ANALYZE routes so the nav
+  // never forces a scroll while exploring data. Resets on route change; toggle-able.
+  const [engineOpen, setEngineOpen] = React.useState(isOperateRoute);
+  React.useEffect(() => { setEngineOpen(isOperateRoute); }, [isOperateRoute]);
 
   const badge       = STATE_BADGE[engineState];
   const ilStatus    = interlocks.getStatus();
@@ -63,8 +85,8 @@ export function Sidebar({ collapsed, onToggle }: Props) {
   const rpmPct      = Math.min(100, (liveRpm / 1150) * 100);
   const loadColor   = liveLoad >= 85 ? '#ef4444' : liveLoad >= 60 ? '#f97316' : liveLoad >= 30 ? '#f59e0b' : '#00D4AA';
 
-  // 4-button enable logic
-  const slidersActive = ['CLUTCHED', 'LOADED'].includes(engineState);
+  // Speed lever is live whenever the engine is running (declutched rev raises RPM, not load).
+  const rpmActive = ['IDLE', 'WARMING', 'DECLUTCHED_RUN', 'CLUTCHED', 'LOADED'].includes(engineState);
 
   const canStart   = engineState === 'ENGINE_OFF' || (engineState === 'STANDBY' && allReady);
   const canStop    = isRunning;
@@ -130,7 +152,10 @@ export function Sidebar({ collapsed, onToggle }: Props) {
 
           {/* Navigation */}
           <div style={{ padding: '8px 0 4px' }}>
-            {NAV_ITEMS.map(item => (
+            {NAV_GROUPS.map(grp => (
+              <div key={grp.group}>
+                <div className="sidebar-label sidebar-hide" style={{ paddingTop: 8 }}>{grp.group}</div>
+                {grp.items.map(item => (
               <NavLink
                 key={item.to} to={item.to} end={item.to === '/'}
                 className={({ isActive }) => `nav-item-glass${isActive ? ' active' : ''}`}
@@ -147,25 +172,35 @@ export function Sidebar({ collapsed, onToggle }: Props) {
                 </span>
                 <span className="nav-label" style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
                   {item.label}
-                  {item.to === '/alerts' && unacknowledgedCount > 0 && (
+                  {item.to === '/analysis' && unacknowledgedCount > 0 && (
                     <span style={{ background: 'var(--risk-critical)', color: '#fff', borderRadius: 8, fontSize: 8, padding: '1px 5px', fontWeight: 700, boxShadow: '0 0 8px rgba(239,68,68,0.5)' }}>
                       {unacknowledgedCount}
                     </span>
                   )}
-                  {item.to === '/degradation' && activeEvents.length > 0 && (
+                  {item.to === '/analysis' && activeEvents.length > 0 && (
                     <span style={{ background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.5)', color: 'var(--risk-warning)', borderRadius: 8, fontSize: 8, padding: '1px 5px', fontWeight: 700 }}>
                       {activeEvents.length}
                     </span>
                   )}
                 </span>
               </NavLink>
+                ))}
+              </div>
             ))}
           </div>
 
-          {/* ── ENGINE CONTROL ────────────────────────────────────────────── */}
+          {/* ── ENGINE CONTROL (collapsible — open on OPERATE routes) ───────── */}
           <div className="sidebar-section-glass">
-            <div className="sidebar-label sidebar-hide" style={{ color: badge.color }}>ENGINE CONTROL</div>
+            <div
+              className="sidebar-label sidebar-hide"
+              onClick={() => setEngineOpen(o => !o)}
+              style={{ color: badge.color, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', userSelect: 'none' }}
+            >
+              <span>ENGINE CONTROL</span>
+              <span style={{ fontSize: 9, display: 'inline-block', transform: engineOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }}>▸</span>
+            </div>
 
+            {engineOpen && (
             <div className="sidebar-hide" style={{ padding: '0 14px 12px' }}>
 
               {/* State badge row */}
@@ -193,7 +228,7 @@ export function Sidebar({ collapsed, onToggle }: Props) {
                 {/* RPM bar */}
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3 }}>
-                    <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: '0.1em', color: 'var(--text-dim)' }}>RPM</span>
+                    <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', color: 'var(--text-muted)' }}>RPM</span>
                     <span style={{ fontSize: 10, fontWeight: 700, color: '#38BDF8', fontVariantNumeric: 'tabular-nums' }}>
                       {Math.round(liveRpm)}
                     </span>
@@ -207,7 +242,7 @@ export function Sidebar({ collapsed, onToggle }: Props) {
                       borderRadius: 3,
                     }} />
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 2, fontSize: 7, color: 'var(--text-dim)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 2, fontSize: 9, color: 'var(--text-dim)' }}>
                     <span>0</span><span>400 IDLE</span><span>1150</span>
                   </div>
                 </div>
@@ -215,7 +250,7 @@ export function Sidebar({ collapsed, onToggle }: Props) {
                 {/* Load bar */}
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3 }}>
-                    <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: '0.1em', color: 'var(--text-dim)' }}>LOAD</span>
+                    <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', color: 'var(--text-muted)' }}>LOAD</span>
                     <span style={{ fontSize: 10, fontWeight: 700, color: loadColor, fontVariantNumeric: 'tabular-nums', transition: 'color 0.3s' }}>
                       {liveLoad.toFixed(0)}%
                     </span>
@@ -229,7 +264,7 @@ export function Sidebar({ collapsed, onToggle }: Props) {
                       borderRadius: 3,
                     }} />
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 2, fontSize: 7, color: 'var(--text-dim)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 2, fontSize: 9, color: 'var(--text-dim)' }}>
                     <span>NO LOAD</span>
                     <span style={{ color: engineState === 'DECLUTCHED_RUN' || engineState === 'IDLE' ? 'var(--accent-blue)' : 'var(--text-dim)' }}>
                       {engineState === 'DECLUTCHED_RUN' ? 'DECLUTCHED' : engineState === 'IDLE' ? 'IDLE' : '85% NOR'}
@@ -239,27 +274,16 @@ export function Sidebar({ collapsed, onToggle }: Props) {
                 </div>
               </div>
 
-              {/* RPM/Load sliders — speed lever active when CLUTCHED/LOADED */}
-              {slidersActive && (
-                <div style={{ marginBottom: 8, display: 'flex', flexDirection: 'column', gap: 5 }}>
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
-                      <span style={{ fontSize: 7, letterSpacing: '0.09em', color: 'var(--text-dim)' }}>SPEED LEVER</span>
-                      <span style={{ fontSize: 9, fontWeight: 700, color: '#38BDF8', fontVariantNumeric: 'tabular-nums' }}>{rpm} RPM</span>
-                    </div>
-                    <input type="range" min={400} max={1150} step={5} value={rpm}
-                      onChange={e => setRpm(+e.target.value)}
-                      style={{ width: '100%', accentColor: '#38BDF8' } as React.CSSProperties} />
+              {/* Speed lever — live whenever the engine is running. Load is propeller-derived (read-only above). */}
+              {rpmActive && (
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+                    <span style={{ fontSize: 9, letterSpacing: '0.09em', color: 'var(--text-muted)' }}>SPEED LEVER</span>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: '#38BDF8', fontVariantNumeric: 'tabular-nums' }}>{rpm} RPM</span>
                   </div>
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
-                      <span style={{ fontSize: 7, letterSpacing: '0.09em', color: 'var(--text-dim)' }}>LOAD LEVER</span>
-                      <span style={{ fontSize: 9, fontWeight: 700, color: loadColor, fontVariantNumeric: 'tabular-nums' }}>{load}%</span>
-                    </div>
-                    <input type="range" min={0} max={100} step={1} value={load}
-                      onChange={e => setLoad(+e.target.value)}
-                      style={{ width: '100%', accentColor: loadColor } as React.CSSProperties} />
-                  </div>
+                  <input type="range" min={400} max={1150} step={5} value={rpm}
+                    onChange={e => setRpm(+e.target.value)}
+                    style={{ width: '100%', accentColor: '#38BDF8' } as React.CSSProperties} />
                 </div>
               )}
 
@@ -321,6 +345,7 @@ export function Sidebar({ collapsed, onToggle }: Props) {
                 ⚡ QUICK START
               </button>
             </div>
+            )}
 
             {/* Collapsed icon — show state dot + quick start icon */}
             {collapsed && (

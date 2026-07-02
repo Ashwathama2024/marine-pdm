@@ -89,7 +89,7 @@ export function ValueInjectionPanel() {
                   return (
                     <div key={String(s.field)} style={{ position: 'relative' }}>
                       {i === 0 && (
-                        <div style={{ fontSize: 7, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--text-dim)', marginBottom: 2 }}>
+                        <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--text-dim)', marginBottom: 2 }}>
                           {group.toUpperCase()}
                         </div>
                       )}

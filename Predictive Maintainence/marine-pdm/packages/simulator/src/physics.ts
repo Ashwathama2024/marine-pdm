@@ -218,7 +218,7 @@ export function tickPhysics(state: PhysicsState): PhysicsState {
     return applyLag(prev, target, LAG.cyls);
   });
 
-  const targetSfoc = sfoc_MTU8000(load, rpm, injFaults, coolingEff);
+  const targetSfoc = sfoc_MTU8000(load, rpm, injFaults, coolingEff, tcEffMean, pistonBlowby);
   const newLagSfoc = applyLag(state.lagSfoc, targetSfoc, LAG.sfoc);
 
   // ── Charge air ──
@@ -236,10 +236,11 @@ export function tickPhysics(state: PhysicsState): PhysicsState {
   const targetLubeOilTemp = lubeOilTemp_MTU8000(load, rpm, state.lagCoolantTemp, coolingEff);
   const newLagLubeOilTemp = applyLag(state.lagLubeOilTemp, targetLubeOilTemp, LAG.lubeOilTemp);
 
-  // After-filter: main pressure minus a small DP (0.15 bar nominal, rises with fault)
+  // After-filter: main pressure minus the filter ΔP (0.15 bar nominal, rises with fault).
+  // Tracks the main gallery directly (same hydraulic circuit, no independent inertia) so the
+  // filter ΔP stays at its true value through pressure ramps instead of inflating transiently.
   const filterDpTarget = 0.15 + lubeFault * 0.5;
-  const targetLubeAfter = Math.max(0.5, newLagLube - filterDpTarget);
-  const newLagLubeAfter = applyLag(state.lagLubeAfterFilter, targetLubeAfter, LAG.lube);
+  const newLagLubeAfter = Math.max(0.5, newLagLube - filterDpTarget);
 
   // Last bearing: main pressure drops as it reaches furthest lubrication point
   const targetLubeLastB = lubeOilPressure_MTU8000(rpm, load, newLagLubeOilTemp, filterDpTarget, lubeFault) * 0.55;

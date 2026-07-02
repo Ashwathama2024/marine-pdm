@@ -7,6 +7,7 @@ import { getCauseChain } from '../services/cause-chains';
 import { buildContextString, loadDocuments } from '../services/knowledge-store';
 import { isOpenAIConfigured } from '../services/openai-client';
 import type { FaultAlert } from '@marine-pdm/shared';
+import { useSensorFocus, alertTextMatchesSensor } from '../context/SensorFocusContext';
 
 const SENSOR_ID_MAP: Record<string, string> = {
   'ME.ExhaustTemp':         'ME.ExhaustTemp',
@@ -203,12 +204,17 @@ export function AlertAnalytics() {
   const [severityFilter, setSeverityFilter] = useState<BaselineAlert['severity'] | 'ALL'>('ALL');
   const [tab, setTab] = useState<'LIVE' | 'BASELINE'>('LIVE');
 
+  const { focus } = useSensorFocus();
   const decisionAlerts = decision?.alerts ?? [];
+  const shownDecision = focus
+    ? decisionAlerts.filter(a => alertTextMatchesSensor(focus, [a.component, a.ecsAlarmCode, a.patternName, a.issue].filter(Boolean).join(' ')))
+    : decisionAlerts;
 
   const filtered = alerts.filter(a => {
     const ackOk = filter === 'ALL' ? true : filter === 'ACTIVE' ? !a.acknowledged : a.acknowledged;
     const sevOk = severityFilter === 'ALL' || a.severity === severityFilter;
-    return ackOk && sevOk;
+    const focusOk = !focus || a.sensorId === focus;
+    return ackOk && sevOk && focusOk;
   });
 
   const counts = {
@@ -287,7 +293,7 @@ export function AlertAnalytics() {
       {/* LIVE tab — decision engine alerts */}
       {tab === 'LIVE' && (
         <div>
-          {decisionAlerts.length === 0 ? (
+          {shownDecision.length === 0 ? (
             <div style={{
               background: 'rgba(0,212,170,0.05)',
               border: '1px solid rgba(0,212,170,0.2)',
@@ -297,15 +303,15 @@ export function AlertAnalytics() {
                 <span className="live-dot" style={{ width: 10, height: 10 }} />
               </div>
               <div style={{ fontWeight: 700, color: 'var(--risk-normal)', fontSize: 12, marginBottom: 4 }}>
-                All subsystems nominal
+                {focus ? 'No live alerts for this sensor' : 'All subsystems nominal'}
               </div>
               <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-                No active fault patterns. Decision engine is monitoring all sensors.
+                {focus ? 'Clear the focus filter to see all live alerts.' : 'No active fault patterns. Decision engine is monitoring all sensors.'}
               </div>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {decisionAlerts.map((a, i) => <DecisionAlertCard key={i} alert={a} />)}
+              {shownDecision.map((a, i) => <DecisionAlertCard key={i} alert={a} />)}
             </div>
           )}
         </div>

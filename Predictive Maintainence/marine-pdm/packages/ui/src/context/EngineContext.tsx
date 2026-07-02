@@ -3,6 +3,9 @@ import type { EngineSnapshot, DecisionOutput, BaselineSnapshot } from '@marine-p
 import type { IDataSource } from '@marine-pdm/shared';
 import { applyLag, MTU8000_CYL_SPREAD, BSIDE_TEMP_BIAS } from '@marine-pdm/shared';
 import { SimulatorEngine } from '@marine-pdm/simulator';
+import {
+  bearingTemp_MTU8000, lubeOilTemp_MTU8000, lubeOilPressure_MTU8000, crankcasePressure_MTU8000,
+} from '@marine-pdm/simulator';
 import type { EngineState, InterlockSystem, StartSequence } from '@marine-pdm/simulator';
 import { useDataSource } from '../hooks/useDataSource';
 import { useDecision } from '../hooks/useDecision';
@@ -10,6 +13,7 @@ import { useKnowledge } from '../hooks/useKnowledge';
 import { useManualOverride } from './ManualOverrideContext';
 import { useAlerts } from './AlertContext';
 import { sensorRegistry } from '../simulator/registry';
+import { recordDegradationSample } from '../services/degradation-regression';
 
 // Sensor tag → EngineSnapshot field (scalar sensors)
 const SENSOR_FIELD_MAP: Record<string, string> = {
@@ -287,7 +291,11 @@ export function EngineProvider({ children }: { children: React.ReactNode }) {
   const historyRef        = useRef<SensorHistory>(emptyHistory());
   const laggedBaselineRef = useRef<LaggedBaseline | null>(null);
 
-  // Push history every tick
+  // Push history + advance lagged baseline + feed the alert engine — once per tick, in an
+  // effect (NOT during render) so processSnapshot's setState in AlertProvider never fires
+  // while EngineProvider is rendering. Keying on `snapshot` also guarantees the lagged
+  // baseline integrates exactly once per tick (previously it advanced on every render).
+  React.useEffect(() => {
   if (snapshot && decision && baseline) {
     const h = historyRef.current;
     const push = (arr: number[], v: number) => { arr.push(v); if (arr.length > MAX_HISTORY) arr.shift(); };
@@ -377,8 +385,41 @@ export function EngineProvider({ children }: { children: React.ReactNode }) {
           chargeAirTemp: 0, fuelOilPressure: 0, fuelOilTemp: 0, loFilterDP: 0, pistonCoolingPress: 0, shaftPower: 0 },
         Math.max(...snapshot.cylTemps) - Math.min(...snapshot.cylTemps),
       );
+
+      // ── Degradation regression instrumentation ──────────────────────────────
+      // Log independent root factors (X) + dependent sensor deviations (Y) each running
+      // tick. The linear model means the regression slope ≈ the matrix weight.
+      const rf = engine.getRootFactors();
+      const load = snapshot.load, rpm = snapshot.rpm;
+      const bearings = (snapshot.bearingTemps as number[] | undefined) ?? [];
+      // Exact healthy (fault-free) baselines from the calibrated physics equations at the current
+      // load/rpm — replaces the earlier hand-approximated constants so the regression Y is a clean
+      // deviation and the recovered slope lands on the matrix weight (not a biased offset).
+      const healthyOil       = lubeOilTemp_MTU8000(load, rpm, 36, 1.0);
+      const healthyGallery   = lubeOilPressure_MTU8000(rpm, load, healthyOil, 0.15, 0);
+      const healthyLastB     = lubeOilPressure_MTU8000(rpm, load, healthyOil, 0.15, 0) * 0.55;
+      // Free-end bearing (index 10, +5°C position bias) is the normal hottest → baseline for the max.
+      const healthyBearingMax = bearingTemp_MTU8000(load, rpm, healthyOil, healthyGallery, 10, 0);
+      const healthyCrankcase  = crankcasePressure_MTU8000(load, 0);
+      recordDegradationSample({
+        t: snapshot.timestamp,
+        rf,
+        dev: {
+          exhaustMeanTemp:         snapshot.exhaustTemp - lb.exhaust,
+          coolantTempAfterEngine:  snapshot.jacketOutlet - lb.jacket,
+          lubeOilPressure:         snapshot.lubeOilPressure - lb.lube,
+          lubeLastBearingPressure: (snapshot.lubeLastBearingPressure as number) - healthyLastB,
+          bearingTempMax:          (bearings.length ? Math.max(...bearings) : healthyBearingMax) - healthyBearingMax,
+          tcSpeed:                 snapshot.tcRPM - lb.tcRPM,
+          chargeAirPressure:       snapshot.scavengeAir - lb.scavenge,
+          sfoc:                    snapshot.sfoc - lb.sfoc,
+          crankcasePressure:       (snapshot.crankcasePressure as number) - healthyCrankcase,
+        },
+      });
     }
   }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapshot]);
 
   const handleConfirm       = useCallback((id: string) => knowledge.recordPatternOutcome(id, 'CONFIRMED'), [knowledge]);
   const handleFalsePositive = useCallback((id: string) => knowledge.recordPatternOutcome(id, 'FALSE_POSITIVE'), [knowledge]);

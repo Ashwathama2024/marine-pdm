@@ -28,11 +28,14 @@
   --border-hi:   #1E4A73;
 
   /* ── Type ─────────────────────────────────────────── */
+  /* Real readable hierarchy on the dark cards — all tiers stay legible
+     (contrast vs --bg-card #07111E: secondary ~12:1, muted ~6.5:1, dim ~4.8:1).
+     Hierarchy is now carried by COLOUR, not by inline opacity. */
   --font: 'JetBrains Mono', 'Courier New', monospace;
-  --text-primary:   #FFFFFF;   /* white, primary content */
-  --text-secondary: #FFFFFF;   /* white, secondary labels */
-  --text-muted:     #FFFFFF;   /* white, tertiary info */
-  --text-dim:       #FFFFFF;   /* white, decorative */
+  --text-primary:   #FFFFFF;   /* primary content / values */
+  --text-secondary: #CBD5E1;   /* secondary labels, body */
+  --text-muted:     #94A3B8;   /* tertiary info */
+  --text-dim:       #7C8D9E;   /* decorative / scale markers (still legible) */
 
   /* ── Risk colours ─────────────────────────────────── */
   --risk-normal:   #00D4AA;
@@ -202,7 +205,7 @@ input::placeholder { color: var(--text-muted); }
   padding: 10px 0;
 }
 .sidebar-label {
-  font-size: 8px;
+  font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -221,7 +224,7 @@ input::placeholder { color: var(--text-muted); }
   margin: 1px 8px;
   font-size: 11px;
   font-weight: 500;
-  color: rgba(255,255,255,0.55);
+  color: var(--text-muted);
   cursor: pointer;
   border-radius: 8px;
   border: 1px solid transparent;
@@ -231,7 +234,7 @@ input::placeholder { color: var(--text-muted); }
   overflow: hidden;
 }
 .nav-item-glass:hover {
-  color: rgba(255,255,255,0.85);
+  color: var(--text-primary);
   background: rgba(255,255,255,0.04);
   border-color: rgba(255,255,255,0.06);
 }
@@ -563,6 +566,19 @@ input::placeholder { color: var(--text-muted); }
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--text-secondary);
+}
+/* Legibility floor for the smallest UI labels — replaces ad-hoc 6–8px inline sizes */
+.label-2xs {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* ── Simulator 2-column reflow ────────────────────────── */
+@media (max-width: 1100px) {
+  .sim-cols { grid-template-columns: 1fr !important; }
 }
 
 /* ── Grid divider ─────────────────────────────────────── */

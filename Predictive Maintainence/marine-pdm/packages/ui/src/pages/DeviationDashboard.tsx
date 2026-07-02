@@ -6,6 +6,7 @@ import { buildSensorAnalysisPrompt } from '../services/prompts';
 import { getCauseChain } from '../services/cause-chains';
 import { buildContextString, loadDocuments } from '../services/knowledge-store';
 import { isOpenAIConfigured } from '../services/openai-client';
+import { useSensorFocus } from '../context/SensorFocusContext';
 
 interface SensorRow {
   sensorId: string;
@@ -150,6 +151,7 @@ function SensorDeviationCard({
 
 export function DeviationDashboard() {
   const { snapshot, baseline, history } = useEngine();
+  const { focus } = useSensorFocus();
 
   if (!snapshot || !baseline) {
     return <div style={{ padding: 24, color: 'var(--text-muted)', fontSize: 12 }}>Waiting for engine data…</div>;
@@ -185,7 +187,7 @@ export function DeviationDashboard() {
       </div>
       <div className="page-body" style={{ paddingTop: 0 }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 14 }}>
-          {rows.map(row => (
+          {(focus ? rows.filter(r => r.sensorId === focus) : rows).map(row => (
             <SensorDeviationCard
               key={row.sensorId}
               row={row}

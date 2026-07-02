@@ -75,8 +75,11 @@ export const MTU8000_LIMITS = {
   // Charge air (B9, B10)
   chargeAir: {
     pressure_nominal_at_85pct:       3.2,  // bar — at 85% load 1150 RPM
-    temp_after_intercooler_max:      55,   // °C — B9
-    temp_after_intercooler_hi:       50,   // °C — HI T-Charge Air
+    // Charge air after the LT intercooler runs ~63°C at rated (LT coolant 36°C + boost/approach
+    // rise — see chargeAirTemp_MTU8000). Band raised above rated: the old 50/55 sat BELOW the
+    // rated value (internally inconsistent — it never fired only because risk is deviation-based).
+    temp_after_intercooler_max:      80,   // °C — B9 max
+    temp_after_intercooler_hi:       75,   // °C — HI T-Charge Air (rated ~63 + 12°C margin)
   },
 
   // Fuel rail (B48, B34.x)

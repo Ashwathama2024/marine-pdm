@@ -3,6 +3,7 @@ import {
   LineChart, Line, ResponsiveContainer, Tooltip, ReferenceLine,
 } from 'recharts';
 import { useDegradation, type DegradationEvent, type DegradationSeverity } from '../context/DegradationContext';
+import { useSensorFocus, SENSOR_TO_HISTKEY } from '../context/SensorFocusContext';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function sevColor(s: DegradationSeverity): string {
@@ -358,10 +359,13 @@ function DegradationCard({ event }: { event: DegradationEvent }) {
 // ── Page ──────────────────────────────────────────────────────────────────────
 export function DegradationLog() {
   const { events, activeEvents, acknowledgedEvents } = useDegradation();
+  const { focus } = useSensorFocus();
   const [filter, setFilter] = useState<'ALL' | 'ACTIVE' | 'ACKNOWLEDGED' | 'RESOLVED'>('ALL');
 
-  const filtered = filter === 'ALL' ? events
-    : events.filter(e => e.status === filter);
+  const focusKey = focus ? SENSOR_TO_HISTKEY[focus] : null;
+  const filtered = events
+    .filter(e => filter === 'ALL' || e.status === filter)
+    .filter(e => !focusKey || e.sensor === focusKey);
 
   const resolved = events.filter(e => e.status === 'RESOLVED').length;
 

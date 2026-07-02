@@ -287,7 +287,7 @@ function TCChip({ meta, status, displaySpeed, compact = false }: {
         {status === 'STANDBY'
           ? '—'
           : `${Math.round(displaySpeed / 1000).toFixed(0)}k`
-        } <span style={{ fontSize: 7, color: 'var(--text-dim)' }}>RPM</span>
+        } <span style={{ fontSize: 9, color: 'var(--text-dim)' }}>RPM</span>
       </div>
     </div>
   );
@@ -414,7 +414,7 @@ function TurboModal({ snap, tcInfos, onClose }: ModalProps) {
 
                 {/* Cut-in condition (for switchable TCs) */}
                 {TC_META[tcIdx]!.type === 'switchable' && (
-                  <div style={{ fontSize: 7.5, color: 'var(--text-dim)', textAlign: 'center', lineHeight: 1.5 }}>
+                  <div style={{ fontSize: 9, color: 'var(--text-dim)', textAlign: 'center', lineHeight: 1.5 }}>
                     {tc.status === 'ACTIVE'
                       ? `Active ≥ ${TC_META[tcIdx]!.cutInRpm} RPM`
                       : `Cuts in at ${TC_META[tcIdx]!.cutInRpm} eng. RPM`
@@ -684,7 +684,7 @@ export function TurbochargerPanel({ snap, expectedTcRPM }: Props) {
         <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
           {/* A-side */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: 1 }}>
-            <div style={{ fontSize: 7.5, color: 'var(--text-dim)', letterSpacing: '0.12em',
+            <div style={{ fontSize: 9, color: 'var(--text-dim)', letterSpacing: '0.12em',
               textTransform: 'uppercase', marginBottom: 2 }}>A-SIDE</div>
             <div style={{ display: 'flex', gap: 6 }}>
               {aSideInfos.map((tc, j) => (
@@ -700,7 +700,7 @@ export function TurbochargerPanel({ snap, expectedTcRPM }: Props) {
 
           {/* B-side */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: 1 }}>
-            <div style={{ fontSize: 7.5, color: 'var(--text-dim)', letterSpacing: '0.12em',
+            <div style={{ fontSize: 9, color: 'var(--text-dim)', letterSpacing: '0.12em',
               textTransform: 'uppercase', marginBottom: 2 }}>B-SIDE</div>
             <div style={{ display: 'flex', gap: 6 }}>
               {bSideInfos.map((tc, j) => (
@@ -730,7 +730,7 @@ export function TurbochargerPanel({ snap, expectedTcRPM }: Props) {
                 reducedMotion={reducedMotion}
               />
               <span style={{
-                fontSize: 7, color: tc.status === 'STANDBY' ? 'var(--text-dim)'
+                fontSize: 9, color: tc.status === 'STANDBY' ? 'var(--text-dim)'
                   : tc.status === 'ALARM' ? '#EF4444' : '#22C55E',
                 fontWeight: 600, letterSpacing: '0.06em',
               }}>

@@ -105,7 +105,7 @@ export const FAULT_DEFINITIONS: FaultDefinition[] = [
     name: 'HT Cooler Fouling',
     ecsAlarmCode: 'HI T-Coolant',
     primarySignal: 'B6.1 rises, ALL exhaust temps rise',
-    crossCorrelations: ['charge air temp rises (B9)', 'lube oil temp rises', 'bearing temps all rise', 'SFOC increases'],
+    crossCorrelations: ['lube oil temp rises', 'bearing temps all rise', 'SFOC increases'],
     ssTrigger: 'B6.1 > 100°C',
     requiresCylSelect: false,
     requiresBearingSelect: false,
@@ -206,7 +206,7 @@ export function tickFaultsMTU8000(
       }
       case 'F03': {
         // Lube pressure loss — affects main gallery and last bearing
-        lubeFaultLevel = Math.max(lubeFaultLevel, s * (FAULT_MAX_EFFECTS.F03_lube_pressure_drop / 3.5));
+        lubeFaultLevel = Math.max(lubeFaultLevel, s);   // normalised 0–1; drop applied in physics (×3.8)
         break;
       }
       case 'F04': {
@@ -402,7 +402,6 @@ export function getParameterImpactPreview(
       const dExhaust = Math.round(s * 35);
       items.push(`B6.1 +${dCoolant} °C`);
       items.push(`All B4.x +${dExhaust} °C`);
-      items.push(`B9 +${Math.round(s * 15)} °C`);
       items.push(`SFOC +${(s * 18).toFixed(1)} g/kWh`);
       break;
     }

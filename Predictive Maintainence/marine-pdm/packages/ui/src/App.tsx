@@ -9,7 +9,9 @@ import { KnowledgeBase } from './pages/KnowledgeBase';
 import { BaselineEditorPage } from './pages/BaselineEditorPage';
 import { Management } from './pages/Management';
 import { Simulator } from './pages/Simulator';
-import { DegradationLog } from './pages/DegradationLog';
+import { DegradationBI } from './pages/DegradationBI';
+import { AnalysisWorkspace } from './pages/AnalysisWorkspace';
+import { HelpManual } from './pages/HelpManual';
 import { AlertTicker } from './components/AlertTicker';
 import { useEngine } from './context/EngineContext';
 import { DegradationProvider } from './context/DegradationContext';
@@ -17,14 +19,16 @@ import { SimulatorControlProvider } from './context/SimulatorControlContext';
 
 const PAGE_TITLES: Record<string, string> = {
   '/':             'Dashboard',
+  '/analysis':     'Analysis Workspace',
   '/deviations':   'Deviation Overview',
   '/table':        'Analysis Table',
   '/alerts':       'Alert Analytics',
-  '/degradation':  'Degradation Log',
+  '/degradation':  'Degradation Analytics',
   '/knowledge':    'Knowledge Base',
   '/baselines':    'Baseline Editor',
   '/management':   'Management',
   '/simulator':    'Simulator',
+  '/help':         'User Manual',
 };
 
 function riskColor(risk: number): string {
@@ -178,14 +182,16 @@ export default function App() {
             <div style={{ padding: 20, maxWidth: 1600, margin: '0 auto' }}>
               <Routes>
                 <Route path="/"            element={<Dashboard />} />
+                <Route path="/analysis"    element={<AnalysisWorkspace />} />
                 <Route path="/deviations"  element={<DeviationDashboard />} />
                 <Route path="/table"       element={<DeviationTable />} />
                 <Route path="/alerts"      element={<AlertAnalytics />} />
-                <Route path="/degradation" element={<DegradationLog />} />
+                <Route path="/degradation" element={<DegradationBI />} />
                 <Route path="/knowledge"   element={<KnowledgeBase />} />
                 <Route path="/baselines"   element={<BaselineEditorPage />} />
                 <Route path="/management"  element={<Management />} />
                 <Route path="/simulator"   element={<Simulator />} />
+                <Route path="/help"        element={<HelpManual />} />
               </Routes>
             </div>
           </div>

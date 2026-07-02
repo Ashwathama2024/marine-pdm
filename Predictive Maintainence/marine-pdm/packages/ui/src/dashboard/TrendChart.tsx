@@ -1,6 +1,7 @@
 import React from 'react';
 import type { DecisionOutput } from '@marine-pdm/shared';
 import { cylName, riskColor } from './cylinder-utils';
+import { useSensorFocus, SENSOR_TO_SPARKLINE } from '../context/SensorFocusContext';
 
 // ── State → border/glow for sparkline cards ───────────────────────────────────
 function stateBorder(risk: number): { border: string; boxShadow: string } {
@@ -32,12 +33,13 @@ interface SparklineProps {
   risk?: number;
   baselineValues?: number[];
   decimals?: number;
+  dimmed?: boolean;
 }
 
 function Sparkline({
   values, label, unit,
   color = 'var(--risk-normal)', height = 50, risk = 0,
-  baselineValues = [], decimals = 1,
+  baselineValues = [], decimals = 1, dimmed = false,
 }: SparklineProps) {
   const last         = values[values.length - 1] ?? 0;
   const lastBaseline = baselineValues.length > 0 ? baselineValues[baselineValues.length - 1] : null;
@@ -49,7 +51,8 @@ function Sparkline({
         flex: 1, minWidth: 110,
         background: 'var(--bg-inset)', borderRadius: 6,
         border, boxShadow, padding: '8px 10px',
-        transition: 'border-color 0.5s, box-shadow 0.5s',
+        transition: 'border-color 0.5s, box-shadow 0.5s, opacity 0.3s',
+        opacity: dimmed ? 0.32 : 1,
       }}>
         <div className="label-xs">{label}</div>
         <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 4 }}>collecting…</div>
@@ -89,7 +92,8 @@ function Sparkline({
       flex: 1, minWidth: 110,
       background: 'var(--bg-inset)', borderRadius: 6,
       border, boxShadow, padding: '8px 10px',
-      transition: 'border-color 0.5s, box-shadow 0.5s',
+      transition: 'border-color 0.5s, box-shadow 0.5s, opacity 0.3s',
+      opacity: dimmed ? 0.32 : 1,
       position: 'relative', overflow: 'hidden',
     }}>
       {/* State ribbon */}
@@ -343,13 +347,13 @@ function CylinderPlacard({ idx, history, risk, hasFault, mtuFault, baselineHisto
         </span>
       </div>
       {mtuFault && (
-        <div style={{ fontSize: 7, fontWeight: 700, color: dotColor, letterSpacing: '0.04em', marginBottom: 1 }}>
+        <div style={{ fontSize: 9, fontWeight: 700, color: dotColor, letterSpacing: '0.04em', marginBottom: 1 }}>
           {mtuFault.faultType} {mtuFault.intensity}%
         </div>
       )}
       {lastBase !== null && (
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 2 }}>
-          <span style={{ fontSize: 7.5, color: 'rgba(0,212,170,0.75)', fontVariantNumeric: 'tabular-nums' }}>
+          <span style={{ fontSize: 9, color: 'rgba(0,212,170,0.75)', fontVariantNumeric: 'tabular-nums' }}>
             B:{lastBase.toFixed(0)}°
           </span>
         </div>
@@ -420,6 +424,12 @@ export function TrendChart({
   const tcRisk       = Math.min(100, (exhaustRisk + coolingRisk) * 0.28);
   const sfocRisk     = Math.min(100, systemRisk_ * 0.38);
 
+  // Focus rail (workspace) → dim non-focused sparklines. Off the workspace there's no
+  // provider, so focus is null and nothing dims.
+  const { focus } = useSensorFocus();
+  const focusLabel = focus ? SENSOR_TO_SPARKLINE[focus] ?? null : null;
+  const dim = (lbl: string) => focusLabel !== null && focusLabel !== lbl;
+
   return (
     <div style={{
       background: 'var(--bg-card)',
@@ -448,31 +458,31 @@ export function TrendChart({
               values={snapHistory.exhaustTemp}
               baselineValues={snapHistory.baseExhaust}
               label="Exhaust" unit="°C" decimals={1}
-              color="var(--risk-high)" risk={exhaustRisk}
+              color="var(--risk-high)" risk={exhaustRisk} dimmed={dim('Exhaust')}
             />
             <Sparkline
               values={snapHistory.lubeOilPressure}
               baselineValues={snapHistory.baseLube}
               label="LO Pressure" unit="bar" decimals={2}
-              color="var(--accent-blue)" risk={lubeRisk}
+              color="var(--accent-blue)" risk={lubeRisk} dimmed={dim('LO Pressure')}
             />
             <Sparkline
               values={snapHistory.jacketOutlet}
               baselineValues={snapHistory.baseJacket}
               label="Jacket Outlet" unit="°C" decimals={1}
-              color="var(--accent-purple)" risk={coolingRisk}
+              color="var(--accent-purple)" risk={coolingRisk} dimmed={dim('Jacket Outlet')}
             />
             <Sparkline
               values={snapHistory.tcRPM.map(v => v / 1000)}
               baselineValues={snapHistory.baseTcRPM.map(v => v / 1000)}
               label="TC Speed" unit="kRPM" decimals={1}
-              color="var(--risk-warning)" risk={tcRisk}
+              color="var(--risk-warning)" risk={tcRisk} dimmed={dim('TC Speed')}
             />
             <Sparkline
               values={snapHistory.sfoc}
               baselineValues={snapHistory.baseSfoc}
               label="SFOC" unit="g/kWh" decimals={1}
-              color="var(--accent-steel)" risk={sfocRisk}
+              color="var(--accent-steel)" risk={sfocRisk} dimmed={dim('SFOC')}
             />
             <Sparkline
               values={snapHistory.systemRisk}

@@ -74,7 +74,7 @@ function CylButton({ idx, fault, onClick }: { idx: number; fault: CylFaultEntry 
         {cylLabel(idx)}
       </span>
       {fault && (
-        <span style={{ fontSize: 7, color: c.text, opacity: 0.85, position: 'relative', zIndex: 1, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
+        <span style={{ fontSize: 9, color: c.text, opacity: 0.85, position: 'relative', zIndex: 1, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
           {fault.faultType} {p}%
         </span>
       )}

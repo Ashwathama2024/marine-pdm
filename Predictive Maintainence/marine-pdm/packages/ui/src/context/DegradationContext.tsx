@@ -243,37 +243,47 @@ export function DegradationProvider({ children }: { children: React.ReactNode })
       const baseHist = history[cfg.baseKey] as number[];
       if (!hist || hist.length < 5) continue;
 
-      const current = hist[hist.length - 1]!;
+      // De-noise: the raw sensor series carries per-tick noise (e.g. exhaust ±1.5°C).
+      // Tick-to-tick deltas on it are noise-dominated, so the old rate-band test rarely
+      // matched and the fault-jump reset fired on noise — genuine gradual trends could
+      // never accumulate. Compare a short moving average instead.
+      const SMOOTH_N = 5;
+      const recent = hist.slice(-SMOOTH_N);
+      const smoothed = recent.reduce((a, b) => a + b, 0) / recent.length;
+
+      const current = hist[hist.length - 1]!;          // raw latest — for the event payload
       const baseVal = (baseHist && baseHist.length > 0)
         ? baseHist[baseHist.length - 1]!
-        : current;
-      const dev = current - baseVal;
+        : smoothed;
+      const dev = smoothed - baseVal;                  // de-noised deviation from baseline
 
       // Initialise tracker on first encounter
       if (!trackers.current[cfg.histKey]) {
-        trackers.current[cfg.histKey] = { consecutiveTicks: 0, trendSum: 0, prevValue: current };
+        trackers.current[cfg.histKey] = { consecutiveTicks: 0, trendSum: 0, prevValue: smoothed };
       }
       const tracker = trackers.current[cfg.histKey]!;
 
-      const delta = current - tracker.prevValue;
-      const absDelta = Math.abs(delta);
-      const isInDirection = cfg.direction === 'falling' ? delta < 0 : delta > 0;
-      const inRateBand = absDelta >= cfg.minRatePerTick && absDelta <= cfg.maxRatePerTick;
+      const delta = smoothed - tracker.prevValue;      // de-noised per-tick change
       const devSignificant = cfg.direction === 'falling'
         ? dev < -cfg.minDevFromBase
         : dev > cfg.minDevFromBase;
+      // Recovering = moving back toward baseline faster than a fault would; a smoothed step
+      // beyond the fault band is a sensor spike, not gradual degradation.
+      const recovering = cfg.direction === 'falling' ? delta > cfg.maxRatePerTick : delta < -cfg.maxRatePerTick;
+      const stepJump   = Math.abs(delta) > cfg.maxRatePerTick * 4;
 
-      if (isInDirection && inRateBand && devSignificant) {
+      // Count while the deviation is significant AND not recovering. A fault that rises
+      // then plateaus high keeps counting (dev stays significant), so sustained
+      // degradation is detected; recovery or a sensor spike resets the counter.
+      if (devSignificant && !recovering && !stepJump) {
         tracker.consecutiveTicks++;
         tracker.trendSum += delta;
-      } else if (absDelta > cfg.maxRatePerTick * 2) {
-        // Fault-speed jump — reset (not degradation)
-        tracker.consecutiveTicks = Math.max(0, tracker.consecutiveTicks - 5);
+      } else if (!devSignificant || stepJump) {
+        tracker.consecutiveTicks = 0;
         tracker.trendSum = 0;
       }
-      // Small noise ticks leave counter intact (graceful tolerance)
 
-      tracker.prevValue = current;
+      tracker.prevValue = smoothed;
 
       const fireKey = `${cfg.histKey}_degrade`;
 

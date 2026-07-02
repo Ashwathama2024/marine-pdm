@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import type { EngineState } from '@marine-pdm/simulator';
 import { STATE_BADGE } from '@marine-pdm/simulator';
 import { useEngine } from '../context/EngineContext';
+import { LopDisplay } from './LopDisplay';
 
 // Button visibility per state: LOCKED | DIM | ACTIVE | BRIGHT | FLASHING
 type BtnVis = 'LOCKED' | 'DIM' | 'ACTIVE' | 'BRIGHT' | 'FLASH';
@@ -150,56 +151,63 @@ export function LOPPanel({ onQuickStart }: Props) {
         </div>
       </div>
 
-      {/* Button grid */}
-      <div style={{ padding: 14, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
-        {LOP_BUTTONS.map(btn => {
-          const v = btn.vis(engineState);
-          const isEmrg = btn.id === 'EMRG_STOP';
-          const isFlashing = flash === btn.id;
-          const baseStyle = isEmrg ? EMRG_STYLE : VIS_STYLE[v];
+      {/* Body — LCD measured-value display (left) + control buttons (right) */}
+      <div style={{ padding: 14, display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 12, alignItems: 'stretch' }}>
 
-          return (
-            <button
-              key={btn.id}
-              onClick={() => handleBtn(btn)}
-              disabled={v === 'LOCKED'}
-              style={{
-                ...baseStyle,
-                padding: '10px 6px',
-                borderRadius: 7,
-                fontFamily: 'var(--font)',
-                fontSize: 8,
-                fontWeight: 700,
-                letterSpacing: '0.06em',
-                textAlign: 'center',
-                whiteSpace: 'pre-line',
-                lineHeight: 1.4,
-                transition: 'all 0.15s',
-                opacity: isFlashing ? 0.6 : (v === 'LOCKED' ? 0.3 : 1),
-                transform: isFlashing ? 'scale(0.96)' : 'none',
-                gridColumn: btn.id === 'EMRG_STOP' ? 'span 2' : undefined,
-              }}
-            >
-              {btn.label}
-            </button>
-          );
-        })}
-      </div>
+        {/* LEFT: live LOP display */}
+        <LopDisplay />
 
-      {/* Quick start bypass */}
-      <div style={{ padding: '0 14px 14px', borderTop: '1px solid var(--border)', paddingTop: 10 }}>
-        <button
-          onClick={() => { engineControls.quickStart(); onQuickStart?.(); }}
-          style={{
-            width: '100%', padding: '8px 0',
-            background: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.30)',
-            color: 'var(--accent-blue)', borderRadius: 6,
-            fontFamily: 'var(--font)', fontSize: 9, fontWeight: 700,
-            letterSpacing: '0.1em', cursor: 'pointer',
-          }}
-        >
-          QUICK START (BYPASS PROCEDURE)
-        </button>
+        {/* RIGHT: control buttons + quick start */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            {LOP_BUTTONS.map(btn => {
+              const v = btn.vis(engineState);
+              const isEmrg = btn.id === 'EMRG_STOP';
+              const isFlashing = flash === btn.id;
+              const baseStyle = isEmrg ? EMRG_STYLE : VIS_STYLE[v];
+
+              return (
+                <button
+                  key={btn.id}
+                  onClick={() => handleBtn(btn)}
+                  disabled={v === 'LOCKED'}
+                  style={{
+                    ...baseStyle,
+                    padding: '9px 6px',
+                    borderRadius: 7,
+                    fontFamily: 'var(--font)',
+                    fontSize: 8,
+                    fontWeight: 700,
+                    letterSpacing: '0.06em',
+                    textAlign: 'center',
+                    whiteSpace: 'pre-line',
+                    lineHeight: 1.35,
+                    transition: 'all 0.15s',
+                    opacity: isFlashing ? 0.6 : (v === 'LOCKED' ? 0.3 : 1),
+                    transform: isFlashing ? 'scale(0.96)' : 'none',
+                    gridColumn: btn.id === 'EMRG_STOP' ? 'span 2' : undefined,
+                  }}
+                >
+                  {btn.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Quick start bypass */}
+          <button
+            onClick={() => { engineControls.quickStart(); onQuickStart?.(); }}
+            style={{
+              width: '100%', padding: '8px 0', marginTop: 'auto',
+              background: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.30)',
+              color: 'var(--accent-blue)', borderRadius: 6,
+              fontFamily: 'var(--font)', fontSize: 9, fontWeight: 700,
+              letterSpacing: '0.1em', cursor: 'pointer',
+            }}
+          >
+            QUICK START (BYPASS PROCEDURE)
+          </button>
+        </div>
       </div>
 
       <style>{`@keyframes statePulse { 0%,100%{opacity:1} 50%{opacity:0.45} }`}</style>
