@@ -12,6 +12,7 @@ import { Simulator } from './pages/Simulator';
 import { DegradationBI } from './pages/DegradationBI';
 import { AnalysisWorkspace } from './pages/AnalysisWorkspace';
 import { HelpManual } from './pages/HelpManual';
+import { AboutPage } from './pages/AboutPage';
 import { AlertTicker } from './components/AlertTicker';
 import { useEngine } from './context/EngineContext';
 import { DegradationProvider } from './context/DegradationContext';
@@ -29,6 +30,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/management':   'Management',
   '/simulator':    'Simulator',
   '/help':         'User Manual',
+  '/about':        'System Dossier',
 };
 
 function riskColor(risk: number): string {
@@ -192,6 +194,7 @@ export default function App() {
                 <Route path="/management"  element={<Management />} />
                 <Route path="/simulator"   element={<Simulator />} />
                 <Route path="/help"        element={<HelpManual />} />
+                <Route path="/about"       element={<AboutPage />} />
               </Routes>
             </div>
           </div>

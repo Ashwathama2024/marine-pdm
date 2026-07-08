@@ -2,6 +2,7 @@
 // Manual sections: Overview, Quick Start, Engine States & Start Logic.
 
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { MTU8000 } from '@marine-pdm/shared';
 import { STATE_BADGE } from '@marine-pdm/simulator';
 import type { EngineState } from '@marine-pdm/simulator';
@@ -75,6 +76,12 @@ export function OverviewSection() {
           One-line swap to a real ship: the UI reads from an engine interface, so replacing{' '}
           <Code>SimulatorEngine</Code> with an OPC-UA client feeds real IPMS data through the exact same
           analytics — the simulator is a stand-in for live plant data.
+        </Callout>
+        <Callout kind="tip">
+          Want the causal "why" behind every reading — what raises it, what it means for the engine as a
+          whole, what it's coupled to? See the{' '}
+          <Link to="/about" style={{ color: 'var(--accent-blue)' }}>System Dossier</Link>, a deeper
+          engineering reference that builds on everything in this manual.
         </Callout>
       </SubSection>
 

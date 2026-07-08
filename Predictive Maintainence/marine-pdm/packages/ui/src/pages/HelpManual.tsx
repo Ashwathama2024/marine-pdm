@@ -12,6 +12,16 @@ import { FaultsSection, SensorFailuresSection } from '../help/sections/SectionsF
 import { AlgorithmSection, DegradationSection } from '../help/sections/SectionsAlgo';
 import { PagesSection, GraphsSection, LegendSection, GlossarySection } from '../help/sections/SectionsUI';
 
+// Cross-route hash links (e.g. from /about) don't auto-scroll under React Router — resolve on mount.
+function useHashScrollOnMount() {
+  React.useEffect(() => {
+    if (window.location.hash) {
+      const id = window.location.hash.slice(1);
+      requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ block: 'start' }));
+    }
+  }, []);
+}
+
 function useScrollSpy(ids: string[]): string {
   const [active, setActive] = React.useState(ids[0] ?? '');
   React.useEffect(() => {
@@ -36,6 +46,7 @@ function useScrollSpy(ids: string[]): string {
 export function HelpManual() {
   const ids = React.useMemo(() => HELP_SECTIONS.map(s => s.id), []);
   const active = useScrollSpy(ids);
+  useHashScrollOnMount();
 
   const go = (id: string) => (e: React.MouseEvent) => {
     e.preventDefault();

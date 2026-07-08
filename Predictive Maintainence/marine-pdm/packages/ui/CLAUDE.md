@@ -15,6 +15,7 @@
 | `/baseline-editor` | `pages/BaselineEditorPage.tsx` | Edit UI-only baselines (see gotcha below) |
 | `/management` | `pages/Management.tsx` | SensorManager, PatternLibraryView |
 | `/simulator` | `pages/Simulator.tsx` | FaultInjector + SensorFailurePanel |
+| `/about` | `pages/AboutPage.tsx` | System Dossier — parameter-by-parameter causal reference, interconnection map, decision-logic deep dive. See `src/about/` |
 
 ---
 
@@ -93,3 +94,13 @@ WSL background process may hold it. Run `pkill -f vite && pkill -f node` in bash
 
 **3. CSS variables**
 Global CSS vars in `src/styles/global.css`: `var(--risk-critical)`, `var(--bg-card)`, etc.
+
+**4. `/help` and `/about` are two layers of one documentation system, not independent docs**
+`src/help/` is the Operator's Manual (how to run the plant). `src/about/` is the System Dossier (why every
+reading means what it means) and explicitly cross-links to `/help` rather than repeating it — glossary,
+ECS code prefixes, and the page/graph-by-graph guides live ONLY in `/help`; `/about` links to them.
+`src/about/AboutPrimitives.tsx` re-exports `src/help/HelpPrimitives.tsx`'s generic components (`Section`,
+`Callout`, `DataTable`, etc.) rather than duplicating them — the dependency direction is `about → help`,
+never the reverse. `src/about/dossier-data.tsx` is the single computed array (live-imported from
+`@marine-pdm/simulator`/`@marine-pdm/shared`) that feeds the parameter cards (§3), the interconnection
+diagram (§4), AND the reference table (§9) — update facts there once, not in three places.

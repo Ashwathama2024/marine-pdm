@@ -37,9 +37,10 @@ const NAV_GROUPS: { group: string; items: { to: string; label: string; icon: str
     ],
   },
   {
-    group: 'HELP',
+    group: 'REFERENCE',
     items: [
       { to: '/help', label: 'User Manual', icon: 'M12 22a10 10 0 100-20 10 10 0 000 20z M9.5 9a2.5 2.5 0 015 0c0 1.5-2.5 2-2.5 3.5 M12 17h.01', color: '#38BDF8', glow: '56,189,248' },
+      { to: '/about', label: 'System Dossier', icon: 'M12 2 2 7l10 5 10-5-10-5z M2 17l10 5 10-5 M2 12l10 5 10-5', color: '#F472B6', glow: '244,114,182' },
     ],
   },
 ];
