@@ -48,7 +48,16 @@ const INITIAL_CUTIN: boolean[] = TC_META.map(m => m.type === 'basic');
 function nextCutInState(prev: boolean[], engineRpm: number, baseTcSpeed: number): boolean[] {
   const next = [...prev] as boolean[];
 
-  // Basic TCs always on (A2 index 1, B2 index 3)
+  // "Basic" (A2/B2) only means "not solenoid-switched by load" — they are still purely exhaust-
+  // gas-driven like every other TC. With the engine stopped (no combustion, no exhaust flow),
+  // there is nothing to spin ANY of the four turbochargers, basic included. Real MTU 8000 turbos
+  // sit fully at rest whenever the engine isn't running.
+  if (engineRpm <= 0) {
+    if (prev.every(v => v === false)) return prev;
+    return [false, false, false, false];
+  }
+
+  // Basic TCs always on while the engine runs (A2 index 1, B2 index 3)
   next[1] = true;
   next[3] = true;
 
@@ -127,9 +136,13 @@ interface WheelProps {
   status: TCStatus;
   size?: number;
   reducedMotion?: boolean;
+  // True when the ENGINE itself is stopped (no exhaust flow at all) — freezes the wheel entirely.
+  // Distinct from status==='STANDBY' while the engine is running (a load-switched-out TC still
+  // windmills slowly from residual flow with its bypass valve closed).
+  stopped?: boolean;
 }
 
-function TurboWheel({ id, displaySpeed, status, size = 72, reducedMotion = false }: WheelProps) {
+function TurboWheel({ id, displaySpeed, status, size = 72, reducedMotion = false, stopped = false }: WheelProps) {
   const cx = size / 2;  const cy = size / 2;
   const rO = size * 0.43;
   const rI = size * 0.16;
@@ -189,7 +202,7 @@ function TurboWheel({ id, displaySpeed, status, size = 72, reducedMotion = false
         <circle cx={cx} cy={cy} r={rHub * 0.65} fill="var(--bg-main)" />
 
         {/* SVG-native rotation — no CSS keyframes, no transform-origin quirks */}
-        {!reducedMotion && (
+        {!reducedMotion && !stopped && (
           <animateTransform
             attributeName="transform"
             attributeType="XML"
@@ -302,6 +315,7 @@ interface ModalProps {
 
 function TurboModal({ snap, tcInfos, onClose }: ModalProps) {
   const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
+  const engineOff = snap.rpm <= 0;
 
   // Close on Escape
   useEffect(() => {
@@ -356,6 +370,7 @@ function TurboModal({ snap, tcInfos, onClose }: ModalProps) {
                   status={tc.status}
                   size={96}
                   reducedMotion={reducedMotion}
+                  stopped={engineOff}
                 />
 
                 {/* TC identity */}
@@ -584,6 +599,7 @@ function deriveTCInfos(
   expectedTcRPM: number,
   cutInState: boolean[],
 ): TCInfo[] {
+  const engineRunning = snap.rpm > 0;
   const baseTcSpeed  = snap.tcRPM * SPEED_SCALE;  // physics output: 4-TC-equivalent speed
   const activeCount  = cutInState.filter(Boolean).length || 2;
   // Each active TC spins at (4/N)× the base speed because fewer TCs share the boost load.
@@ -592,6 +608,13 @@ function deriveTCInfos(
   const expectedDisp = expectedTcRPM * SPEED_SCALE * activeMult;
 
   return TC_META.map((meta, i) => {
+    // Engine fully stopped -> zero exhaust flow -> every TC is at rest, full stop, no exceptions.
+    // (Also a defensive floor against the physics model's tcSpeed_MTU8000() having a small nonzero
+    // base term that isn't meant to represent a genuinely-stopped engine — real turbos don't spin
+    // on their own.)
+    if (!engineRunning) {
+      return { name: meta.name, status: 'STANDBY' as TCStatus, displaySpeed: 0, rawSpeed: 0, deviation: 0 };
+    }
     const isActive = cutInState[i]!;
     // Standby TCs windmill at ~15% of base (very low — bypass valves closed)
     const displaySpeed = isActive ? activeSpeed : baseTcSpeed * 0.15;
@@ -620,9 +643,10 @@ export function TurbochargerPanel({ snap, expectedTcRPM }: Props) {
     setCutInState(prev => nextCutInState(prev, snap.rpm, snap.tcRPM));
   }, [snap.rpm, snap.tcRPM]);
 
-  const tcInfos  = deriveTCInfos(snap, expectedTcRPM, cutInState);
-  const statuses = tcInfos.map(t => t.status);
-  const hasAlarm = statuses.some(s => s === 'ALARM');
+  const tcInfos   = deriveTCInfos(snap, expectedTcRPM, cutInState);
+  const statuses  = tcInfos.map(t => t.status);
+  const hasAlarm  = statuses.some(s => s === 'ALARM');
+  const engineOff = snap.rpm <= 0;
 
   const borderColor = hasAlarm ? '#EF4444' : 'var(--border-dim)';
   const boxShadow   = hasAlarm
@@ -728,6 +752,7 @@ export function TurbochargerPanel({ snap, expectedTcRPM }: Props) {
                 status={tc.status}
                 size={36}
                 reducedMotion={reducedMotion}
+                stopped={engineOff}
               />
               <span style={{
                 fontSize: 9, color: tc.status === 'STANDBY' ? 'var(--text-dim)'
