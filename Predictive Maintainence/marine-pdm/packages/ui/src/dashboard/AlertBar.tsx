@@ -17,8 +17,8 @@ function riskGlow(risk: number): string {
 
 interface Props {
   decision: DecisionOutput;
-  onConfirm: (name: string) => void;
-  onFalsePositive: (name: string) => void;
+  onConfirm: (patternId: string) => void;
+  onFalsePositive: (patternId: string) => void;
 }
 
 export function AlertBar({ decision, onConfirm, onFalsePositive }: Props) {
@@ -129,11 +129,11 @@ export function AlertBar({ decision, onConfirm, onFalsePositive }: Props) {
                 {alert.maintenanceTask.split('—')[0].trim()}
               </span>
             )}
-            {alert.patternName && (
+            {alert.patternId && (
               <>
                 <button
                   className="mag-btn"
-                  onClick={() => onConfirm(alert.patternName!)}
+                  onClick={() => onConfirm(alert.patternId!)}
                   style={{
                     fontSize: 9, padding: '3px 8px',
                     background: 'transparent',
@@ -147,7 +147,7 @@ export function AlertBar({ decision, onConfirm, onFalsePositive }: Props) {
                 </button>
                 <button
                   className="mag-btn"
-                  onClick={() => onFalsePositive(alert.patternName!)}
+                  onClick={() => onFalsePositive(alert.patternId!)}
                   style={{
                     fontSize: 9, padding: '3px 8px',
                     background: 'transparent',

@@ -1,193 +1,19 @@
 // packages/decision/src/patterns-mtu8000.ts
-// 8 MTU 8000-specific fault patterns replacing v1.0 generic 3-pattern library.
-// Each maps to real ECS 8000 alarm codes and MTU maintenance work orders.
+// MTU 8000-specific fault pattern MATCHING LOGIC (P01–P08). The pattern DEFINITIONS themselves
+// (ecsAlarmCode, maintenanceTask, name) live in @marine-pdm/knowledge
+// (patterns-mtu8000-data.ts / MTU8000_PATTERNS), registered into the shared patternLibrary
+// singleton — decision depends on knowledge, not the reverse, so data lives there and this file
+// only contains the pure matching function that consumes MTU8000Features and returns matched IDs.
+// Look up a matched ID's ecsAlarmCode/maintenanceTask/name via patternLibrary.getPattern(id).
 // PDF upgrade spec §8.1.
 
-import type { FaultPattern } from '@marine-pdm/shared';
-
-// Type extension — the shared FaultPattern already has ecsAlarmCode and maintenanceTask
-// from the interfaces.ts update in Block U0.
-
-export const MTU8000_PATTERNS: FaultPattern[] = [
-  {
-    id: 'P01',
-    name: 'Injector Degradation — Single Cylinder',
-    conditions: [
-      { tag: 'cylDev[N]',    metric: 'deviation',   operator: '>', threshold: 20 },
-      { tag: 'cylDev[N]',    metric: 'rate',         operator: '>', threshold: 0.5 },
-      { tag: 'cylImbalance', metric: 'imbalance',    operator: '>', threshold: 15 },
-      { tag: 'sfoc',         metric: 'deviation',    operator: '>', threshold: 3 },
-    ],
-    affectedTags: ['ME.Cyl*.ExhaustTemp', 'ME.SFOC', 'ME.FuelRailPressure'],
-    actionWindow: '4–8 hours',
-    ecsAlarmCode: 'HI T-Exhaust Cyl N',
-    maintenanceTask: 'W1006 — Replace fuel injector',
-    timesTriggered: 0,
-    timesConfirmed: 0,
-    timesFalsePositive: 0,
-    isActive: true,
-  },
-  {
-    id: 'P02',
-    name: 'Multi-Cylinder Injector Fault (A-Side)',
-    conditions: [
-      { tag: 'aSideMeanDev', metric: 'deviation', operator: '>', threshold: 18 },
-      { tag: 'bSideMeanDev', metric: 'deviation', operator: '<', threshold: 10 },
-      { tag: 'sfoc',         metric: 'deviation', operator: '>', threshold: 8 },
-    ],
-    affectedTags: ['ME.CylA*.ExhaustTemp', 'ME.SFOC'],
-    actionWindow: 'Immediate investigation',
-    ecsAlarmCode: 'HI T-Exhaust Mean',
-    maintenanceTask: 'W1006 — Inspect all A-side injectors',
-    timesTriggered: 0,
-    timesConfirmed: 0,
-    timesFalsePositive: 0,
-    isActive: true,
-  },
-  {
-    id: 'P03',
-    name: 'Lube Oil Pressure Loss',
-    conditions: [
-      { tag: 'lubeLastBearing', metric: 'deviation',  operator: '>', threshold: 0.5 },
-      { tag: 'lubeRate',        metric: 'rate',        operator: '<', threshold: -0.1 },
-      { tag: 'bearingTempMean', metric: 'deviation',   operator: '>', threshold: 8 },
-    ],
-    affectedTags: ['ME.LubeOilPressure.*', 'ME.BearingTemp.*'],
-    actionWindow: 'Immediate — check oil level, top up, contact service',
-    ecsAlarmCode: 'SS P-Oil Last Bearing',
-    maintenanceTask: 'W1047 — Check oil indicator filter; W1073 — Centrifugal filter',
-    timesTriggered: 0,
-    timesConfirmed: 0,
-    timesFalsePositive: 0,
-    isActive: true,
-  },
-  {
-    id: 'P04',
-    name: 'Bearing Overtemperature',
-    conditions: [
-      { tag: 'bearingTemp[N]', metric: 'deviation', operator: '>', threshold: 15 },
-      { tag: 'lubePressure',   metric: 'deviation', operator: '>', threshold: 0.3 },
-      { tag: 'bearingRate[N]', metric: 'rate',      operator: '>', threshold: 0.3 },
-    ],
-    affectedTags: ['ME.BearingTemp.N', 'ME.LubeOilPressure.LastBearing'],
-    actionWindow: 'Engine shutdown — open inspection ports, check bearing cap',
-    ecsAlarmCode: 'SS T-Bearing N',
-    maintenanceTask: 'W1609 — Replace lower crankshaft bearing shells',
-    timesTriggered: 0,
-    timesConfirmed: 0,
-    timesFalsePositive: 0,
-    isActive: true,
-  },
-  {
-    id: 'P05',
-    name: 'HT Cooler Fouling',
-    conditions: [
-      { tag: 'coolantTemp',    metric: 'deviation', operator: '>', threshold: 6 },
-      { tag: 'allCylMeanDev',  metric: 'deviation', operator: '>', threshold: 12 },
-      { tag: 'cylImbalance',   metric: 'imbalance', operator: '<', threshold: 20 },
-      { tag: 'chargeAirTemp',  metric: 'deviation', operator: '>', threshold: 5 },
-    ],
-    affectedTags: ['ME.CoolantTemp.*', 'ME.Cyl*.ExhaustTemp', 'ME.ChargeAirTemp'],
-    actionWindow: 'Schedule cooler cleaning at next port (W1254)',
-    ecsAlarmCode: 'HI T-Coolant',
-    maintenanceTask: 'W1254 — Intercooler flushing with Hakutex 50',
-    timesTriggered: 0,
-    timesConfirmed: 0,
-    timesFalsePositive: 0,
-    isActive: true,
-  },
-  {
-    id: 'P06',
-    name: 'Turbocharger Fouling',
-    conditions: [
-      { tag: 'tcSpeed',       metric: 'deviation', operator: '>', threshold: 1500 },
-      { tag: 'chargeAirP',   metric: 'deviation', operator: '>', threshold: 0.3 },
-      { tag: 'exhaustBackP', metric: 'deviation', operator: '>', threshold: 15 },
-    ],
-    affectedTags: ['ME.TC.*.Speed', 'ME.ChargeAirPressure', 'ME.ExhaustBackPressure'],
-    actionWindow: 'Schedule TC inspection (W1038) within 500 hours',
-    ecsAlarmCode: 'SD TC Speed',
-    maintenanceTask: 'W1038 — Turbocharger overhaul',
-    timesTriggered: 0,
-    timesConfirmed: 0,
-    timesFalsePositive: 0,
-    isActive: true,
-  },
-  {
-    id: 'P07',
-    name: 'Injector Spray Pattern Failure (Erratic)',
-    conditions: [
-      { tag: 'cylDev[N]',  metric: 'stdDev',    operator: '>', threshold: 8 },
-      { tag: 'cylDev[N]',  metric: 'deviation', operator: '>', threshold: 15 },
-      { tag: 'crankcaseP', metric: 'rate',       operator: '>', threshold: 0.05 },
-    ],
-    affectedTags: ['ME.CylN.ExhaustTemp', 'ME.CrankcasePressure'],
-    actionWindow: '4 hours — erratic injection is pre-failure state',
-    ecsAlarmCode: 'HI T-Exhaust Cyl N (oscillating)',
-    maintenanceTask: 'W1011 — Endoscopic inspection; W1006 — Replace injector',
-    timesTriggered: 0,
-    timesConfirmed: 0,
-    timesFalsePositive: 0,
-    isActive: true,
-  },
-  {
-    id: 'P08',
-    name: 'Piston Blow-by',
-    conditions: [
-      { tag: 'crankcasePressure', metric: 'deviation', operator: '>', threshold: 4 },
-      { tag: 'crankcaseRate',     metric: 'rate',       operator: '>', threshold: 0.1 },
-      { tag: 'oilLevel',          metric: 'rate',       operator: '<', threshold: -0.01 },
-    ],
-    affectedTags: ['ME.CrankcasePressure', 'ME.OilLevel.*'],
-    actionWindow: 'Schedule endoscopy at next opportunity (W1011)',
-    ecsAlarmCode: 'HI P-Crankcase',
-    maintenanceTask: 'W1158 — Piston inspection, fit new piston rings',
-    timesTriggered: 0,
-    timesConfirmed: 0,
-    timesFalsePositive: 0,
-    isActive: true,
-  },
-];
+import type { MTU8000Features } from '@marine-pdm/shared';
+export type { MTU8000Features };
 
 // ── PATTERN MATCHING HELPERS (MTU 8000-specific feature inputs) ─────────────────
-// These compute pattern conditions from the richer MTU8000Snapshot fields.
-
-export interface MTU8000Features {
-  // Exhaust deviations
-  cylDevs: number[];         // per-cylinder deviation from expected (0–19)
-  cylDevRates: number[];     // rate of change per cylinder (°C/min)
-  cylStdDevs: number[];      // rolling stdDev per cylinder (erratic detection)
-  aSideMeanDev: number;      // A-side mean deviation from baseline
-  bSideMeanDev: number;      // B-side mean deviation from baseline
-  allCylMeanDev: number;     // all-cylinder mean deviation
-  cylImbalance: number;      // max − min cylinder temp
-
-  // Lube
-  lubeDev: number;            // main gallery pressure deviation
-  lubeLastBearingDev: number; // last bearing pressure deviation
-  lubeRate: number;           // bar/min rate of change
-
-  // Bearing
-  bearingDevs: number[];     // per-bearing deviation (0–10)
-  bearingRates: number[];    // per-bearing rate of change
-
-  // Cooling
-  coolantTempDev: number;
-  chargeAirTempDev: number;
-  chargeAirPressDev: number;
-
-  // TC
-  tcSpeedDevs: number[];     // per-TC speed deviation (0–3)
-
-  // Fuel / crankcase
-  sfocDev: number;
-  fuelRailPressDev: number;
-  crankcasePressure: number;
-  crankcaseRate: number;
-
-  // Sensor quality
-  sensorHealthScores: Record<string, number>;
-}
+// MTU8000Features itself lives in @marine-pdm/shared (built by
+// packages/features/src/mtu8000-feature-builder.ts) — re-exported here so existing callers can
+// keep importing it from this file.
 
 // Matches P01–P08 against MTU8000Features, returning matched pattern IDs.
 export function matchMTU8000Patterns(features: MTU8000Features): string[] {
@@ -271,6 +97,8 @@ export function matchMTU8000Patterns(features: MTU8000Features): string[] {
   return matched;
 }
 
-export function getPatternById(id: string): FaultPattern | undefined {
-  return MTU8000_PATTERNS.find(p => p.id === id);
-}
+// All 8 pattern IDs matchMTU8000Patterns() can produce — used by decision-engine.ts to call
+// patternLibrary.recordMatch(id, false) on every non-matching id each tick, so a pattern's
+// persistence counter correctly decays to 0 the instant it stops matching (recordMatch is only
+// invoked for matched ids otherwise, which would leave a stale non-zero counter behind).
+export const MTU8000_PATTERN_IDS = ['P01', 'P02', 'P03', 'P04', 'P05', 'P06', 'P07', 'P08'] as const;

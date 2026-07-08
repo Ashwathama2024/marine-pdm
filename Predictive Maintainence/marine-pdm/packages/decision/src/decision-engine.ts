@@ -3,23 +3,28 @@ import type {
   DecisionOutput, AlertStatus, EvidenceLayer, FaultAlert,
 } from '@marine-pdm/shared';
 import { CYLINDER_COUNT } from '@marine-pdm/shared';
-import type { PatternLibrary, DependencyMap } from '@marine-pdm/knowledge';
+import type { PatternLibrary, DependencyMap, BaselineStore } from '@marine-pdm/knowledge';
+import { MTU8000FeatureBuilder } from '@marine-pdm/features';
 import { computeRisk, PersistenceCounter, RiskSmoother, MTU8000_ALARM_BANDS } from './risk';
 import { computeConfidence, computeDataQuality } from './confidence';
 import { getCylinderOverrideRisk } from './override';
 import { applyMTU8000SafetyOverride, getMTU8000HardLimitViolations } from './override-mtu8000';
 import { buildPatternAlerts } from './patterns';
+import { matchMTU8000Patterns, MTU8000_PATTERN_IDS } from './patterns-mtu8000';
+import { buildMTU8000Alerts } from './mtu8000-alerts';
 
 export class DecisionEngine {
   private persist  = new PersistenceCounter();
   private smoother = new RiskSmoother();
   private patternLibrary: PatternLibrary;
   private dependencyMap: DependencyMap;
+  private mtuFeatureBuilder: MTU8000FeatureBuilder;
   private ticksSinceLastSnap = 0;
 
-  constructor(patternLibrary: PatternLibrary, dependencyMap: DependencyMap) {
+  constructor(patternLibrary: PatternLibrary, dependencyMap: DependencyMap, baselineStore: BaselineStore) {
     this.patternLibrary = patternLibrary;
     this.dependencyMap = dependencyMap;
+    this.mtuFeatureBuilder = new MTU8000FeatureBuilder(baselineStore);
   }
 
   analyze(
@@ -155,12 +160,27 @@ export class DecisionEngine {
     const dataQuality = computeDataQuality(1, 1.0);
     const sensorHealthScore = 1.0;
 
+    // Legacy generic patterns (any custom pattern added at runtime via knowledge-api.ts).
     const patternAlerts = buildPatternAlerts(
       snap, features, this.patternLibrary, this.dependencyMap, dataQuality, sensorHealthScore,
     );
 
-    const rulesFindings: string[] = patternAlerts.length > 0
-      ? patternAlerts.map(a => `${a.patternName ?? a.issue}: ${a.evidence[0]}`)
+    // Real MTU 8000 patterns (P01-P08, ECS-coded) — matched via matchMTU8000Patterns()'s own
+    // per-pattern logic (richer than PatternLibrary's generic per-tag evaluator), then reported
+    // back to patternLibrary.recordMatch() for EVERY pattern id (not just matched ones) so
+    // persistence/timesTriggered bookkeeping decays correctly the instant a pattern stops matching.
+    const mtuFeatures = this.mtuFeatureBuilder.process(snap, features, baseline);
+    const matchedMTUIds = new Set(matchMTU8000Patterns(mtuFeatures));
+    const mtuMatchedPatterns = MTU8000_PATTERN_IDS
+      .map(id => this.patternLibrary.recordMatch(id, matchedMTUIds.has(id)))
+      .filter((p): p is NonNullable<typeof p> => p !== null);
+    const mtuAlerts = buildMTU8000Alerts(
+      mtuMatchedPatterns, mtuFeatures, features, snap, this.dependencyMap, dataQuality, sensorHealthScore,
+    );
+
+    const allPatternAlerts = [...patternAlerts, ...mtuAlerts];
+    const rulesFindings: string[] = allPatternAlerts.length > 0
+      ? allPatternAlerts.map(a => `${a.ecsAlarmCode ?? a.patternName ?? a.issue}: ${a.evidence[0]}`)
       : ['No fault patterns matched current conditions'];
 
     // ── MTU 8000 A/B-SIDE ANALYSIS ────────────────────────────────────────
@@ -227,7 +247,7 @@ export class DecisionEngine {
       };
     });
 
-    const allAlerts = [...hardLimitAlerts, ...patternAlerts];
+    const allAlerts = [...hardLimitAlerts, ...allPatternAlerts];
 
     // ── STATUS ────────────────────────────────────────────────────────────
     const status: AlertStatus =

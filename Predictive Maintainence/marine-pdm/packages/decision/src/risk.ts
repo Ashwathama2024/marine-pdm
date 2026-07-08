@@ -39,8 +39,24 @@ function getWeights(load: number): RiskWeights {
   return { dev: 0.35, trend: 0.30, persist: 0.35 };
 }
 
+export interface RiskBreakdown {
+  scoreDev: number;       // 0–100, before spike damping
+  scoreTrend: number;     // 0–100
+  scorePersist: number;   // 0–100
+  devMultiplier: number;  // 0.40 (spike-damped) or 1.0 (proven persistent)
+  weights: RiskWeights;   // load-dependent {dev, trend, persist}
+  devContrib: number;     // weights.dev * scoreDev * devMultiplier
+  trendContrib: number;   // weights.trend * scoreTrend
+  persistContrib: number; // weights.persist * scorePersist
+  total: number;          // 0–100, the final blended score (same value computeRisk() returns)
+}
+
 /**
- * Compute subsystem risk score [0–100].
+ * Compute subsystem risk score with its full weighted breakdown — the single source of truth for
+ * both the live decision pipeline (via computeRisk() below, which just returns `.total`) and any
+ * UI that wants to show *why* a score is what it is (e.g. the About page's risk calculator).
+ * Keeping one implementation here means a UI breakdown can never silently drift from the real
+ * scoring — there is no second copy of this formula anywhere else in the codebase.
  *
  * Design principles:
  *  - 20% deadband: small normal fluctuations within this zone score zero.
@@ -51,7 +67,7 @@ function getWeights(load: number): RiskWeights {
  *  - Rate noise floor: rates below 10% of fault-speed rate are measurement noise.
  *    Exception: rapid faults (rate near alarmRate) still trigger immediately — that's correct.
  */
-export function computeRisk(
+export function computeRiskBreakdown(
   actual: number,
   expected: number,
   rate: number,
@@ -59,7 +75,7 @@ export function computeRisk(
   load: number,
   alarmBand?: number,
   alarmRate?: number,
-): number {
+): RiskBreakdown {
   const base = Math.abs(expected) || 1;
 
   // Deviation score with 20% deadband.
@@ -97,12 +113,26 @@ export function computeRisk(
   // Rapid-rate faults bypass this via scoreTrend — they trigger immediately regardless.
   const devMultiplier = persistCount < 3 ? 0.40 : 1.0;
 
-  const w = getWeights(load);
-  return Math.min(100,
-    w.dev * scoreDev * devMultiplier +
-    w.trend * scoreTrend +
-    w.persist * scorePersist,
-  );
+  const weights = getWeights(load);
+  const devContrib = weights.dev * scoreDev * devMultiplier;
+  const trendContrib = weights.trend * scoreTrend;
+  const persistContrib = weights.persist * scorePersist;
+  const total = Math.min(100, devContrib + trendContrib + persistContrib);
+
+  return { scoreDev, scoreTrend, scorePersist, devMultiplier, weights, devContrib, trendContrib, persistContrib, total };
+}
+
+/** Compute subsystem risk score [0–100]. See computeRiskBreakdown() for the full decomposition. */
+export function computeRisk(
+  actual: number,
+  expected: number,
+  rate: number,
+  persistCount: number,
+  load: number,
+  alarmBand?: number,
+  alarmRate?: number,
+): number {
+  return computeRiskBreakdown(actual, expected, rate, persistCount, load, alarmBand, alarmRate).total;
 }
 
 /**

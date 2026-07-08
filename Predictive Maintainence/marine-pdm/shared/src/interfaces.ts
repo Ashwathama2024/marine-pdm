@@ -64,6 +64,50 @@ export interface FeatureSnapshot {
   [key: string]: number | number[];
 }
 
+// ── MTU8000 FEATURES (richer deviation set for the P01-P08 pattern matcher) ────────
+// Lives here (not in packages/decision, which defines matchMTU8000Patterns()) so that
+// packages/features can build one without depending on packages/decision — decision already
+// depends on features, so the reverse dependency isn't available. Built by
+// packages/features/src/mtu8000-feature-builder.ts, consumed by
+// packages/decision/src/patterns-mtu8000.ts's matchMTU8000Patterns().
+export interface MTU8000Features {
+  // Exhaust deviations
+  cylDevs: number[];         // per-cylinder deviation from expected (0–19)
+  cylDevRates: number[];     // rate of change per cylinder (°C/min) — not read by any P0x rule; kept for interface completeness
+  cylStdDevs: number[];      // rolling stdDev per cylinder (erratic detection)
+  aSideMeanDev: number;      // A-side mean deviation from baseline
+  bSideMeanDev: number;      // B-side mean deviation from baseline
+  allCylMeanDev: number;     // all-cylinder mean deviation
+  cylImbalance: number;      // max − min cylinder temp
+
+  // Lube
+  lubeDev: number;            // main gallery pressure deviation
+  lubeLastBearingDev: number; // last bearing pressure deviation
+  lubeRate: number;           // bar/min rate of change
+
+  // Bearing
+  bearingDevs: number[];     // per-bearing deviation (0–10)
+  bearingRates: number[];    // per-bearing rate of change
+
+  // Cooling
+  coolantTempDev: number;
+  chargeAirTempDev: number;
+  chargeAirPressDev: number;
+
+  // TC
+  tcSpeedDevs: number[];     // per-TC speed deviation (0–3)
+
+  // Fuel / crankcase
+  sfocDev: number;
+  fuelRailPressDev: number;
+  crankcasePressure: number;
+  crankcaseRate: number;
+
+  // Sensor quality — not read by any P0x rule; kept for a future fault-source classification
+  // integration (see classifyFaultSource() in packages/decision/src/patterns.ts).
+  sensorHealthScores: Record<string, number>;
+}
+
 // ── DECISION OUTPUT ────────────────────────────────────────────────────────
 export type AlertStatus = 'NORMAL' | 'WARNING' | 'HIGH' | 'CRITICAL';
 export type FaultSource = 'EQUIPMENT' | 'SENSOR_SUSPECT' | 'ISOLATED';
@@ -76,7 +120,8 @@ export interface FaultAlert {
   evidence: string[];         // human-readable chain, minimum 2 items
   recommendedAction: string;
   faultSource: FaultSource;
-  patternName?: string;
+  patternName?: string;       // display name — do NOT use for recordOutcome() lookups, use patternId
+  patternId?: string;         // FaultPattern.id — the key PatternLibrary.recordOutcome() actually looks up
   ecsAlarmCode?: string;      // MTU ECS 8000 alarm code e.g. 'HI T-Exhaust Cyl A4'
   maintenanceTask?: string;   // MTU work order code e.g. 'W1006 — Replace fuel injector'
 }
@@ -148,6 +193,11 @@ export interface FaultPattern {
   timesConfirmed: number;
   timesFalsePositive: number;
   isActive: boolean;
+  // True for patterns whose match decision is computed by an external matcher (e.g. MTU8000's
+  // matchMTU8000Patterns(), which needs richer per-tag inputs than PatternLibrary's generic
+  // condition evaluator understands). PatternLibrary.matchPatterns() skips these; the caller must
+  // drive them via PatternLibrary.recordMatch(id, allMet) instead.
+  matchedExternally?: boolean;
   ecsAlarmCode?: string;
   maintenanceTask?: string;
 }

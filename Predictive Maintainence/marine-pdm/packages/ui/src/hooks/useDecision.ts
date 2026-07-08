@@ -6,7 +6,7 @@ import { patternLibrary, dependencyMap, registry, baselineStore } from '@marine-
 
 // Singletons — created once, persist across re-renders
 export const featureEngine = new FeatureEngine(baselineStore, registry);
-const decisionEngine = new DecisionEngine(patternLibrary, dependencyMap);
+const decisionEngine = new DecisionEngine(patternLibrary, dependencyMap, baselineStore);
 
 export interface DecisionState {
   output: DecisionOutput | null;

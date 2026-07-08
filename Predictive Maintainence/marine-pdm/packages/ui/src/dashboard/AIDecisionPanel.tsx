@@ -598,14 +598,14 @@ export function AIDecisionPanel({
                             )}
                           </div>
                         )}
-                        {alert.patternName && (
+                        {alert.patternId && (
                           <div style={{ display: 'flex', gap: 5, marginTop: 6 }}>
                             <button className="mag-btn mag-btn-ghost"
                               style={{ padding: '3px 8px', fontSize: 9, color: 'var(--risk-normal)', borderColor: 'var(--risk-normal)' }}
-                              onClick={() => onConfirm(alert.patternName!)}>✓ Confirm</button>
+                              onClick={() => onConfirm(alert.patternId!)}>✓ Confirm</button>
                             <button className="mag-btn mag-btn-ghost"
                               style={{ padding: '3px 8px', fontSize: 9 }}
-                              onClick={() => onFalsePositive(alert.patternName!)}>✗ False Positive</button>
+                              onClick={() => onFalsePositive(alert.patternId!)}>✗ False Positive</button>
                           </div>
                         )}
                       </div>
@@ -751,14 +751,14 @@ export function AIDecisionPanel({
                     <div key={j} style={{ fontSize: 9, color: 'var(--text-secondary)', paddingLeft: 8 }}>— {e}</div>
                   ))}
                   <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 5 }}>→ {alert.recommendedAction}</div>
-                  {alert.patternName && (
+                  {alert.patternId && (
                     <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
                       <button className="mag-btn mag-btn-ghost"
                         style={{ padding: '4px 10px', fontSize: 10, color: 'var(--risk-normal)', borderColor: 'var(--risk-normal)' }}
-                        onClick={() => onConfirm(alert.patternName!)}>✓ Confirm</button>
+                        onClick={() => onConfirm(alert.patternId!)}>✓ Confirm</button>
                       <button className="mag-btn mag-btn-ghost"
                         style={{ padding: '4px 10px', fontSize: 10 }}
-                        onClick={() => onFalsePositive(alert.patternName!)}>✗ False Positive</button>
+                        onClick={() => onFalsePositive(alert.patternId!)}>✗ False Positive</button>
                     </div>
                   )}
                 </div>

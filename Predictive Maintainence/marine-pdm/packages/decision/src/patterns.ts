@@ -52,6 +52,7 @@ export function buildPatternAlerts(
       recommendedAction: deriveAction(pattern.name, pattern.actionWindow),
       faultSource,
       patternName: pattern.name,
+      patternId: pattern.id,
     });
   }
 

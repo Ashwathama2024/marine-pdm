@@ -2,7 +2,8 @@ import type { SensorRegistry } from './sensor-registry';
 import type { BaselineStore } from './baseline-store';
 import type { DependencyMap } from './dependency-map';
 import type { PatternLibrary } from './pattern-library';
-import type { SensorDefinition, BaselineCurve, FaultPattern } from '@marine-pdm/shared';
+import type { SensorDefinition, BaselineCurve } from '@marine-pdm/shared';
+import { MTU8000_PATTERNS } from './patterns-mtu8000-data';
 
 // Sensor definitions calibrated to Kongsberg K-Chief 600/2400 alarm group
 // Engine: MTU 8000 20V M71L, 4-stroke medium-speed, rated 1150 RPM / 85% load / 9100 kW
@@ -255,46 +256,39 @@ const PRIMARY_BASELINES: BaselineCurve[] = [
     source: 'MTU 8000 M71L — 9100 kW max (M71L rating)',
     addedDate: new Date().toISOString(), isActive: true,
   },
+  {
+    sensorId: 'ME.BearingTemp.Mean',
+    // Mirrors the healthy (fault=0) terms of bearingTemp_MTU8000: base + load + rpm only — the
+    // oilHeat/pressureDef/positionBias/faultHeat terms are all zero at a healthy rated oil temp
+    // (85°C) and pressure (≥6.5 bar), so this is the fault-free expected value shared across all 11
+    // bearings (same simplification already used for per-cylinder baselines above, which all share
+    // one expectedExhaust rather than 20 independent curves).
+    equation: '58 + load / 100 * 28 + rpm / 1150 * 10',
+    coefficients: { base: 58, loadFactor: 28, rpmFactor: 10, rpmDivisor: 1150 },
+    dependsOn: ['load', 'rpm'],
+    validLoadMin: 0, validLoadMax: 100,
+    source: 'MTU 8000 M71L Physics Model v3 (rated → ~96°C at healthy oil temp/pressure)',
+    addedDate: new Date().toISOString(), isActive: true,
+  },
+  {
+    sensorId: 'ME.FuelRailPressure',
+    // Mirrors fuelRailPressure_MTU8000's healthy (no injector faults) terms exactly.
+    equation: '1600 + load / 100 * 200',
+    coefficients: { base: 1600, loadFactor: 200 },
+    dependsOn: ['load'],
+    validLoadMin: 0, validLoadMax: 100,
+    source: 'MTU 8000 M71L Physics Model v3 (idle 1600 bar → rated 1770 bar)',
+    addedDate: new Date().toISOString(), isActive: true,
+  },
 ];
 
-const DEFAULT_PATTERNS: FaultPattern[] = [
-  {
-    id: 'injector_degradation',
-    name: 'Injector Degradation',
-    conditions: [
-      { tag: 'cylDev', metric: 'deviation', operator: '>', threshold: 20 },
-      { tag: 'cylRate', metric: 'rate', operator: '>', threshold: 0 },
-      { tag: 'cylImbalance', metric: 'imbalance', operator: '>', threshold: 15 },
-    ],
-    affectedTags: ['ME.Cyl1.ExhaustTemp','ME.Cyl2.ExhaustTemp','ME.Cyl3.ExhaustTemp',
-                   'ME.Cyl4.ExhaustTemp','ME.Cyl5.ExhaustTemp','ME.Cyl6.ExhaustTemp'],
-    actionWindow: '4–8 hours',
-    timesTriggered: 0, timesConfirmed: 0, timesFalsePositive: 0, isActive: true,
-  },
-  {
-    id: 'lube_system_failure',
-    name: 'Lube System Failure',
-    conditions: [
-      { tag: 'lubeDev', metric: 'deviation', operator: '<', threshold: -0.4 },
-      { tag: 'lubeRate', metric: 'rate', operator: '<', threshold: -0.05 },
-    ],
-    affectedTags: ['ME.LubeOilPressure'],
-    actionWindow: 'Immediate',
-    timesTriggered: 0, timesConfirmed: 0, timesFalsePositive: 0, isActive: true,
-  },
-  {
-    id: 'cooling_fouling',
-    name: 'Cooling Fouling',
-    conditions: [
-      { tag: 'cylsAllRising', metric: 'deviation', operator: '>', threshold: 5 },
-      { tag: 'jacketDev', metric: 'deviation', operator: '>', threshold: 5 },
-      { tag: 'coolingEff', metric: 'deviation', operator: '<', threshold: -0.08 },
-    ],
-    affectedTags: ['ME.ExhaustTemp','ME.JacketCoolingOutlet','ME.SFOC','ME.CoolingEfficiency'],
-    actionWindow: 'Next port',
-    timesTriggered: 0, timesConfirmed: 0, timesFalsePositive: 0, isActive: true,
-  },
-];
+// The 3 generic patterns (injector_degradation / lube_system_failure / cooling_fouling) that used
+// to be seeded here have been retired — MTU8000_PATTERNS (P01-P08, imported below) are the real,
+// ECS-coded replacements patterns-mtu8000-data.ts's own header comment always said they should be
+// ("replacing v1.0 generic 3-pattern library"); registering both would produce two competing alerts
+// (one generic, one ECS-coded) for the same physical fault. The generic PatternLibrary.matchPatterns()
+// path itself is untouched and still fully functional for any custom pattern added later via
+// knowledge-api.ts's addPattern endpoint.
 
 export function seedKnowledgeBase(
   registry: SensorRegistry,
@@ -319,8 +313,11 @@ export function seedKnowledgeBase(
   dependencyMap.addDependency('ME.SFOC', ['load', 'ME.JacketCoolingOutlet'], { load: -0.82, 'ME.JacketCoolingOutlet': 0.71 });
   dependencyMap.addDependency('ME.LubeOilPressure', ['rpm'], { rpm: 0.78 });
 
-  // Load default fault patterns
-  for (const p of DEFAULT_PATTERNS) {
-    patternLibrary.addPattern(p);
+  // Load the real MTU 8000 fault patterns (P01-P08, ECS-coded). matchedExternally: true tells
+  // PatternLibrary.matchPatterns() to skip generic per-tag evaluation for these — they're matched
+  // by decision-engine.ts calling matchMTU8000Patterns() directly and reporting the result via
+  // patternLibrary.recordMatch(), which drives the same timesTriggered/persistence bookkeeping.
+  for (const p of MTU8000_PATTERNS) {
+    patternLibrary.addPattern({ ...p, matchedExternally: true });
   }
 }

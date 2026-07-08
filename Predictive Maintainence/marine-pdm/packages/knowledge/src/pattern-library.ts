@@ -8,10 +8,19 @@ export interface PatternMatch {
   totalConditions: number;
 }
 
+const PERSIST_TAGS = new Set(['cylPersist', 'lubePersist']);
+
 export class PatternLibrary {
   private patterns = new Map<string, FaultPattern>();
-  // Track current persistence counters per pattern (ticks conditions have been met)
+  // Ticks the FULL condition set (core + any persist-tag gates) has been met — public-facing via
+  // getPersistenceCount(), and what gates timesTriggered to one increment per episode.
   private persistenceCounters = new Map<string, number>();
+  // Ticks the CORE (non-persist-tag) conditions alone have been met — kept separate so a
+  // cylPersist/lubePersist condition can reference "how long have the real symptoms held" without
+  // referencing its own gated outcome. A persist-tag condition checking allMet-streak instead of
+  // core-streak would be circular: allMet requires the persist condition to already be true, which
+  // requires allMet-streak to already be >0, which never happens — a permanent fixed point at 0.
+  private corePersistenceCounters = new Map<string, number>();
 
   addPattern(pattern: FaultPattern): void {
     if (!pattern.id || !pattern.name) {
@@ -22,33 +31,63 @@ export class PatternLibrary {
     }
     this.patterns.set(pattern.id, { ...pattern });
     this.persistenceCounters.set(pattern.id, 0);
+    this.corePersistenceCounters.set(pattern.id, 0);
   }
 
   matchPatterns(features: FeatureSnapshot, snap: EngineSnapshot): FaultPattern[] {
     const matched: FaultPattern[] = [];
 
     for (const pattern of this.patterns.values()) {
-      if (!pattern.isActive) continue;
+      if (!pattern.isActive || pattern.matchedExternally) continue;
 
-      const allMet = pattern.conditions.every(cond =>
-        this.evaluateCondition(cond, features, snap),
-      );
+      const coreConditions = pattern.conditions.filter(c => !PERSIST_TAGS.has(c.tag));
+      const persistConditions = pattern.conditions.filter(c => PERSIST_TAGS.has(c.tag));
 
-      // Update persistence counter
-      const prev = this.persistenceCounters.get(pattern.id) ?? 0;
-      const current = allMet ? prev + 1 : 0;
-      this.persistenceCounters.set(pattern.id, current);
+      // Core persistence: ticks the non-persist-tag conditions alone held BEFORE this tick.
+      // Persist-tag conditions read THIS value (never their own gated result — see class comment).
+      const prevCore = this.corePersistenceCounters.get(pattern.id) ?? 0;
+      const coreMet = coreConditions.every(cond => this.evaluateCondition(cond, features, snap, prevCore));
+      this.corePersistenceCounters.set(pattern.id, coreMet ? prevCore + 1 : 0);
 
-      if (allMet) {
-        this.patterns.set(pattern.id, {
-          ...pattern,
-          timesTriggered: pattern.timesTriggered + 1,
-        });
-        matched.push({ ...pattern, timesTriggered: pattern.timesTriggered + 1 });
-      }
+      const persistMet = persistConditions.every(cond => this.evaluateCondition(cond, features, snap, prevCore));
+      const allMet = coreMet && persistMet;
+
+      const result = this.recordMatch(pattern.id, allMet);
+      if (result) matched.push(result);
     }
 
     return matched;
+  }
+
+  /**
+   * Records that `patternId`'s match state is `allMet` this tick, using the same episode/rising-
+   * edge bookkeeping matchPatterns() itself uses. This is the hook for matchers that determine
+   * allMet by means other than PatternLibrary's own generic per-tag evaluator — e.g.
+   * matchMTU8000Patterns()'s hand-written per-pattern logic in packages/decision. Call this for
+   * EVERY externally-matched pattern id each tick (matched or not), so a pattern's persistence
+   * counter correctly decays to 0 the instant it stops matching, exactly like the generic path.
+   * Returns the updated pattern if it should be surfaced as "currently matched" this tick, else null.
+   */
+  recordMatch(patternId: string, allMet: boolean): FaultPattern | null {
+    const pattern = this.patterns.get(patternId);
+    if (!pattern || !pattern.isActive) return null;
+
+    const prev = this.persistenceCounters.get(patternId) ?? 0;
+    const current = allMet ? prev + 1 : 0;
+    this.persistenceCounters.set(patternId, current);
+
+    if (!allMet) return null;
+
+    // Count a NEW episode only (rising edge: prev===0 -> current===1), not every tick the
+    // condition continues to hold — otherwise a fault sustained for N seconds would inflate
+    // timesTriggered by N instead of 1, corrupting the false-positive/miss-rate math in
+    // getSuggestedThresholdAdjustment() below.
+    if (current === 1) {
+      const updated = { ...pattern, timesTriggered: pattern.timesTriggered + 1 };
+      this.patterns.set(patternId, updated);
+      return { ...updated };
+    }
+    return { ...pattern };
   }
 
   recordOutcome(patternId: string, outcome: OutcomeType): void {
@@ -98,6 +137,7 @@ export class PatternLibrary {
     cond: FaultPattern['conditions'][0],
     features: FeatureSnapshot,
     snap: EngineSnapshot,
+    persistTicks: number,
   ): boolean {
     let value: number | null = null;
 
@@ -113,18 +153,18 @@ export class PatternLibrary {
         value = features.cylImbalance;
         break;
       case 'cylPersist':
-        // Persistence is evaluated outside in matchPatterns; always return 0 here
-        // Actual persistence matching is done by the decision engine
-        value = 0;
+      case 'lubePersist':
+        // How many consecutive PRIOR ticks this pattern's CORE (non-persist-tag) conditions
+        // already held — passed in as persistTicks (see matchPatterns' corePersistenceCounters).
+        // Deliberately not the pattern's own gated allMet-streak: a persist-tag condition can't
+        // reference its own outcome without creating a fixed point that's permanently stuck at 0.
+        value = persistTicks;
         break;
       case 'lubeDev':
         value = features.lubeDev;
         break;
       case 'lubeRate':
         value = features.lubeRate;
-        break;
-      case 'lubePersist':
-        value = 0;
         break;
       case 'cylsAllRising':
         // True if all cylinders are above threshold
