@@ -122,14 +122,18 @@ function applyRegistryToSnapshot(raw: EngineSnapshot): EngineSnapshot {
   return snap as EngineSnapshot;
 }
 
-// Lag alphas matching physics.ts — baseline tracks same thermal inertia as sensors
+// Lag alphas matching physics.ts LAG — baseline must track the same thermal/hydraulic inertia
+// as the real sensor it's compared against, or a load-step (e.g. clutch-in) opens a gap that
+// looks like a sustained fault for 30+ ticks even though nothing is actually wrong.
+// physics.ts field names differ from these in three places — mapped explicitly so the sync is
+// checkable at a glance: lube→lube, chargeAirPress→scavenge, coolantTemp→jacket.
 const BASELINE_LAG = {
   exhaust:          0.08,
-  lube:             0.05,
+  lube:             0.06,   // physics LAG.lube (was 0.05 — went stale when physics moved 0.05→0.06)
   fuelRack:         0.08,
-  scavenge:         0.10,
+  scavenge:         0.08,   // physics LAG.chargeAirPress (was 0.10 — went stale when physics moved 0.10→0.08)
   tcRPM:            0.08,
-  jacket:           0.05,
+  jacket:           0.02,   // physics LAG.coolantTemp (was 0.05 — went stale when physics moved 0.05→0.02)
   sfoc:             0.03,
   chargeAirTemp:    0.06,
   fuelOilPressure:  0.20,
@@ -290,6 +294,7 @@ export function EngineProvider({ children }: { children: React.ReactNode }) {
 
   const historyRef        = useRef<SensorHistory>(emptyHistory());
   const laggedBaselineRef = useRef<LaggedBaseline | null>(null);
+  const wasRunningRef     = useRef(false);
 
   // Push history + advance lagged baseline + feed the alert engine — once per tick, in an
   // effect (NOT during render) so processSnapshot's setState in AlertProvider never fires
@@ -318,8 +323,22 @@ export function EngineProvider({ children }: { children: React.ReactNode }) {
     snapshot.cylTemps.forEach((t, i) => push(h.cylTemps[i]!, t));
     // Per-cylinder baselines are pushed after lb is updated (below)
 
-    // Initialise lagged baseline from first raw baseline (cold start at steady state)
-    if (!laggedBaselineRef.current) {
+    // Engine running state — computed here (not just below) because it also gates the baseline
+    // (re-)seed: a snapshot exists from the moment the page loads (ENGINE_OFF, rpm=0, load=0),
+    // long before the operator starts anything, so a plain "first tick" seed captures whatever
+    // pre-op value happens to be current (often 0/degenerate) and locks it in for the rest of
+    // the session — the 0.02-0.06 lag alphas then take 100+ ticks to climb away from it, which
+    // reads as a "sustained fault" for the first 30+ ticks of every single run regardless of
+    // what the operator actually does. Physics avoids this by reseeding lag state fresh at
+    // CRANKING→IDLE (initPhysicsForIdle()); do the same here for the baseline.
+    const _currentState = engine.getEngineState();
+    const _preOpStates = ['ENGINE_OFF', 'STANDBY', 'SAFETY_TURNING', 'CRANKING'];
+    const _isRunning = !_preOpStates.includes(_currentState) && _currentState !== 'STOPPING';
+
+    // Seed lagged baseline on the very first tick (harmless fallback) AND re-seed fresh every
+    // time the engine transitions from pre-op/stopped into an operational state — so it always
+    // starts from a real, current-conditions value instead of a stale pre-op snapshot.
+    if (!laggedBaselineRef.current || (_isRunning && !wasRunningRef.current)) {
       laggedBaselineRef.current = {
         exhaust: baseline.expectedExhaust, lube: baseline.expectedLube,
         fuelRack: baseline.expectedFuelRack, scavenge: baseline.expectedScavenge,
@@ -330,6 +349,7 @@ export function EngineProvider({ children }: { children: React.ReactNode }) {
         shaftPower: baseline.expectedShaftPower,
       };
     }
+    wasRunningRef.current = _isRunning;
 
     // Advance lagged baseline with same thermal inertia as actual sensors
     const lb = laggedBaselineRef.current;
@@ -368,9 +388,7 @@ export function EngineProvider({ children }: { children: React.ReactNode }) {
     });
 
     // Only feed alert engine when engine is actually running (suppresses pre-op false alarms)
-    const _currentState = engine.getEngineState();
-    const _preOpStates = ['ENGINE_OFF', 'STANDBY', 'SAFETY_TURNING', 'CRANKING'];
-    const _isRunning = !_preOpStates.includes(_currentState) && _currentState !== 'STOPPING';
+    // — _isRunning computed above, alongside the baseline-reseed check it also gates.
     if (_isRunning) {
       processSnapshot(
         snapshot,

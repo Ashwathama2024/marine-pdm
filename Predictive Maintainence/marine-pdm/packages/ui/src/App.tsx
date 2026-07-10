@@ -13,7 +13,9 @@ import { DegradationBI } from './pages/DegradationBI';
 import { AnalysisWorkspace } from './pages/AnalysisWorkspace';
 import { HelpManual } from './pages/HelpManual';
 import { AboutPage } from './pages/AboutPage';
+import { AIAssistant } from './pages/AIAssistant';
 import { AlertTicker } from './components/AlertTicker';
+import { AssistantWidget } from './components/AssistantWidget';
 import { useEngine } from './context/EngineContext';
 import { DegradationProvider } from './context/DegradationContext';
 import { SimulatorControlProvider } from './context/SimulatorControlContext';
@@ -31,6 +33,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/simulator':    'Simulator',
   '/help':         'User Manual',
   '/about':        'System Dossier',
+  '/ai':           'JARVIS',
 };
 
 function riskColor(risk: number): string {
@@ -195,6 +198,7 @@ export default function App() {
                 <Route path="/simulator"   element={<Simulator />} />
                 <Route path="/help"        element={<HelpManual />} />
                 <Route path="/about"       element={<AboutPage />} />
+                <Route path="/ai"          element={<AIAssistant />} />
               </Routes>
             </div>
           </div>
@@ -202,6 +206,9 @@ export default function App() {
 
         {/* Fixed footer alert ticker — always visible */}
         <AlertTicker />
+
+        {/* Floating AI assistant — available on every page */}
+        <AssistantWidget />
       </div>
     </DegradationProvider>
     </SimulatorControlProvider>

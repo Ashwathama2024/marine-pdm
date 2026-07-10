@@ -21,7 +21,7 @@ import {
   clutchRpmDip,
 } from './mtu8000-start-physics';
 import type { StartPhysicsState } from './mtu8000-start-physics';
-import { cylExhaustTemp_MTU8000 } from './mtu8000-physics';
+import { cylExhaustTemp_MTU8000, sfoc_MTU8000 } from './mtu8000-physics';
 import { CYLINDER_COUNT } from '@marine-pdm/shared';
 
 export type SimMode = 'NORMAL' | 'STRESS' | 'FAULT';
@@ -375,7 +375,11 @@ export class SimulatorEngine implements IDataSource {
       lagPistonCoolingPress:  s.lubePress * 0.6,
       lagFuelRailPressure:    s.fuelRailPress,
       lagFuelTemp:            25,
-      lagSfoc:                0,
+      // Idle no-load SFOC (rpm penalty dominates: (1150-400)*0.08=60 on top of the
+      // (100-0)*0.333=33.3 load penalty) — was hardcoded 0, which the 0.03 lag alpha then took
+      // 100+ ticks to climb away from, tripping a spurious 30-tick "Sustained High SFOC" alert
+      // on every engine start regardless of what the operator did afterward.
+      lagSfoc:                sfoc_MTU8000(0, GOV_RPM_IDLE, {}, 1.0),
       lagChargeAirTemp:       25,
       lagChargeAirPress:      1.013,
       lagCrankcasePressure:   -0.5,
