@@ -6,7 +6,13 @@ import { ENGINE_KNOWLEDGE } from '../services/engine-knowledge';
 import { buildAssistantSystemPrompt, buildAssistantContextMessage } from '../services/prompts';
 import { JARVIS_TOOLS, runTool } from '../services/jarvis-tools';
 import type { ToolContext } from '../services/jarvis-tools';
+import { getJarvisSelfKnowledge } from '../services/jarvis-self-knowledge';
 import { loadHistory, saveHistory, clearHistory } from '../services/chat-history';
+
+// The system prompt is fully static (engine reference + self-knowledge, both derived once from source
+// constants). Assemble it lazily and cache it so it isn't rebuilt on every turn.
+let _systemPrompt: string | null = null;
+const systemPrompt = () => (_systemPrompt ??= buildAssistantSystemPrompt(ENGINE_KNOWLEDGE, getJarvisSelfKnowledge()));
 
 export interface ChatMessage {
   id: string;
@@ -19,7 +25,7 @@ export interface ChatMessage {
 }
 
 const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
-const MAX_TOOL_ROUNDS = 5;
+const MAX_TOOL_ROUNDS = 6;
 const HISTORY_TURNS = 24;   // visible messages sent back to the model (bounds tokens)
 
 const safeParse = (s: string): Record<string, unknown> => {
@@ -61,7 +67,7 @@ export function useAssistantChat() {
       .slice(-HISTORY_TURNS)
       .map(m => ({ role: m.role, content: m.content }) as ApiMsg);
     let convo: ApiMsg[] = [
-      { role: 'system', content: buildAssistantSystemPrompt(ENGINE_KNOWLEDGE) },
+      { role: 'system', content: systemPrompt() },
       ...prior,
       { role: 'system', content: buildAssistantContextMessage(liveContext) },
       { role: 'user', content: promptText },

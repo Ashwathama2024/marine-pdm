@@ -18,6 +18,7 @@ import { AlertTicker } from './components/AlertTicker';
 import { AssistantWidget } from './components/AssistantWidget';
 import { useEngine } from './context/EngineContext';
 import { DegradationProvider } from './context/DegradationContext';
+import { AlertHistoryProvider } from './context/AlertHistoryContext';
 import { SimulatorControlProvider } from './context/SimulatorControlContext';
 
 const PAGE_TITLES: Record<string, string> = {
@@ -177,6 +178,7 @@ export default function App() {
   return (
     <SimulatorControlProvider>
     <DegradationProvider>
+    <AlertHistoryProvider>
       <div className="app-shell">
         <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(c => !c)} />
 
@@ -210,6 +212,7 @@ export default function App() {
         {/* Floating AI assistant — available on every page */}
         <AssistantWidget />
       </div>
+    </AlertHistoryProvider>
     </DegradationProvider>
     </SimulatorControlProvider>
   );

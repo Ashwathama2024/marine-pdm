@@ -4,13 +4,15 @@
 // simulator.
 
 import type { DecisionOutput } from '@marine-pdm/shared';
-import { MTU8000 } from '@marine-pdm/shared';
+import { MTU8000, MTU8000_LIMITS } from '@marine-pdm/shared';
 import { FAULT_DEFINITIONS, DEGRADATION_MODES } from '@marine-pdm/simulator';
 import type { FaultConfig } from '@marine-pdm/simulator';
+import { MTU8000_PATTERNS } from '@marine-pdm/knowledge';
 import type { SensorHistory } from '../context/EngineContext';
 import type { DegradationEvent } from '../context/DegradationContext';
 import type { BaselineAlert } from '../context/AlertContext';
 import type { ToolDef } from './openai-client';
+import { getSelfInfo, getFeatureGuide, getHowToTest } from './jarvis-self-knowledge';
 
 const CYL_NAMES = MTU8000.CYL_NAMES as readonly string[];
 
@@ -137,6 +139,95 @@ function getAlerts(ctx: ToolContext): string {
   });
 }
 
+// ── FUTURE: project a metric to its coded alarm band ──────────────────────────────
+// Each entry pairs a history series with the MTU8000_LIMITS thresholds that govern it. Only metrics
+// with a real coded alarm band are forecastable — everything else stays a get_trend question.
+const L = MTU8000_LIMITS;
+type ForecastLimit = { key: keyof SensorHistory; unit: string; label: string; hi?: number; ss?: number; lo?: number; dir: 'high' | 'low' };
+const FORECAST_LIMITS: Record<string, ForecastLimit> = {
+  exhaust:            { key: 'exhaustTemp',       unit: '°C',   label: 'Mean exhaust temp',      dir: 'high', hi: L.exhaust.mean_hi,                          ss: L.exhaust.critical_max },
+  jacket:            { key: 'jacketOutlet',       unit: '°C',   label: 'Jacket / coolant temp',  dir: 'high', hi: L.cooling.coolant_temp_after_engine_max,    ss: L.cooling.coolant_temp_ss },
+  chargeAirTemp:      { key: 'chargeAirTemp',     unit: '°C',   label: 'Charge-air temp',        dir: 'high', hi: L.chargeAir.temp_after_intercooler_hi,      ss: L.chargeAir.temp_after_intercooler_max },
+  tcSpeed:            { key: 'tcRPM',             unit: 'RPM',  label: 'TC speed (overspeed)',   dir: 'high', hi: L.turbocharger.speed_overspeed_l1,          ss: L.turbocharger.speed_overspeed_l2 },
+  lube:               { key: 'lubeOilPressure',   unit: 'bar',  label: 'LO gallery pressure',    dir: 'low',  lo: L.lubeOil.pressure_before_filter_min },
+  pistonCoolingPress: { key: 'pistonCoolingPress', unit: 'bar', label: 'Piston-cooling pressure', dir: 'low', lo: L.lubeOil.piston_cooling_min },
+  systemRisk:         { key: 'systemRisk',        unit: '0–100', label: 'System risk',           dir: 'high', hi: 70,                                          ss: 90 },
+};
+const FORECAST_METRICS = Object.keys(FORECAST_LIMITS);
+const SLOPE_TICKS = 30; // recent window used to estimate the current rate
+
+// ETA (minutes) until `current` crosses `threshold`, given slope/min and travel direction.
+function eta(current: number, threshold: number | undefined, slopePerMin: number, dir: 'high' | 'low'): number | null {
+  if (threshold === undefined) return null;
+  if (dir === 'high') {
+    if (current >= threshold) return 0;
+    if (slopePerMin <= 0) return null;         // stable / falling → never (at this rate)
+    return (threshold - current) / slopePerMin;
+  } else {
+    if (current <= threshold) return 0;
+    if (slopePerMin >= 0) return null;
+    return (current - threshold) / (-slopePerMin);
+  }
+}
+
+function forecastFrom(series: number[], lim: { unit: string; label: string; hi?: number; ss?: number; lo?: number; dir: 'high' | 'low' }, horizonMin: number): Record<string, unknown> {
+  const recent = series.slice(-SLOPE_TICKS);
+  const st = stats(recent);
+  const slopePerMin = st.slope * 60;
+  const current = st.last;
+  const target = lim.dir === 'high' ? lim.hi : lim.lo;
+  const critical = lim.dir === 'high' ? lim.ss : undefined;
+  const etaHi = eta(current, target, slopePerMin, lim.dir);
+  const etaSs = eta(current, critical, slopePerMin, lim.dir);
+  const trendWord = Math.abs(slopePerMin) < 1e-6 ? 'flat'
+    : (lim.dir === 'high' ? (slopePerMin > 0 ? 'rising toward alarm' : 'falling away from alarm')
+       : (slopePerMin < 0 ? 'falling toward alarm' : 'rising away from alarm'));
+  return {
+    metric: lim.label, unit: lim.unit, ticksUsed: st.n,
+    current: r(current), slopePerMin: r(slopePerMin, 3),
+    alarmThreshold: target ?? null, shutdownThreshold: critical ?? null, direction: lim.dir,
+    projectedIn: { minutes: horizonMin, value: r(current + slopePerMin * horizonMin) },
+    etaToAlarmMin: etaHi === null ? null : Number(etaHi.toFixed(1)),
+    etaToShutdownMin: etaSs === null ? null : Number(etaSs.toFixed(1)),
+    verdict: etaHi === 0 ? 'already in alarm band'
+      : etaHi === null ? `${trendWord} — not projected to reach the alarm band at the current rate`
+      : `${trendWord} — projected to reach the alarm band in ~${etaHi.toFixed(1)} min at the current rate`,
+    note: 'linear projection from the recent slope; a fault accelerating non-linearly will cross sooner.',
+  };
+}
+
+function getForecast(args: Record<string, unknown>, ctx: ToolContext): string {
+  const horizonMin = Math.min(Math.max(asNum(args.horizonMin, 15), 1), 120);
+  const cylName = asStr(args.cylinder).toUpperCase();
+  if (cylName) {
+    const idx = CYL_NAMES.indexOf(cylName);
+    if (idx < 0) return JSON.stringify({ error: `unknown cylinder "${args.cylinder}". Use A1–A10 or B1–B10.` });
+    const series = ctx.history.cylTemps[idx] ?? [];
+    if (series.length < 3) return JSON.stringify({ cylinder: cylName, note: 'Not enough history yet — let the engine run.' });
+    return JSON.stringify({ cylinder: cylName, ...forecastFrom(series, { unit: '°C', label: `${cylName} exhaust temp`, dir: 'high', hi: L.exhaust.normal_max, ss: L.exhaust.critical_max }, horizonMin) });
+  }
+  const metric = asStr(args.metric);
+  const lim = FORECAST_LIMITS[metric];
+  if (!lim) return JSON.stringify({ error: `no coded alarm band for "${metric}". Forecastable: ${FORECAST_METRICS.join(', ')}, or pass a cylinder (A1–B10). For metrics without an alarm band use get_trend.` });
+  const series = (ctx.history[lim.key] as number[]) ?? [];
+  if (series.length < 3) return JSON.stringify({ metric: lim.label, note: 'Not enough history yet — let the engine run.' });
+  return JSON.stringify(forecastFrom(series, lim, horizonMin));
+}
+
+function getPatternDetail(args: Record<string, unknown>, ctx: ToolContext): string {
+  const id = asStr(args.id).toUpperCase();
+  const p = MTU8000_PATTERNS.find(x => x.id === id);
+  if (!p) return JSON.stringify({ error: `unknown pattern "${args.id}". Valid: ${MTU8000_PATTERNS.map(x => x.id).join(', ')}` });
+  const liveAlert = ctx.decision?.alerts.find(a => a.patternId === id || a.ecsAlarmCode === p.ecsAlarmCode);
+  return JSON.stringify({
+    id: p.id, name: p.name, ecsAlarmCode: p.ecsAlarmCode, maintenanceTask: p.maintenanceTask,
+    actionWindow: p.actionWindow, affectedTags: p.affectedTags,
+    conditions: p.conditions.map(c => `${c.tag} ${c.metric} ${c.operator} ${c.threshold}`),
+    firingNow: !!liveAlert,
+    liveAlert: liveAlert ? { component: liveAlert.component, issue: liveAlert.issue, risk: Math.round(liveAlert.riskScore), evidence: liveAlert.evidence } : null,
+  });
+}
+
 /** Execute a tool call and return a compact JSON string result. */
 export function runTool(name: string, args: Record<string, unknown>, ctx: ToolContext): string {
   switch (name) {
@@ -146,6 +237,11 @@ export function runTool(name: string, args: Record<string, unknown>, ctx: ToolCo
     case 'get_fault_detail':      return getFaultDetail(args, ctx);
     case 'get_degradation_events':return getDegradationEvents(ctx);
     case 'get_alerts':            return getAlerts(ctx);
+    case 'forecast_metric':       return getForecast(args, ctx);
+    case 'get_pattern_detail':    return getPatternDetail(args, ctx);
+    case 'get_self_info':         return getSelfInfo();
+    case 'get_feature_guide':     return getFeatureGuide(asStr(args.topic));
+    case 'how_to_test':           return getHowToTest(asStr(args.subject));
     default:                      return JSON.stringify({ error: `unknown tool "${name}"` });
   }
 }
@@ -216,6 +312,66 @@ export const JARVIS_TOOLS: ToolDef[] = [
       name: 'get_alerts',
       description: 'Current decision-engine alerts (ECS codes, W-numbers, evidence, risk) and active baseline deviation alerts.',
       parameters: { type: 'object', properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'forecast_metric',
+      description: 'FUTURE / "what is about to happen": project a metric to its coded MTU alarm band from the current trend, returning current value, slope/min, projected value, and estimated minutes-to-alarm / minutes-to-shutdown. Use for any "will it / when will it / how long until / is it about to alarm" question. Pass a subsystem metric OR a cylinder.',
+      parameters: {
+        type: 'object',
+        properties: {
+          metric: { type: 'string', enum: FORECAST_METRICS, description: 'Subsystem metric with a coded alarm band.' },
+          cylinder: { type: 'string', description: 'Forecast one cylinder\'s exhaust temp instead (A1–A10, B1–B10).' },
+          horizonMin: { type: 'integer', description: 'Projection horizon in minutes for the projected value (1–120, default 15).' },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_pattern_detail',
+      description: 'Full detail for a decision-engine fault pattern (P01–P08): name, ECS code, MTU work order, action window, match conditions, affected tags, and whether it is firing right now.',
+      parameters: {
+        type: 'object',
+        properties: { id: { type: 'string', description: 'Pattern id P01–P08.' } },
+        required: ['id'], additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_self_info',
+      description: 'What I am and what I can do — my identity, time horizons (past/present/future), and my full tool list. Use when the user asks about YOU (e.g. "what can you do", "what tools do you have").',
+      parameters: { type: 'object', properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_feature_guide',
+      description: 'Guide to the app\'s pages/features. Omit topic for the full app map, or pass a page name (e.g. "simulator", "degradation") for that page. Use to help the user navigate or find where to do something.',
+      parameters: {
+        type: 'object',
+        properties: { topic: { type: 'string', description: 'Optional page name or route to focus on.' } },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'how_to_test',
+      description: 'Step-by-step guide to test/trigger a feature. Omit subject for the full playbook, or pass a fault id (F01–F09), pattern id (P01–P08), or keyword for that one. Use when the user asks "how do I test / trigger / try X".',
+      parameters: {
+        type: 'object',
+        properties: { subject: { type: 'string', description: 'Optional fault/pattern id or keyword to focus on.' } },
+        additionalProperties: false,
+      },
     },
   },
 ];

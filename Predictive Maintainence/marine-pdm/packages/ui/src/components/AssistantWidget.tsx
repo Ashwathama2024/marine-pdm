@@ -9,13 +9,15 @@ import { useAssistantNarration } from '../hooks/useAssistantNarration';
 import { buildLiveContext } from '../services/live-context';
 import type { ToolContext } from '../services/jarvis-tools';
 import { buildNarrationPrompt } from '../services/prompts';
-import { getAiSettings, subscribeAiSettings, isAiConfigured } from '../services/ai-settings';
+import { getAiSettings, setAiSettings, subscribeAiSettings, isAiConfigured } from '../services/ai-settings';
+import { JarvisIcon } from './JarvisIcon';
+import { MessageMarkdown } from './MessageMarkdown';
 
 const SUGGESTIONS = [
   'What is happening right now?',
-  'How has SFOC trended over the last minute?',
+  'What is about to happen — anything trending toward an alarm?',
   'List A-bank cylinder temps and each bank median',
-  'Which faults are active and why do they matter?',
+  'How do I test a bearing fault?',
 ];
 
 // Human labels for the tool-activity chips.
@@ -26,29 +28,12 @@ const TOOL_LABEL: Record<string, string> = {
   get_fault_detail: 'inspecting fault',
   get_degradation_events: 'reading degradation log',
   get_alerts: 'reading alerts',
+  forecast_metric: 'forecasting',
+  get_pattern_detail: 'inspecting pattern',
+  get_self_info: 'checking capabilities',
+  get_feature_guide: 'reading feature guide',
+  how_to_test: 'building test steps',
 };
-
-// ── minimal inline markdown (bold + code), newline-aware ──────────────────────────
-function formatInline(line: string): React.ReactNode[] {
-  const parts: React.ReactNode[] = [];
-  const re = /(\*\*[^*]+\*\*|`[^`]+`|_[^_]+_)/g;
-  let last = 0, idx = 0, m: RegExpExecArray | null;
-  while ((m = re.exec(line))) {
-    if (m.index > last) parts.push(line.slice(last, m.index));
-    const tok = m[0];
-    if (tok.startsWith('**')) parts.push(<strong key={idx++}>{tok.slice(2, -2)}</strong>);
-    else if (tok.startsWith('_')) parts.push(<em key={idx++} style={{ color: 'var(--text-muted)' }}>{tok.slice(1, -1)}</em>);
-    else parts.push(<code key={idx++} style={{ background: 'rgba(56,189,248,0.12)', padding: '0 4px', borderRadius: 3, fontSize: '0.92em' }}>{tok.slice(1, -1)}</code>);
-    last = m.index + tok.length;
-  }
-  if (last < line.length) parts.push(line.slice(last));
-  return parts;
-}
-function renderRich(text: string): React.ReactNode {
-  return text.split('\n').map((line, i, arr) => (
-    <React.Fragment key={i}>{formatInline(line)}{i < arr.length - 1 && <br />}</React.Fragment>
-  ));
-}
 
 function Working({ activity }: { activity?: string[] }) {
   const label = activity && activity.length
@@ -66,7 +51,7 @@ function Bubble({ m }: { m: ChatMessage }) {
   if (m.role === 'user') {
     return (
       <div style={{ alignSelf: 'flex-end', maxWidth: '85%', background: 'rgba(56,189,248,0.14)', border: '1px solid rgba(56,189,248,0.25)', color: 'var(--text-primary)', borderRadius: '10px 10px 2px 10px', padding: '7px 10px', fontSize: 12, lineHeight: 1.5 }}>
-        {renderRich(m.content)}
+        <MessageMarkdown text={m.content} />
       </div>
     );
   }
@@ -74,7 +59,7 @@ function Bubble({ m }: { m: ChatMessage }) {
   return (
     <div style={{ alignSelf: 'flex-start', maxWidth: '92%', background: isNote ? 'rgba(245,158,11,0.08)' : 'var(--glass-bg-light)', border: `1px solid ${isNote ? 'rgba(245,158,11,0.35)' : 'var(--glass-border)'}`, color: m.error ? 'var(--risk-critical)' : 'var(--text-secondary)', borderRadius: '10px 10px 10px 2px', padding: '7px 10px', fontSize: 12, lineHeight: 1.55 }}>
       {isNote && <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--risk-warning)', marginBottom: 3 }}>◆ AUTO · EVENT</div>}
-      {m.content ? renderRich(m.content) : (m.streaming ? <Working activity={m.activity} /> : null)}
+      {m.content ? <MessageMarkdown text={m.content} /> : (m.streaming ? <Working activity={m.activity} /> : null)}
     </div>
   );
 }
@@ -155,10 +140,9 @@ export function AssistantWidget() {
           transition: 'transform 0.2s',
         }}
       >
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#04121a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-          <path d="M8 10h.01M12 10h.01M16 10h.01" />
-        </svg>
+        <span style={{ color: '#04121a', display: 'inline-flex' }}>
+          <JarvisIcon size={26} mono spin={chat.busy} />
+        </span>
         {badge > 0 && (
           <span style={{ position: 'absolute', top: -2, right: -2, minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9, background: 'var(--risk-critical)', color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 8px rgba(239,68,68,0.6)' }}>
             {badge}
@@ -176,11 +160,31 @@ export function AssistantWidget() {
         }}>
           {/* Header */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderBottom: '1px solid var(--border-dim)', flexShrink: 0 }}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: configured ? 'var(--risk-normal)' : 'var(--text-dim)', boxShadow: configured ? '0 0 6px var(--risk-normal)' : undefined }} />
+            <span style={{
+              width: 8, height: 8, borderRadius: '50%',
+              background: !configured ? 'var(--text-dim)' : narrationOn ? 'var(--risk-normal)' : 'var(--risk-warning)',
+              boxShadow: configured && narrationOn ? '0 0 6px var(--risk-normal)' : undefined,
+            }} />
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--text-primary)' }}>JARVIS</div>
-              <div style={{ fontSize: 8, letterSpacing: '0.1em', color: 'var(--text-dim)' }}>{configured ? 'ENGINE INTELLIGENCE · LIVE' : 'API KEY NOT SET'}</div>
+              <div style={{ fontSize: 8, letterSpacing: '0.1em', color: 'var(--text-dim)' }}>
+                {!configured ? 'API KEY NOT SET' : narrationOn ? 'AUTO-MONITOR · LIVE' : 'STANDBY · MANUAL ONLY'}
+              </div>
             </div>
+            {/* Activate / Standby — controls whether JARVIS makes proactive (auto) API calls on events.
+                Off = no unwarranted calls; you still get answers whenever you Send a message. */}
+            {configured && (
+              <button
+                onClick={() => setAiSettings({ narrationEnabled: !narrationOn })}
+                title={narrationOn
+                  ? 'JARVIS is ACTIVE — auto-narrating engine events (uses API calls). Click for Standby.'
+                  : 'JARVIS is on STANDBY — no automatic API calls. Click to Activate auto-monitoring.'}
+                style={activateBtn(narrationOn)}
+              >
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: narrationOn ? 'var(--risk-normal)' : 'var(--text-dim)', boxShadow: narrationOn ? '0 0 5px var(--risk-normal)' : undefined }} />
+                {narrationOn ? 'ACTIVE' : 'STANDBY'}
+              </button>
+            )}
             {chat.messages.length > 0 && (
               <button onClick={chat.clear} title="New chat (clears memory)" style={newBtn}>＋ New</button>
             )}
@@ -194,7 +198,9 @@ export function AssistantWidget() {
             {chat.messages.length === 0 && (
               <div style={{ color: 'var(--text-muted)', fontSize: 12, lineHeight: 1.6 }}>
                 {configured
-                  ? <>I'm <b style={{ color: 'var(--text-secondary)' }}>JARVIS</b> — I monitor every sensor, cylinder, bearing and fault live, and can pull historical trends on demand. Ask me anything about the engine.</>
+                  ? <>I'm <b style={{ color: 'var(--text-secondary)' }}>JARVIS</b> — I monitor every sensor, cylinder, bearing and fault live, and can pull historical trends and forecasts on demand. Ask me anything anytime. {narrationOn
+                      ? <>I'm <b style={{ color: 'var(--risk-normal)' }}>ACTIVE</b>, so I'll also narrate events as they happen.</>
+                      : <>Toggle <b style={{ color: 'var(--risk-warning)' }}>STANDBY → ACTIVE</b> in the header if you want me to narrate events automatically.</>}</>
                   : <>No API key yet. Add your OpenAI key on the <Link to="/ai" style={{ color: 'var(--accent-blue)' }}>JARVIS page</Link> to chat. Meanwhile, here's the current live state:</>}
                 {!configured && (
                   <pre style={{ marginTop: 10, whiteSpace: 'pre-wrap', fontSize: 10.5, color: 'var(--text-secondary)', background: 'var(--bg-inset)', border: '1px solid var(--border-dim)', borderRadius: 6, padding: 8, maxHeight: 260, overflowY: 'auto' }}>
@@ -236,5 +242,14 @@ export function AssistantWidget() {
 }
 
 const newBtn: React.CSSProperties = { background: 'var(--bg-inset)', border: '1px solid var(--border)', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 10, fontWeight: 700, fontFamily: 'var(--font)', borderRadius: 5, padding: '3px 7px' };
+const activateBtn = (on: boolean): React.CSSProperties => ({
+  display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer',
+  fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', fontFamily: 'var(--font)',
+  borderRadius: 5, padding: '3px 8px',
+  background: on ? 'rgba(0,200,120,0.12)' : 'var(--bg-inset)',
+  border: `1px solid ${on ? 'rgba(0,200,120,0.45)' : 'var(--border)'}`,
+  color: on ? 'var(--risk-normal)' : 'var(--text-muted)',
+  transition: 'all 0.2s',
+});
 const chip: React.CSSProperties = { background: 'var(--bg-inset)', border: '1px solid var(--border)', color: 'var(--text-secondary)', borderRadius: 12, padding: '4px 9px', fontSize: 10.5, fontFamily: 'var(--font)', cursor: 'pointer', textAlign: 'left' };
 const sendBtn: React.CSSProperties = { background: 'var(--risk-normal)', border: '1px solid var(--risk-normal)', color: '#04121a', borderRadius: 6, padding: '0 14px', fontSize: 11, fontWeight: 700, fontFamily: 'var(--font)', cursor: 'pointer' };

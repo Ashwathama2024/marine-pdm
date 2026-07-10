@@ -29,7 +29,7 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   model: 'gpt-5.4-mini',
   reasoningEffort: 'low',
   maxTokens: 2000,   // generous so hidden reasoning tokens don't starve the visible answer
-  narrationEnabled: true,
+  narrationEnabled: false, // opt-in: no proactive (auto) API calls until the operator Activates JARVIS
 };
 
 let cache: AiSettings | null = null;

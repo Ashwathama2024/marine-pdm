@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAlerts, type BaselineAlert } from '../context/AlertContext';
+import { useAlertHistory, type ResolvedLiveAlert } from '../context/AlertHistoryContext';
 import { useEngine } from '../context/EngineContext';
 import { useGPTAnalysis } from '../hooks/useGPTAnalysis';
 import { buildAlertNarrativePrompt } from '../services/prompts';
@@ -197,8 +198,45 @@ function DecisionAlertCard({ alert }: { alert: FaultAlert }) {
   );
 }
 
+// ── Cleared decision alert (moved to history when its fault injection was reset) ──
+function ResolvedAlertCard({ alert }: { alert: ResolvedLiveAlert }) {
+  const activeSecs = Math.max(0, Math.round((alert.clearedAt - alert.firstSeen) / 1000));
+  return (
+    <div style={{
+      background: 'var(--glass-bg-light)',
+      border: '1px solid var(--border-dim)',
+      borderLeft: '3px solid var(--text-dim)',
+      borderRadius: 8, padding: '10px 14px', opacity: 0.9,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3, flexWrap: 'wrap' }}>
+        <span style={{
+          fontSize: 8, fontWeight: 700, padding: '2px 6px', borderRadius: 3,
+          background: 'rgba(148,163,184,0.12)', color: 'var(--text-muted)', letterSpacing: '0.1em',
+        }}>
+          CLEARED · PEAK RISK {Math.round(alert.peakRisk)}
+        </span>
+        <span style={{ fontSize: 9, color: 'var(--text-dim)' }}>{alert.faultSource}</span>
+        {alert.ecsAlarmCode && (
+          <span style={{ fontSize: 8, fontWeight: 700, padding: '1px 6px', borderRadius: 3, border: '1px solid var(--border-dim)', color: 'var(--text-muted)', letterSpacing: '0.08em' }}>
+            ECS: {alert.ecsAlarmCode}
+          </span>
+        )}
+        <span style={{ marginLeft: 'auto', fontSize: 9, color: 'var(--text-dim)' }}>
+          cleared {new Date(alert.clearedAt).toLocaleTimeString()} · active {activeSecs}s
+        </span>
+      </div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 2 }}>{alert.component}</div>
+      <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{alert.issue}</div>
+      {alert.maintenanceTask && (
+        <div style={{ fontSize: 8, color: 'var(--text-dim)', marginTop: 4 }}>{alert.maintenanceTask}</div>
+      )}
+    </div>
+  );
+}
+
 export function AlertAnalytics() {
   const { alerts, unacknowledgedCount } = useAlerts();
+  const { resolvedAlerts, clearResolved } = useAlertHistory();
   const { decision } = useEngine();
   const [filter, setFilter] = useState<'ALL' | 'ACTIVE' | 'ACKNOWLEDGED'>('ALL');
   const [severityFilter, setSeverityFilter] = useState<BaselineAlert['severity'] | 'ALL'>('ALL');
@@ -209,6 +247,9 @@ export function AlertAnalytics() {
   const shownDecision = focus
     ? decisionAlerts.filter(a => alertTextMatchesSensor(focus, [a.component, a.ecsAlarmCode, a.patternName, a.issue].filter(Boolean).join(' ')))
     : decisionAlerts;
+  const shownResolved = focus
+    ? resolvedAlerts.filter(a => alertTextMatchesSensor(focus, [a.component, a.ecsAlarmCode, a.patternName, a.issue].filter(Boolean).join(' ')))
+    : resolvedAlerts;
 
   const filtered = alerts.filter(a => {
     const ackOk = filter === 'ALL' ? true : filter === 'ACTIVE' ? !a.acknowledged : a.acknowledged;
@@ -290,7 +331,7 @@ export function AlertAnalytics() {
         </div>
       </div>
 
-      {/* LIVE tab — decision engine alerts */}
+      {/* LIVE tab — decision engine alerts + cleared-alert history */}
       {tab === 'LIVE' && (
         <div>
           {shownDecision.length === 0 ? (
@@ -306,12 +347,35 @@ export function AlertAnalytics() {
                 {focus ? 'No live alerts for this sensor' : 'All subsystems nominal'}
               </div>
               <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-                {focus ? 'Clear the focus filter to see all live alerts.' : 'No active fault patterns. Decision engine is monitoring all sensors.'}
+                {shownResolved.length > 0
+                  ? 'No active fault patterns right now — recently cleared alerts are in the history below.'
+                  : focus ? 'Clear the focus filter to see all live alerts.' : 'No active fault patterns. Decision engine is monitoring all sensors.'}
               </div>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {shownDecision.map((a, i) => <DecisionAlertCard key={i} alert={a} />)}
+            </div>
+          )}
+
+          {/* History window — alerts that were active and cleared (e.g. fault injection reset). */}
+          {shownResolved.length > 0 && (
+            <div style={{ marginTop: shownDecision.length ? 22 : 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', color: 'var(--text-muted)' }}>
+                  HISTORY · CLEARED ALERTS
+                </span>
+                <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 7px', borderRadius: 8, background: 'rgba(148,163,184,0.12)', color: 'var(--text-muted)' }}>
+                  {shownResolved.length}
+                </span>
+                <div style={{ flex: 1, height: 1, background: 'var(--border-dim)' }} />
+                <button onClick={clearResolved} className="mag-btn mag-btn-ghost" style={{ fontSize: 9, padding: '3px 9px' }}>
+                  CLEAR
+                </button>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {shownResolved.map(a => <ResolvedAlertCard key={a.id} alert={a} />)}
+              </div>
             </div>
           )}
         </div>

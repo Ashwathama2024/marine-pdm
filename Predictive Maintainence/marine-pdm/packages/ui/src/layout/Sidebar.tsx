@@ -6,6 +6,7 @@ import { useEngine } from '../context/EngineContext';
 import { STATE_BADGE } from '@marine-pdm/simulator';
 import type { EngineState } from '@marine-pdm/simulator';
 import { useSimulatorControl } from '../context/SimulatorControlContext';
+import { JarvisIcon } from '../components/JarvisIcon';
 
 function Icon({ d, size = 16 }: { d: string; size?: number }) {
   return (
@@ -170,7 +171,7 @@ export function Sidebar({ collapsed, onToggle }: Props) {
                   background: `rgba(${item.glow},0.10)`, border: `1px solid rgba(${item.glow},0.20)`,
                   color: item.color, transition: 'all 0.2s',
                 }}>
-                  <Icon d={item.icon} size={14} />
+                  {item.to === '/ai' ? <JarvisIcon size={14} mono /> : <Icon d={item.icon} size={14} />}
                 </span>
                 <span className="nav-label" style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
                   {item.label}
