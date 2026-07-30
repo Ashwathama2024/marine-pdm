@@ -13,6 +13,7 @@ import type { DegradationEvent } from '../context/DegradationContext';
 import type { BaselineAlert } from '../context/AlertContext';
 import type { ToolDef } from './openai-client';
 import { getSelfInfo, getFeatureGuide, getHowToTest } from './jarvis-self-knowledge';
+import { r, stats, downsample, forecastFrom, FORECAST_LIMITS, FORECAST_METRICS } from './forecast';
 
 const CYL_NAMES = MTU8000.CYL_NAMES as readonly string[];
 
@@ -43,23 +44,8 @@ const TREND_MAP: Record<string, { key: keyof SensorHistory; baseKey?: keyof Sens
 };
 const TREND_METRICS = Object.keys(TREND_MAP);
 
-const r = (x: number, d = 2) => (Number.isFinite(x) ? Number(x.toFixed(d)) : null);
 const asNum = (v: unknown, dflt: number) => (typeof v === 'number' && Number.isFinite(v) ? v : dflt);
 const asStr = (v: unknown) => (typeof v === 'string' ? v : '');
-
-function stats(ys: number[]) {
-  const n = ys.length;
-  const mean = ys.reduce((a, b) => a + b, 0) / n;
-  const mx = (n - 1) / 2;
-  let num = 0, den = 0;
-  for (let i = 0; i < n; i++) { num += (i - mx) * (ys[i]! - mean); den += (i - mx) ** 2; }
-  return { n, first: ys[0]!, last: ys[n - 1]!, min: Math.min(...ys), max: Math.max(...ys), mean, slope: den ? num / den : 0 };
-}
-function downsample(a: number[], max: number): number[] {
-  if (a.length <= max) return a;
-  const step = a.length / max;
-  return Array.from({ length: max }, (_, i) => a[Math.floor(i * step)]!);
-}
 
 function getTrend(args: Record<string, unknown>, ctx: ToolContext): string {
   const metric = asStr(args.metric);
@@ -140,61 +126,9 @@ function getAlerts(ctx: ToolContext): string {
 }
 
 // ── FUTURE: project a metric to its coded alarm band ──────────────────────────────
-// Each entry pairs a history series with the MTU8000_LIMITS thresholds that govern it. Only metrics
-// with a real coded alarm band are forecastable — everything else stays a get_trend question.
+// The series math, the MTU8000_LIMITS pairings and the ETA projection all live in ./forecast —
+// shared with the sensor-diagnosis payload and the training recorder.
 const L = MTU8000_LIMITS;
-type ForecastLimit = { key: keyof SensorHistory; unit: string; label: string; hi?: number; ss?: number; lo?: number; dir: 'high' | 'low' };
-const FORECAST_LIMITS: Record<string, ForecastLimit> = {
-  exhaust:            { key: 'exhaustTemp',       unit: '°C',   label: 'Mean exhaust temp',      dir: 'high', hi: L.exhaust.mean_hi,                          ss: L.exhaust.critical_max },
-  jacket:            { key: 'jacketOutlet',       unit: '°C',   label: 'Jacket / coolant temp',  dir: 'high', hi: L.cooling.coolant_temp_after_engine_max,    ss: L.cooling.coolant_temp_ss },
-  chargeAirTemp:      { key: 'chargeAirTemp',     unit: '°C',   label: 'Charge-air temp',        dir: 'high', hi: L.chargeAir.temp_after_intercooler_hi,      ss: L.chargeAir.temp_after_intercooler_max },
-  tcSpeed:            { key: 'tcRPM',             unit: 'RPM',  label: 'TC speed (overspeed)',   dir: 'high', hi: L.turbocharger.speed_overspeed_l1,          ss: L.turbocharger.speed_overspeed_l2 },
-  lube:               { key: 'lubeOilPressure',   unit: 'bar',  label: 'LO gallery pressure',    dir: 'low',  lo: L.lubeOil.pressure_before_filter_min },
-  pistonCoolingPress: { key: 'pistonCoolingPress', unit: 'bar', label: 'Piston-cooling pressure', dir: 'low', lo: L.lubeOil.piston_cooling_min },
-  systemRisk:         { key: 'systemRisk',        unit: '0–100', label: 'System risk',           dir: 'high', hi: 70,                                          ss: 90 },
-};
-const FORECAST_METRICS = Object.keys(FORECAST_LIMITS);
-const SLOPE_TICKS = 30; // recent window used to estimate the current rate
-
-// ETA (minutes) until `current` crosses `threshold`, given slope/min and travel direction.
-function eta(current: number, threshold: number | undefined, slopePerMin: number, dir: 'high' | 'low'): number | null {
-  if (threshold === undefined) return null;
-  if (dir === 'high') {
-    if (current >= threshold) return 0;
-    if (slopePerMin <= 0) return null;         // stable / falling → never (at this rate)
-    return (threshold - current) / slopePerMin;
-  } else {
-    if (current <= threshold) return 0;
-    if (slopePerMin >= 0) return null;
-    return (current - threshold) / (-slopePerMin);
-  }
-}
-
-function forecastFrom(series: number[], lim: { unit: string; label: string; hi?: number; ss?: number; lo?: number; dir: 'high' | 'low' }, horizonMin: number): Record<string, unknown> {
-  const recent = series.slice(-SLOPE_TICKS);
-  const st = stats(recent);
-  const slopePerMin = st.slope * 60;
-  const current = st.last;
-  const target = lim.dir === 'high' ? lim.hi : lim.lo;
-  const critical = lim.dir === 'high' ? lim.ss : undefined;
-  const etaHi = eta(current, target, slopePerMin, lim.dir);
-  const etaSs = eta(current, critical, slopePerMin, lim.dir);
-  const trendWord = Math.abs(slopePerMin) < 1e-6 ? 'flat'
-    : (lim.dir === 'high' ? (slopePerMin > 0 ? 'rising toward alarm' : 'falling away from alarm')
-       : (slopePerMin < 0 ? 'falling toward alarm' : 'rising away from alarm'));
-  return {
-    metric: lim.label, unit: lim.unit, ticksUsed: st.n,
-    current: r(current), slopePerMin: r(slopePerMin, 3),
-    alarmThreshold: target ?? null, shutdownThreshold: critical ?? null, direction: lim.dir,
-    projectedIn: { minutes: horizonMin, value: r(current + slopePerMin * horizonMin) },
-    etaToAlarmMin: etaHi === null ? null : Number(etaHi.toFixed(1)),
-    etaToShutdownMin: etaSs === null ? null : Number(etaSs.toFixed(1)),
-    verdict: etaHi === 0 ? 'already in alarm band'
-      : etaHi === null ? `${trendWord} — not projected to reach the alarm band at the current rate`
-      : `${trendWord} — projected to reach the alarm band in ~${etaHi.toFixed(1)} min at the current rate`,
-    note: 'linear projection from the recent slope; a fault accelerating non-linearly will cross sooner.',
-  };
-}
 
 function getForecast(args: Record<string, unknown>, ctx: ToolContext): string {
   const horizonMin = Math.min(Math.max(asNum(args.horizonMin, 15), 1), 120);
@@ -354,10 +288,10 @@ export const JARVIS_TOOLS: ToolDef[] = [
     type: 'function',
     function: {
       name: 'get_feature_guide',
-      description: 'Guide to the app\'s pages/features. Omit topic for the full app map, or pass a page name (e.g. "simulator", "degradation") for that page. Use to help the user navigate or find where to do something.',
+      description: 'Guide to the app\'s pages AND to its predictive-data features. Omit topic for the full app map, or pass a page name ("simulator", "degradation", "training") for that page. ALSO pass a concept to explain how it works: "severity ramp" (why a fault develops over time, and why one injected while declutched stays inert), "training data" (the labelled per-tick dataset, its persistence and CSV export), "rulTrue" / "RUL" (the exact analytic label vs the naive minsToAlarm baseline, and why null is a legitimate answer), "analyze with AI" (the blind per-sensor diagnosis and why it is not told the injected fault). Prefer this over explaining any of those from memory.',
       parameters: {
         type: 'object',
-        properties: { topic: { type: 'string', description: 'Optional page name or route to focus on.' } },
+        properties: { topic: { type: 'string', description: 'Optional page name, route, or concept ("severity ramp", "training data", "rulTrue", "analyze with AI").' } },
         additionalProperties: false,
       },
     },

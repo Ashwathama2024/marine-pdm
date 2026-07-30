@@ -7,6 +7,7 @@ import {
   createFaultConfig,
 } from '@marine-pdm/simulator';
 import type { FaultConfig, FaultSpeed } from '@marine-pdm/simulator';
+import { isRampMode, setRampMode, subscribeRampMode, initialSeverity } from '../services/ramp-mode';
 
 // F01 and F07 (requiresCylSelect) are handled by CylinderInjectorPanel
 const SCENARIO_FAULTS = FAULT_DEFINITIONS.filter(f => !f.requiresCylSelect);
@@ -44,14 +45,16 @@ export function FaultInjector({ engine, activeFaultIds, onActiveFaultIdsChange, 
   const [selectedBearing, setSelectedBearing] = useState<number>(0);
   const [selectedTC, setSelectedTC]           = useState<number>(0);
   const [compoundMode, setCompoundMode]       = useState(false);
+  const [rampMode, setRampModeState]          = useState(isRampMode);
+
+  // Ramp mode is shared with the cylinder injector and read by the training recorder, so mirror the
+  // module state rather than owning it.
+  React.useEffect(() => subscribeRampMode(() => setRampModeState(isRampMode())), []);
 
   const faultDef = SCENARIO_FAULTS.find(f => f.id === selectedFaultId)!;
 
-  const alarmPreviews = getECSAlarmPreview(
-    selectedFaultId,
-    intensity / 100,
-    intensity,
-  );
+  // intensity/100 is the saturated severity — preview the alarms the fault ends at, not mid-ramp.
+  const alarmPreviews = getECSAlarmPreview(selectedFaultId, intensity / 100);
   const impactItems = getParameterImpactPreview(selectedFaultId, intensity);
 
   function activateFault() {
@@ -63,7 +66,8 @@ export function FaultInjector({ engine, activeFaultIds, onActiveFaultIdsChange, 
     const config: FaultConfig = createFaultConfig(selectedFaultId, {
       intensity,
       speed,
-      currentSeverity: intensity / 100,   // immediate full effect at chosen intensity
+      // Ramp on → start at 0 and grow at FAULT_GROWTH_RATES[speed]; off → immediate full effect.
+      currentSeverity: initialSeverity(intensity),
       targetBearing: faultDef.requiresBearingSelect ? selectedBearing : undefined,
       targetTC: faultDef.requiresTCSelect ? selectedTC : undefined,
     });
@@ -294,6 +298,29 @@ export function FaultInjector({ engine, activeFaultIds, onActiveFaultIdsChange, 
                 Compound fault active — decision engine will attempt to discriminate root cause.
               </div>
             )}
+          </div>
+        </label>
+
+        {/* Severity ramp toggle — governs both this panel and the cylinder injector */}
+        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={rampMode}
+            onChange={e => setRampMode(e.target.checked)}
+            style={{ marginTop: 2, accentColor: 'var(--accent-teal, var(--risk-normal))' }}
+          />
+          <div>
+            <div className="label-sm">
+              Severity Ramp
+              <span style={{ fontSize: 9, color: 'var(--text-dim)', marginLeft: 6, letterSpacing: 0 }}>
+                makes SLOW / MED / FAST actually do something
+              </span>
+            </div>
+            <div style={{ fontSize: 9, color: rampMode ? 'var(--risk-normal)' : '#f59e0b', marginTop: 2, lineHeight: 1.5 }}>
+              {rampMode
+                ? `Severity starts at 0 and grows to ${intensity}% over ${SPEEDS.find(s => s.key === speed)?.timeToMax ?? '—'} — the incipient phase is recorded, so training data can support prediction.`
+                : 'Severity jumps straight to the cap (demo mode). Alarms fire at once, but every recorded sample sits at a fully-developed fault.'}
+            </div>
           </div>
         </label>
 

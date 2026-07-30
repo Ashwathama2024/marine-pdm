@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import { useAlerts, type BaselineAlert } from '../context/AlertContext';
 import { useAlertHistory, type ResolvedLiveAlert } from '../context/AlertHistoryContext';
 import { useEngine } from '../context/EngineContext';
-import { useGPTAnalysis } from '../hooks/useGPTAnalysis';
-import { buildAlertNarrativePrompt } from '../services/prompts';
+import { useSensorAnalysis } from '../hooks/useSensorAnalysis';
+import { buildAlertNarrativePrompt, buildAlertNarrativeSystemPrompt } from '../services/prompts';
 import { getCauseChain } from '../services/cause-chains';
+import { getSensorMeta } from '../services/sensor-map';
 import { buildContextString, loadDocuments } from '../services/knowledge-store';
 import { isOpenAIConfigured } from '../services/openai-client';
 import type { FaultAlert } from '@marine-pdm/shared';
@@ -50,23 +51,27 @@ function typeLabel(t: BaselineAlert['type']): string {
 
 function AlertCard({ alert }: { alert: BaselineAlert }) {
   const { acknowledge, setNarrative } = useAlerts();
-  const { analyze, result, analyzing, error } = useGPTAnalysis();
+  const { analyze, result, analyzing, error } = useSensorAnalysis();
   const [expanded, setExpanded] = useState(false);
   const col = severityColor(alert.severity);
-  const physRange = PHYS_RANGES[alert.sensorId] ?? 100;
   const durationMins = (alert.durationTicks * 1000) / 60000;
 
-  function handleAnalyze() {
+  async function handleAnalyze() {
     const chain = getCauseChain(SENSOR_ID_MAP[alert.sensorId] ?? alert.sensorId);
     const ctx = buildContextString(loadDocuments());
-    analyze(buildAlertNarrativePrompt(
-      typeLabel(alert.type), alert.severity, alert.label,
-      alert.deviation, '', alert.deviationPct,
-      durationMins, alert.trend, chain, ctx,
-    )).then(() => {
-      if (result) setNarrative(alert.id, result);
-    });
     setExpanded(true);
+    // analyze() resolves with the text. The old hook resolved void, so the previous
+    // `.then(() => { if (result) … })` read `result` from a stale render closure — always '' — and
+    // the narrative was never persisted onto the alert.
+    const text = await analyze(
+      buildAlertNarrativeSystemPrompt(),
+      buildAlertNarrativePrompt(
+        typeLabel(alert.type), alert.severity, alert.label,
+        alert.deviation, getSensorMeta(alert.sensorId)?.unit ?? '', alert.deviationPct,
+        durationMins, alert.trend, chain, ctx,
+      ),
+    );
+    if (text) setNarrative(alert.id, text);
   }
 
   const narrative = alert.aiNarrative ?? result ?? '';

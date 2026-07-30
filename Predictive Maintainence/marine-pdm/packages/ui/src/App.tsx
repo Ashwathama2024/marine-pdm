@@ -10,6 +10,7 @@ import { BaselineEditorPage } from './pages/BaselineEditorPage';
 import { Management } from './pages/Management';
 import { Simulator } from './pages/Simulator';
 import { DegradationBI } from './pages/DegradationBI';
+import { TrainingData } from './pages/TrainingData';
 import { AnalysisWorkspace } from './pages/AnalysisWorkspace';
 import { HelpManual } from './pages/HelpManual';
 import { AboutPage } from './pages/AboutPage';
@@ -194,6 +195,7 @@ export default function App() {
                 <Route path="/table"       element={<DeviationTable />} />
                 <Route path="/alerts"      element={<AlertAnalytics />} />
                 <Route path="/degradation" element={<DegradationBI />} />
+                <Route path="/training"    element={<TrainingData />} />
                 <Route path="/knowledge"   element={<KnowledgeBase />} />
                 <Route path="/baselines"   element={<BaselineEditorPage />} />
                 <Route path="/management"  element={<Management />} />

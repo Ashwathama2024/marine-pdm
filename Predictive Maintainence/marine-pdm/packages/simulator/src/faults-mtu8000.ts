@@ -3,6 +3,8 @@
 // speed (SLOW/MEDIUM/FAST) controls. Replaces the 3 generic faults from v1.0.
 // PDF upgrade spec §5.
 
+import { MTU8000_LIMITS } from '@marine-pdm/shared';
+import { crankcasePressure_MTU8000 } from './mtu8000-physics';
 import type { PhysicsState } from './physics';
 
 export type FaultSpeed = 'SLOW' | 'MEDIUM' | 'FAST';
@@ -35,12 +37,22 @@ export const FAULT_MAX_EFFECTS = {
   F05_cooling_eff_drop:     0.25, // coolingEff: 1.0 → 0.75
   F06_tc_eff_drop:          0.40, // tcEff: 1.0 → 0.60
   F07_spray_erratic_amp:    30,   // °C peak-to-peak oscillation on top of F01
+  F07_blowby_coupling:      0.3,  // fraction of severity F07 leaks into pistonBlowby (see note below)
   F08_blowby_pressure:      8,    // mbar crankcase pressure rise
   F09_multi_injector_delta: 55,   // °C per B-side cylinder (mirror of F02)
 } as const;
 
-// Actual effect = currentSeverity × (intensity / 100) × maxEffect
-// Intensity slider limits the maximum; speed controls how fast it reaches that maximum.
+// F07's crankcase term is DELIBERATELY sub-alarm. At coupling 0.3 its ceiling is
+// `crankcasePressure(85, 0) + 0.3·8` ≈ 1.68 mbar against a 5 mbar HI limit, so it can never trip
+// HI P-Crankcase at any intensity — that is the intent, not a miscalibration. The rest of the system
+// reads it as a RATE tell, not an alarm: P07 matches on `crankcaseRate > 0.05` (patterns-mtu8000.ts)
+// and only P08 carries `ecsAlarmCode: 'HI P-Crankcase'`. Raising this coupling until F07 trips the
+// alarm would collapse the P07/P08 discrimination, which separates on exactly this axis.
+
+// Actual effect = currentSeverity × maxEffect
+// Intensity is applied exactly ONCE, as the severity cap: `tickFaultsMTU8000` grows currentSeverity
+// toward intensity/100 and then uses it directly (`const s = f.currentSeverity`). Speed controls how
+// fast it reaches that cap. Never multiply an effect by intensity/100 again — that squares it.
 
 // ── FAULT DEFINITIONS (metadata for UI and decision engine) ───────────────────
 export interface FaultDefinition {
@@ -232,8 +244,8 @@ export function tickFaultsMTU8000(
         for (const ci of cyls) {
           updatedState.injFaults[ci] = Math.max(updatedState.injFaults[ci] ?? 0, s * 0.8);
         }
-        // Crankcase pressure rises slightly with erratic spray
-        pistonBlowbyLevel = Math.max(pistonBlowbyLevel, s * 0.3);
+        // Crankcase pressure rises slightly with erratic spray — sub-alarm by design
+        pistonBlowbyLevel = Math.max(pistonBlowbyLevel, s * FAULT_MAX_EFFECTS.F07_blowby_coupling);
         break;
       }
       case 'F08': {
@@ -284,18 +296,31 @@ export function resetFaultSeverity(fault: FaultConfig): FaultConfig {
 }
 
 // ── ECS ALARM PREVIEW: which alarms fire at current severity ──────────────────
+// Rated load the preview is evaluated at (same operating point the matrix weights use).
+const RATED_LOAD_PCT = 85;
+
+// Crankcase is an ABSOLUTE-limit alarm but this preview works in RISES, so the coded limit has to be
+// converted into the rise required from the healthy rated value (≈ −0.725 mbar, i.e. 5.725 mbar of
+// rise — not 5). Comparing the rise straight to `pressure_hi` ignored that offset and tripped F08
+// ~9 intensity points early. Derived from the physics so it can't drift.
+const CRANKCASE_HI_RISE =
+  MTU8000_LIMITS.crankcase.pressure_hi - crankcasePressure_MTU8000(RATED_LOAD_PCT, 0);
+
 export interface ECSAlarmPreview {
   code: string;
   active: boolean;
   approaching: boolean;  // within 80% of threshold
 }
 
+// `severity` is the ONLY intensity-bearing input: it is already capped at intensity/100 by
+// `tickFaultsMTU8000`, so it is used as-is against the same maxEffects the physics applies. Callers
+// previewing the eventual (saturated) alarm state pass intensity/100 — matching
+// `getParameterImpactPreview`, so both previews describe the same operating point.
 export function getECSAlarmPreview(
   faultId: string,
-  severity: number,        // 0–1 actual current severity
-  intensity: number,       // 0–100 slider
+  severity: number,        // 0–1 severity (already capped at intensity/100)
 ): ECSAlarmPreview[] {
-  const eff = severity * (intensity / 100);
+  const eff = severity;
   const alarms: ECSAlarmPreview[] = [];
 
   switch (faultId) {
@@ -304,9 +329,9 @@ export function getECSAlarmPreview(
       const delta = eff * FAULT_MAX_EFFECTS.F01_injector_temp_delta;
       alarms.push({ code: 'HI T-Exhaust Cyl N', active: delta >= 40, approaching: delta >= 30 });
       alarms.push({ code: 'HI T-Exhaust Mean', active: delta >= 20, approaching: delta >= 15 });
-      if (faultId === 'F07') {
-        alarms.push({ code: 'HI P-Crankcase', active: eff * 2.4 >= 5, approaching: eff * 2.4 >= 3 });
-      }
+      // F07 deliberately carries NO crankcase alarm row: its blow-by ceiling (~1.68 mbar) sits far
+      // below the 5 mbar HI limit, so listing the code here advertised an alarm that can never fire.
+      // The effect is real and is surfaced in getParameterImpactPreview instead.
       break;
     }
     case 'F02': {
@@ -342,7 +367,12 @@ export function getECSAlarmPreview(
     }
     case 'F08': {
       const pRise = eff * FAULT_MAX_EFFECTS.F08_blowby_pressure;
-      alarms.push({ code: 'HI P-Crankcase', active: pRise >= 5, approaching: pRise >= 3 });
+      // 0.6 preserves the pre-alarm's original proportion of the trip point (the old pair was 3/5).
+      alarms.push({
+        code: 'HI P-Crankcase',
+        active: pRise >= CRANKCASE_HI_RISE,
+        approaching: pRise >= CRANKCASE_HI_RISE * 0.6,
+      });
       break;
     }
     case 'F09': {
@@ -356,10 +386,14 @@ export function getECSAlarmPreview(
 }
 
 // ── PARAMETER IMPACT PREVIEW ──────────────────────────────────────────────────
-// Returns human-readable delta strings at current intensity for the UI table.
+// Returns human-readable delta strings for the UI table. Takes the raw slider (0–100) rather than a
+// live severity by design: it previews the SATURATED effect — where the fault ends up once severity
+// has grown to its intensity/100 cap — which is what the operator is choosing when they move the
+// slider, not the mid-ramp value. `s = intensity / 100` IS that cap severity, so intensity is still
+// applied exactly once here.
 export function getParameterImpactPreview(
   faultId: string,
-  intensity: number,  // 0–100
+  intensity: number,  // 0–100 slider
 ): string[] {
   const s = intensity / 100;
   const items: string[] = [];
@@ -373,7 +407,12 @@ export function getParameterImpactPreview(
       items.push(`B4.N ${dT > 0 ? '+' : ''}${dT} °C`);
       items.push(`SFOC +${dSfoc} g/kWh`);
       items.push(`Rail P -${dRail} bar`);
-      if (faultId === 'F07') items.push(`B4.N oscillation ±${Math.round(s * 30)} °C`);
+      if (faultId === 'F07') {
+        items.push(`B4.N oscillation ±${Math.round(s * FAULT_MAX_EFFECTS.F07_spray_erratic_amp)} °C`);
+        // Sub-alarm by design — shown here precisely because it never reaches the ECS alarm preview.
+        const dCrank = s * FAULT_MAX_EFFECTS.F08_blowby_pressure * FAULT_MAX_EFFECTS.F07_blowby_coupling;
+        items.push(`B50 +${dCrank.toFixed(1)} mbar (below alarm)`);
+      }
       break;
     }
     case 'F02': {

@@ -65,7 +65,7 @@ export function CylinderFaultPopup({ cylIndex, currentFault, onInject, onClear, 
 
   const lbl           = intensityLabel(intensity);
   const hasActive     = currentFault !== undefined;
-  const alarmPreviews = getECSAlarmPreview(faultType, intensity / 100, intensity);
+  const alarmPreviews = getECSAlarmPreview(faultType, intensity / 100);
   const impactItems   = getParameterImpactPreview(faultType, intensity);
 
   return (

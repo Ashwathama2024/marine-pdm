@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, CartesianGrid } from 'recharts';
-import { useEngine } from '../context/EngineContext';
-import { useGPTAnalysis } from '../hooks/useGPTAnalysis';
-import { buildSensorAnalysisPrompt } from '../services/prompts';
-import { getCauseChain } from '../services/cause-chains';
+import { engine, useEngine } from '../context/EngineContext';
+import { useSensorAnalysis } from '../hooks/useSensorAnalysis';
+import { buildDiagnosisSystemPrompt, buildSensorDiagnosisPrompt } from '../services/prompts';
+import { buildSensorEvidence } from '../services/sensor-evidence';
 import { buildContextString, loadDocuments } from '../services/knowledge-store';
 import { isOpenAIConfigured } from '../services/openai-client';
 import { useSensorFocus } from '../context/SensorFocusContext';
@@ -35,20 +35,18 @@ const PHYS_RANGES: Record<string, number> = {
 };
 
 function SensorDeviationCard({
-  row, history, baseHistory, load, rpm,
+  row, history, baseHistory,
 }: {
   row: SensorRow;
   history: number[];
   baseHistory: number[];
-  load: number;
-  rpm: number;
 }) {
   const [showAI, setShowAI] = useState(false);
-  const { analyze, result, analyzing, error } = useGPTAnalysis();
+  const { analyze, result, analyzing, error } = useSensorAnalysis();
+  const eng = useEngine();
   const deviation = row.actual - row.expected;
   const physRange = PHYS_RANGES[row.histKey] ?? 100;
   const col = deviationColor(deviation, physRange);
-  const devPct = (deviation / physRange) * 100;
 
   const len = Math.max(history.length, baseHistory.length);
   const chartData = Array.from({ length: len }, (_, i) => ({
@@ -65,13 +63,15 @@ function SensorDeviationCard({
   const maxDev = recent.reduce((m, v, i) => Math.max(m, Math.abs(v - (baseHistory[baseHistory.length - 30 + i] ?? v))), 0);
 
   function handleAnalyze() {
-    const chain = getCauseChain(row.sensorId);
-    const ctx = buildContextString(loadDocuments());
-    analyze(buildSensorAnalysisPrompt(
-      row.sensorId, row.label, row.unit,
-      row.actual, row.expected, deviation, devPct,
-      0, load, rpm, chain, ctx,
-    ));
+    if (!eng.snapshot || !eng.baseline) return;
+    const evidence = buildSensorEvidence({
+      sensorId: row.sensorId,
+      snapshot: eng.snapshot, baseline: eng.baseline, history: eng.history, decision: eng.decision,
+      rootFactors: engine.getRootFactors(),
+      engineState: eng.engineState,
+      knowledgeContext: buildContextString(loadDocuments()),
+    });
+    void analyze(buildDiagnosisSystemPrompt(), buildSensorDiagnosisPrompt(evidence));
     setShowAI(true);
   }
 
@@ -193,8 +193,6 @@ export function DeviationDashboard() {
               row={row}
               history={history[row.histKey as keyof typeof history] as number[]}
               baseHistory={history[row.baseKey as keyof typeof history] as number[]}
-              load={snapshot.load}
-              rpm={snapshot.rpm}
             />
           ))}
         </div>

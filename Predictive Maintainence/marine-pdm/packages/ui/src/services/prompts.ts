@@ -91,79 +91,130 @@ Using the LIVE ENGINE STATE above, explain in 1–2 short sentences what just ha
 matters physically (name the affected sensors and the causal path). No preamble.`;
 }
 
-export function buildSensorAnalysisPrompt(
-  sensorId: string,
-  displayName: string,
-  unit: string,
-  actual: number,
-  baseline: number,
-  deviation: number,
-  deviationPct: number,
-  rate: number,
-  load: number,
-  rpm: number,
-  causeChain: CauseChain | null,
-  knowledgeContext: string,
-): string {
-  const dir = deviation > 0 ? 'HIGH' : 'LOW';
-  const causeText = causeChain
-    ? (deviation > 0 ? causeChain.highDeviation : causeChain.lowDeviation)
-    : null;
+// ── Diagnosis contract (sensor popup / deviation table / alert analytics) ─────────
+//
+// The previous versions of these three builders asked for "a 3-4 sentence technical analysis" over
+// five loose numbers. That reliably produced textbook prose, because there was nothing engine-specific
+// to say. Two things changed: the DATA block is now assembled by services/sensor-evidence.ts (matrix
+// ∂ weights, coded thresholds, real slope, live cross-correlations), and the output is a fixed contract
+// with a hard word budget and an explicit refusal path — so a data-poor case returns INSUFFICIENT
+// instead of being padded out with generic advice.
 
-  return `${ROLE}
+const DIAGNOSTIC_ROLE = `You are the diagnostic engine of an MTU 20V 8000 M71 predictive-maintenance system: a marine chief engineer's instrument, not a chatbot. You reason ONLY from the numeric evidence supplied to you. You are terse to the point of bluntness. An operator reads your output mid-watch and acts on it.`;
 
-SENSOR: ${displayName} (${sensorId})
-Current: ${actual.toFixed(2)} ${unit}
-Baseline: ${baseline.toFixed(2)} ${unit}
-Deviation: ${deviation > 0 ? '+' : ''}${deviation.toFixed(2)} ${unit} (${deviationPct > 0 ? '+' : ''}${deviationPct.toFixed(1)}%) — ${dir}
-Trend: ${rate > 0 ? '+' : ''}${rate.toFixed(3)} ${unit}/tick
-Engine load: ${load.toFixed(0)}%  RPM: ${rpm.toFixed(0)}
+const CONTRACT_RULES = `HARD RULES — a violation makes the output useless:
+1. Every numeric value you state MUST appear verbatim in the DATA block. Never compute, average,
+   convert, interpolate or estimate a number. If a number you want is not in the DATA, omit it.
+2. Cite identifiers by their given values: fault ids F01–F09, pattern ids P01–P08, ECS alarm codes,
+   W-number work orders, and thresholds.
+3. ELIMINATE, don't speculate. Each candidate fault lists the other sensors it MUST also move. If
+   those live readings do not show the predicted direction, rule that candidate out and name the
+   reading that killed it. Prefer one confidently-eliminated-down answer over three maybes.
+4. Never cite an alarm threshold, ETA or action window that the DATA block does not contain. If it
+   says the sensor has no coded alarm band, do not invent one.
+5. If the DATA does not support a diagnosis, reply with exactly one line and nothing else:
+   INSUFFICIENT: <the single measurement or elapsed observation time that would settle it>
+6. Forbidden: preamble, restating the question, closing summaries, "it is important to", "consider",
+   "may indicate" where a supplied weight settles the direction, and any maintenance advice not tied
+   to a specific fault id or work order in the DATA.`;
 
-${causeText ? `Known physical principle: ${causeText.principle}
-Likely causes ranked: ${causeText.causes.slice(0, 3).join('; ')}` : ''}
+/** System message for the single-sensor diagnosis. Static — safe to cache/reuse across calls. */
+export function buildDiagnosisSystemPrompt(): string {
+  return `${DIAGNOSTIC_ROLE}
 
-${knowledgeContext ? `VESSEL KNOWLEDGE BASE:\n${knowledgeContext}\n` : ''}
+Reply in EXACTLY these four labelled lines, in this order, nothing before or after:
 
-Provide a 3-4 sentence technical analysis:
-1. What this deviation means physically for this engine
-2. Most likely root cause given the operating point
-3. Recommended immediate action and timeframe`;
+VERDICT: <what this is, carrying the one number that drives it>
+MECHANISM: <root factor -> intermediate -> this sensor, using the supplied partial-derivative weights>
+CAUSE: <ranked, max 2, each <=12 words and each naming a fault id>
+ACTION: <one specific action, with the time window>
+
+${CONTRACT_RULES}
+
+Total budget: 90 words. Under budget is better.`;
+}
+
+/** User message for the single-sensor diagnosis — the DATA block from buildSensorEvidence(). */
+export function buildSensorDiagnosisPrompt(evidence: string): string {
+  return `=== DATA (the complete evidence available; nothing outside this block is known) ===
+${evidence}
+
+=== TASK ===
+Diagnose the sensor under diagnosis. Obey the four-line contract.`;
+}
+
+/** System message for the whole-engine batch analysis across every deviating sensor. */
+export function buildSystemDiagnosisSystemPrompt(): string {
+  return `${DIAGNOSTIC_ROLE}
+
+You are looking at every sensor at once, so your job is DISCRIMINATION: isolated component fault vs
+subsystem-wide vs whole-engine. A single root factor moving many sensors together is one fault, not many.
+
+Reply in EXACTLY these four labelled lines, nothing before or after:
+
+SCOPE: <ISOLATED | SUBSYSTEM | ENGINE-WIDE> — <the primary subsystem, and the sensor that localises it>
+MECHANISM: <the one root factor that explains the most deviations, and its propagation path>
+CAUSE: <ranked, max 2, each <=12 words and each naming a fault id>
+ACTION: <what to check first, with the time window>
+
+${CONTRACT_RULES}
+
+Total budget: 110 words. Under budget is better.`;
 }
 
 export function buildBatchDeviationPrompt(
   deviations: Array<{
-    sensorId: string;
-    displayName: string;
-    unit: string;
-    actual: number;
-    baseline: number;
-    deviation: number;
-    deviationPct: number;
-    risk: number;
+    sensorId: string; displayName: string; unit: string;
+    actual: number; baseline: number; deviation: number; deviationPct: number; risk: number;
   }>,
   load: number,
   rpm: number,
+  engineState: string,
+  rootFactorLines: string,
+  decisionLines: string,
   knowledgeContext: string,
 ): string {
   const rows = deviations
-    .filter(d => Math.abs(d.deviationPct) > 1)
-    .map(d => `  ${d.displayName}: actual=${d.actual.toFixed(2)} ${d.unit}, baseline=${d.baseline.toFixed(2)}, dev=${d.deviation > 0 ? '+' : ''}${d.deviation.toFixed(2)} (${d.deviationPct > 0 ? '+' : ''}${d.deviationPct.toFixed(1)}%), risk=${d.risk.toFixed(0)}`)
+    .map(d => `  ${d.displayName} (${d.sensorId}): ${d.actual.toFixed(2)} ${d.unit}, base ${d.baseline.toFixed(2)}, ` +
+              `Δ${d.deviation > 0 ? '+' : ''}${d.deviation.toFixed(2)} (${d.deviationPct > 0 ? '+' : ''}${d.deviationPct.toFixed(1)}% of physical range), risk ${d.risk.toFixed(0)}/100`)
     .join('\n');
 
-  return `${ROLE}
+  return `=== DATA (the complete evidence available; nothing outside this block is known) ===
 
-ENGINE STATE — Load: ${load.toFixed(0)}%  RPM: ${rpm.toFixed(0)}
+## Operating point
+engine state ${engineState}, load ${load.toFixed(0)}%, ${rpm.toFixed(0)} RPM
+(all baselines below are already load/RPM-corrected — a deviation is NOT explained by operating point)
 
-SENSOR DEVIATIONS:
+## All sensor deviations, worst first
 ${rows}
 
-${knowledgeContext ? `VESSEL KNOWLEDGE BASE:\n${knowledgeContext}\n` : ''}
+## Live root-factor state (latent degradation variables)
+${rootFactorLines}
 
-Analyze the pattern across all sensors:
-1. Is this an isolated fault or systemic issue? Which subsystem is primary?
-2. What is the most likely root cause linking these deviations?
-3. Priority action: what should the engineer check first and within what timeframe?
-Keep response under 200 words.`;
+## Decision engine
+${decisionLines}
+${knowledgeContext ? `\n## Vessel documents\n${knowledgeContext}` : ''}
+
+=== TASK ===
+Classify the scope and name the single root factor that best explains the set. Obey the four-line contract.`;
+}
+
+/** System message for an operator-facing narrative on one baseline-deviation alert. */
+export function buildAlertNarrativeSystemPrompt(): string {
+  return `${DIAGNOSTIC_ROLE}
+
+This is an alert already raised by the rules engine. Do not re-derive it — explain what it means
+operationally and whether it warrants acting on now.
+
+Reply in EXACTLY these three labelled lines, nothing before or after:
+
+MEANING: <what this alert means for the plant, carrying the driving number>
+WHY FLAGGED: <which of deviation / duration / trend tripped it, with the values>
+ACTION: <one specific action, with the time window — or "monitor only" plus the trigger to escalate>
+
+${CONTRACT_RULES}
+
+Total budget: 70 words. Under budget is better.`;
 }
 
 export function buildAlertNarrativePrompt(
@@ -180,21 +231,22 @@ export function buildAlertNarrativePrompt(
 ): string {
   const causeText = causeChain ? (deviation > 0 ? causeChain.highDeviation : causeChain.lowDeviation) : null;
 
-  return `${ROLE}
+  return `=== DATA (the complete evidence available; nothing outside this block is known) ===
 
-ALERT: ${alertType} on ${sensorDisplay}
-Severity: ${severity}
-Deviation: ${deviation > 0 ? '+' : ''}${deviation.toFixed(2)} ${unit} (${deviationPct > 0 ? '+' : ''}${deviationPct.toFixed(1)}%) for ${durationMins.toFixed(0)} minutes
-Trend slope: ${trend > 0 ? '+' : ''}${trend.toFixed(4)} ${unit}/tick
+## Alert
+type          ${alertType} on ${sensorDisplay}
+severity      ${severity}
+deviation     ${deviation > 0 ? '+' : ''}${deviation.toFixed(2)} ${unit} (${deviationPct > 0 ? '+' : ''}${deviationPct.toFixed(1)}% of physical range)
+duration      ${durationMins.toFixed(0)} min sustained
+trend         ${trend > 0 ? '+' : ''}${trend.toFixed(4)} ${unit}/tick
 
-${causeText ? `Baseline physical principle: ${causeText.principle}
-Top causes: ${causeText.causes.slice(0, 3).join('; ')}
-Action window guidance: ${causeText.actionWindow}` : ''}
+${causeText ? `## Reference principle for this sensor going ${deviation > 0 ? 'HIGH' : 'LOW'}
+${causeText.principle}
+documented causes: ${causeText.causes.slice(0, 3).join(' | ')}
+documented action window: ${causeText.actionWindow}`
+  : '## Reference principle\nNone on file for this sensor. Do not invent an action window.'}
+${knowledgeContext ? `\n## Vessel documents\n${knowledgeContext}` : ''}
 
-${knowledgeContext ? `VESSEL KNOWLEDGE BASE:\n${knowledgeContext}\n` : ''}
-
-Write a 2-3 sentence alert narrative:
-1. Plain-language explanation of what this alert means operationally
-2. Why the AI engine flagged it (deviation + duration + trend)
-3. Specific recommended action with timeframe`;
+=== TASK ===
+Explain this alert to the watchkeeper. Obey the three-line contract.`;
 }

@@ -1,13 +1,19 @@
 import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from 'react';
 import type { FaultAlert } from '@marine-pdm/shared';
 import { useEngine } from './EngineContext';
+import { putEpisodes, listEpisodes } from '../services/training-store';
+import { getCurrentRun } from '../services/training-recorder';
 
 // Live decision-engine alerts (DecisionOutput.alerts) are recomputed every tick and are NOT persisted:
 // the moment a fault injection is reset, they vanish with no trace, which confuses the operator ("what
 // was that alert I just saw?"). This provider watches the live alert set and, when an alert that WAS
-// active disappears, moves it into a persisted HISTORY window — so a cleared alert is shown as "cleared"
-// on the Alert page rather than silently disappearing. History survives navigation (provider sits above
-// the routes) and is capped to keep memory bounded.
+// active disappears, moves it into a HISTORY window — so a cleared alert is shown as "cleared" on the
+// Alert page rather than silently disappearing. The window is capped to keep memory bounded.
+//
+// Resolved alerts are ALSO written through to the training store's `episodes` table. A ResolvedLiveAlert
+// is already an episode record in all but name — it has the pattern id, the ECS code, the work order,
+// the peak risk and the active window — so it is the labelled-event view of the same runs the
+// per-tick recorder captures, and it used to die on every reload.
 
 export interface ResolvedLiveAlert {
   id: string;                 // unique per resolution
@@ -85,8 +91,28 @@ export function AlertHistoryProvider({ children }: { children: React.ReactNode }
     }
 
     active.current = nextActive;
-    if (cleared.length) setResolvedAlerts(prev => [...cleared, ...prev].slice(0, MAX_HISTORY));
+    if (cleared.length) {
+      setResolvedAlerts(prev => [...cleared, ...prev].slice(0, MAX_HISTORY));
+      // Durable write-through, tagged with the run that produced it so an episode can be joined back
+      // to its per-tick rows. Failures are swallowed: losing an episode must not break the alert page.
+      const runId = getCurrentRun()?.runId ?? null;
+      void putEpisodes(cleared.map(c => ({ ...c, runId }))).catch(() => { /* non-fatal */ });
+    }
   }, [decision]);
+
+  // Rehydrate the in-memory window from the store on mount, so a reload no longer starts blank.
+  useEffect(() => {
+    void listEpisodes()
+      .then(rows => {
+        const past = (rows as unknown as ResolvedLiveAlert[])
+          .filter(r => typeof r.clearedAt === 'number')
+          .sort((a, b) => b.clearedAt - a.clearedAt)
+          .slice(0, MAX_HISTORY);
+        // Prepend anything this session already resolved — it is newer than everything on disk.
+        setResolvedAlerts(prev => [...prev, ...past.filter(p => !prev.some(x => x.id === p.id))].slice(0, MAX_HISTORY));
+      })
+      .catch(() => { /* store unavailable — history is simply session-only */ });
+  }, []);
 
   const clearResolved = useCallback(() => setResolvedAlerts([]), []);
 

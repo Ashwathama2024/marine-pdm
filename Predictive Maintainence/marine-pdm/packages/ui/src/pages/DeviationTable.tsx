@@ -1,11 +1,15 @@
 import React, { useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { useEngine } from '../context/EngineContext';
-import { useGPTAnalysis } from '../hooks/useGPTAnalysis';
-import { buildSensorAnalysisPrompt, buildBatchDeviationPrompt } from '../services/prompts';
-import { getCauseChain } from '../services/cause-chains';
+import { engine, useEngine } from '../context/EngineContext';
+import { useSensorAnalysis } from '../hooks/useSensorAnalysis';
+import {
+  buildDiagnosisSystemPrompt, buildSensorDiagnosisPrompt,
+  buildSystemDiagnosisSystemPrompt, buildBatchDeviationPrompt,
+} from '../services/prompts';
+import { buildSensorEvidence, describeRootFactors, describeDecision } from '../services/sensor-evidence';
 import { buildContextString, loadDocuments } from '../services/knowledge-store';
 import { isOpenAIConfigured } from '../services/openai-client';
+import { toCsvRow, downloadCsv } from '../services/csv';
 import { useSensorFocus } from '../context/SensorFocusContext';
 
 interface DeviationRow {
@@ -51,18 +55,20 @@ function devColor(dev: number, physRange: number): string {
   return '#00D4AA';
 }
 
-function RowAI({ row, load, rpm }: { row: DeviationRow; load: number; rpm: number }) {
+function RowAI({ row }: { row: DeviationRow }) {
   const [expanded, setExpanded] = useState(false);
-  const { analyze, result, analyzing, error } = useGPTAnalysis();
+  const { analyze, result, analyzing, error } = useSensorAnalysis();
+  const { snapshot, baseline, history, decision, engineState } = useEngine();
 
   function handleAnalyze() {
-    const chain = getCauseChain(row.sensorId);
-    const ctx = buildContextString(loadDocuments());
-    analyze(buildSensorAnalysisPrompt(
-      row.sensorId, row.label, row.unit,
-      row.actual, row.baseline, row.deviation, row.deviationPct,
-      row.rate, load, rpm, chain, ctx,
-    ));
+    if (!snapshot || !baseline) return;
+    const evidence = buildSensorEvidence({
+      sensorId: row.sensorId, snapshot, baseline, history, decision,
+      rootFactors: engine.getRootFactors(),
+      engineState,
+      knowledgeContext: buildContextString(loadDocuments()),
+    });
+    void analyze(buildDiagnosisSystemPrompt(), buildSensorDiagnosisPrompt(evidence));
     setExpanded(true);
   }
 
@@ -110,8 +116,8 @@ function RowAI({ row, load, rpm }: { row: DeviationRow; load: number; rpm: numbe
 }
 
 export function DeviationTable() {
-  const { snapshot, baseline, decision, history } = useEngine();
-  const { analyze: analyzeAll, result: batchResult, analyzing: batchAnalyzing, reset } = useGPTAnalysis();
+  const { snapshot, baseline, decision, history, engineState } = useEngine();
+  const { analyze: analyzeAll, result: batchResult, analyzing: batchAnalyzing, reset } = useSensorAnalysis();
   const { focus } = useSensorFocus();
 
   if (!snapshot || !baseline || !decision) {
@@ -151,21 +157,25 @@ export function DeviationTable() {
 
   function handleAnalyzeAll() {
     if (!snapshot) return;
-    const ctx = buildContextString(loadDocuments());
-    analyzeAll(buildBatchDeviationPrompt(
-      rows.map(r => ({ sensorId: r.sensorId, displayName: r.label, unit: r.unit, actual: r.actual, baseline: r.baseline, deviation: r.deviation, deviationPct: r.deviationPct, risk: r.risk })),
-      snapshot.load, snapshot.rpm, ctx,
-    ));
+    void analyzeAll(
+      buildSystemDiagnosisSystemPrompt(),
+      buildBatchDeviationPrompt(
+        rows.map(r => ({ sensorId: r.sensorId, displayName: r.label, unit: r.unit, actual: r.actual, baseline: r.baseline, deviation: r.deviation, deviationPct: r.deviationPct, risk: r.risk })),
+        snapshot.load, snapshot.rpm, engineState,
+        describeRootFactors(engine.getRootFactors()),
+        describeDecision(decision),
+        buildContextString(loadDocuments()),
+      ),
+    );
   }
 
   function exportCSV() {
-    const header = 'Sensor,Actual,Baseline,Deviation,Deviation%,Risk\n';
-    const body = rows.map(r => `${r.label},${r.actual},${r.baseline},${r.deviation.toFixed(3)},${r.deviationPct.toFixed(2)},${riskLabel(r.risk)}`).join('\n');
-    const blob = new Blob([header + body], { type: 'text/csv' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `deviation-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
+    const cols = ['Sensor', 'Actual', 'Baseline', 'Deviation', 'Deviation%', 'Risk'];
+    const lines = [toCsvRow(cols)];
+    for (const r of rows) {
+      lines.push(toCsvRow([r.label, r.actual, r.baseline, r.deviation.toFixed(3), r.deviationPct.toFixed(2), riskLabel(r.risk)]));
+    }
+    downloadCsv(`deviation-${new Date().toISOString().slice(0, 10)}.csv`, lines.join('\n'));
   }
 
   const chartData = rows.map(r => ({ name: r.label, dev: Math.abs(r.deviation), color: devColor(r.deviation, PHYS_RANGES[r.histKey as keyof typeof PHYS_RANGES] ?? 100) }));
@@ -231,7 +241,7 @@ export function DeviationTable() {
             </thead>
             <tbody>
               {(focus ? rows.filter(r => r.sensorId === focus) : rows).map(row => (
-                <RowAI key={row.sensorId} row={row} load={snapshot!.load} rpm={snapshot!.rpm} />
+                <RowAI key={row.sensorId} row={row} />
               ))}
             </tbody>
           </table>

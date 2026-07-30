@@ -1,10 +1,12 @@
 import React, { useEffect } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { getCauseChain } from '../services/cause-chains';
-import { useGPTAnalysis } from '../hooks/useGPTAnalysis';
-import { buildSensorAnalysisPrompt } from '../services/prompts';
+import { useSensorAnalysis } from '../hooks/useSensorAnalysis';
+import { buildDiagnosisSystemPrompt, buildSensorDiagnosisPrompt } from '../services/prompts';
 import { isOpenAIConfigured } from '../services/openai-client';
 import { buildContextString, loadDocuments } from '../services/knowledge-store';
+import { buildSensorEvidence } from '../services/sensor-evidence';
+import { engine, useEngine } from '../context/EngineContext';
 
 interface Props {
   sensorId: string;
@@ -15,8 +17,6 @@ interface Props {
   decimals?: number;
   history: number[];
   baselineHistory: number[];
-  load: number;
-  rpm: number;
   onClose: () => void;
 }
 
@@ -30,7 +30,7 @@ function riskColor(dev: number, physRange: number): string {
 
 export function SensorPopup({
   sensorId, label, unit, actual, expected, decimals = 2,
-  history, baselineHistory, load, rpm, onClose,
+  history, baselineHistory, onClose,
 }: Props) {
   const deviation = actual - expected;
   const physRange = Math.max(1, Math.max(...history, ...baselineHistory) - Math.min(...history, ...baselineHistory)) * 3;
@@ -38,7 +38,12 @@ export function SensorPopup({
   const chain = getCauseChain(sensorId);
   const dir = deviation > 0 ? 'highDeviation' : 'lowDeviation';
 
-  const { analyze, result, analyzing, error, reset } = useGPTAnalysis();
+  const { analyze, result, analyzing, error, reset } = useSensorAnalysis();
+  // Pulled from context rather than added as props: the diagnosis payload needs the whole engine
+  // state (coupled-sensor readings, decision output, root factors), not just this one sensor.
+  // `history` here is a number[] prop for this one sensor's chart; the context's SensorHistory is the
+  // whole multi-series buffer the evidence payload needs, so it is aliased to avoid shadowing.
+  const { snapshot, baseline, history: allHistory, decision, engineState } = useEngine();
 
   // Build chart data
   const len = Math.max(history.length, baselineHistory.length);
@@ -58,13 +63,14 @@ export function SensorPopup({
   }, [onClose]);
 
   function handleAnalyze() {
-    const context = buildContextString(loadDocuments());
-    const prompt = buildSensorAnalysisPrompt(
-      sensorId, label, unit, actual, expected, deviation,
-      (deviation / expected) * 100,
-      0, load, rpm, chain, context,
-    );
-    analyze(prompt);
+    if (!snapshot || !baseline) return;
+    const evidence = buildSensorEvidence({
+      sensorId, snapshot, baseline, history: allHistory, decision,
+      rootFactors: engine.getRootFactors(),
+      engineState,
+      knowledgeContext: buildContextString(loadDocuments()),
+    });
+    void analyze(buildDiagnosisSystemPrompt(), buildSensorDiagnosisPrompt(evidence));
   }
 
   return (
@@ -199,13 +205,18 @@ export function SensorPopup({
                 {analyzing ? 'Analyzing…' : result ? 'Reset' : 'Analyze with AI'}
               </button>
             ) : (
-              <span style={{ fontSize: 9, color: 'var(--text-dim)' }}>Set VITE_OPENAI_API_KEY to enable</span>
+              <span style={{ fontSize: 9, color: 'var(--text-dim)' }}>Add an API key on the JARVIS page to enable</span>
             )}
           </div>
           {error && <div style={{ fontSize: 10, color: 'var(--risk-critical)' }}>{error}</div>}
           {result && <div className="ai-stream">{result}</div>}
           {!result && !error && !analyzing && (
-            <div className="ai-placeholder">Click "Analyze with AI" for root-cause analysis by GPT-4o.</div>
+            <div className="ai-placeholder">
+              Click "Analyze with AI" for a blind root-cause diagnosis — the model receives this sensor's
+              deviation and rate, the coded MTU alarm band, the ∂sensor/∂root-factor weights of every fault
+              that can move it, and the live readings of the sensors those faults must also move. It is not
+              told which fault is injected.
+            </div>
           )}
           {analyzing && !result && (
             <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Generating analysis…</div>

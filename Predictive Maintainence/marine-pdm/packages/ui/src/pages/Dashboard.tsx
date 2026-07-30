@@ -13,34 +13,10 @@ import { CylinderDegradationPopup } from '../simulator/CylinderDegradationPopup'
 import { CylinderTrendPopup } from '../dashboard/CylinderTrendPopup';
 import { useEngine } from '../context/EngineContext';
 import { useDegradation, type DegradationEvent } from '../context/DegradationContext';
+import { SENSOR_META, sensorLabel } from '../services/sensor-map';
 
-type SnapKey  = keyof import('@marine-pdm/shared').EngineSnapshot;
-type BaseKey  = keyof import('@marine-pdm/shared').BaselineSnapshot;
-
-interface SensorMeta {
-  unit: string;
-  decimals: number;
-  histKey: string;
-  baseKey: string;
-  snapKey: SnapKey;
-  baselineKey: BaseKey;
-}
-
-const SENSOR_META: Record<string, SensorMeta> = {
-  'ME.ExhaustTemp':        { unit: '°C',    decimals: 1, histKey: 'exhaustTemp',        baseKey: 'baseExhaust',            snapKey: 'exhaustTemp',        baselineKey: 'expectedExhaust' },
-  'ME.LubeOilPressure':    { unit: 'bar',   decimals: 2, histKey: 'lubeOilPressure',    baseKey: 'baseLube',               snapKey: 'lubeOilPressure',    baselineKey: 'expectedLube' },
-  'ME.FuelRack':           { unit: 'mm',    decimals: 1, histKey: 'fuelRack',           baseKey: 'baseFuelRack',           snapKey: 'fuelRack',           baselineKey: 'expectedFuelRack' },
-  'ME.ScavengeAirPressure':{ unit: 'bar',   decimals: 2, histKey: 'scavengeAir',        baseKey: 'baseScavenge',           snapKey: 'scavengeAir',        baselineKey: 'expectedScavenge' },
-  'ME.TCSpeed':            { unit: 'RPM',   decimals: 0, histKey: 'tcRPM',             baseKey: 'baseTcRPM',              snapKey: 'tcRPM',              baselineKey: 'expectedTcRPM' },
-  'ME.JacketCoolingOutlet':{ unit: '°C',    decimals: 1, histKey: 'jacketOutlet',       baseKey: 'baseJacket',             snapKey: 'jacketOutlet',       baselineKey: 'expectedJacket' },
-  'ME.SFOC':               { unit: 'g/kWh', decimals: 1, histKey: 'sfoc',              baseKey: 'baseSfoc',               snapKey: 'sfoc',               baselineKey: 'expectedSfoc' },
-  'ME.ChargeAirTemp':      { unit: '°C',    decimals: 1, histKey: 'chargeAirTemp',      baseKey: 'baseChargeAirTemp',      snapKey: 'chargeAirTemp',      baselineKey: 'expectedChargeAirTemp' },
-  'ME.FuelOilPressure':    { unit: 'bar',   decimals: 2, histKey: 'fuelOilPressure',    baseKey: 'baseFuelOilPressure',    snapKey: 'fuelOilPressure',    baselineKey: 'expectedFuelOilPressure' },
-  'ME.FuelOilTemp':        { unit: '°C',    decimals: 1, histKey: 'fuelOilTemp',        baseKey: 'baseFuelOilTemp',        snapKey: 'fuelOilTemp',        baselineKey: 'expectedFuelOilTemp' },
-  'ME.LOFilterDP':         { unit: 'bar',   decimals: 3, histKey: 'loFilterDP',         baseKey: 'baseLoFilterDP',         snapKey: 'loFilterDP',         baselineKey: 'expectedLoFilterDP' },
-  'ME.PistonCoolingPress': { unit: 'bar',   decimals: 2, histKey: 'pistonCoolingPress', baseKey: 'basePistonCoolingPress', snapKey: 'pistonCoolingPress', baselineKey: 'expectedPistonCoolingPress' },
-  'ME.ShaftPower':         { unit: 'kW',    decimals: 0, histKey: 'shaftPower',         baseKey: 'baseShaftPower',         snapKey: 'shaftPower',         baselineKey: 'expectedShaftPower' },
-};
+// SENSOR_META moved to services/sensor-map.ts — the AI diagnosis payload and the training recorder
+// resolve the same sensor ids, so the table is shared rather than duplicated per consumer.
 
 // ── Degradation banner (shown for each ACTIVE degradation event) ─────────────
 function DegradationBanner({ event, onAcknowledge }: {
@@ -152,8 +128,8 @@ export function Dashboard() {
   const meta           = selectedSensor ? SENSOR_META[selectedSensor] : null;
   const popupActual    = meta ? (snapshot[meta.snapKey] as number) : 0;
   const popupExpected  = meta ? (baseline[meta.baselineKey] as number) : 0;
-  const popupHist      = meta ? (history[meta.histKey as keyof typeof history] as number[]) : [];
-  const popupBaseHist  = meta ? (history[meta.baseKey  as keyof typeof history] as number[]) : [];
+  const popupHist      = meta ? (history[meta.histKey] as number[]) : [];
+  const popupBaseHist  = meta ? (history[meta.baseKey] as number[]) : [];
 
   const bankMeanForCyl = (idx: number) => {
     const bank = idx < 10
@@ -291,15 +267,13 @@ export function Dashboard() {
       {selectedSensor && selectedSensor !== 'ME.SFOC' && meta && (
         <SensorPopup
           sensorId={selectedSensor}
-          label={selectedSensor.replace('ME.', '').replace(/([A-Z])/g, ' $1').trim()}
+          label={sensorLabel(selectedSensor)}
           unit={meta.unit}
           decimals={meta.decimals}
           actual={popupActual}
           expected={popupExpected}
           history={popupHist}
           baselineHistory={popupBaseHist}
-          load={snapshot.load}
-          rpm={snapshot.rpm}
           onClose={() => setSelectedSensor(null)}
         />
       )}

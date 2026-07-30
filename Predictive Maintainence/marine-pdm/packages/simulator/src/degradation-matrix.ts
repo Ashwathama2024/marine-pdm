@@ -123,7 +123,7 @@ export const DEGRADATION_MODES: DegradationMode[] = [
     effects: [
       { sensorId: 'cylTemps[n]',       kind: 'PRIMARY',   weight: FAULT_MAX_EFFECTS.F01_injector_temp_delta * 0.8, unit: '°C',   modeled: true, physicsRef: 'F07 sets inj = sev·0.8' },
       { sensorId: 'cylTemps[n]',       kind: 'SECONDARY', weight: FAULT_MAX_EFFECTS.F07_spray_erratic_amp,        unit: '°C pk-pk', modeled: true, via: 'oscillation', physicsRef: 'snapshot-time ± oscillation' },
-      { sensorId: 'crankcasePressure', kind: 'SECONDARY', weight: 8 * 0.3, unit: 'mbar', modeled: true, via: 'pistonBlowby', physicsRef: 'F07 pistonBlowby = sev·0.3 → crankcase·8' },
+      { sensorId: 'crankcasePressure', kind: 'SECONDARY', weight: FAULT_MAX_EFFECTS.F08_blowby_pressure * FAULT_MAX_EFFECTS.F07_blowby_coupling, unit: 'mbar', modeled: true, via: 'pistonBlowby', physicsRef: 'F07 pistonBlowby = sev·F07_blowby_coupling → crankcase·8; sub-alarm by design' },
       { sensorId: 'sfoc',              kind: 'SECONDARY', weight: 4.5,     unit: 'g/kWh', modeled: true, physicsRef: 'sfoc injFaultPenalty' },
     ],
   },

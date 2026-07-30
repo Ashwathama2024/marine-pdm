@@ -12,6 +12,7 @@ import { StartAirGauge } from '../simulator/StartAirGauge';
 import { sensorRegistry } from '../simulator/registry';
 import { createFaultConfig } from '@marine-pdm/simulator';
 import type { FaultSpeed } from '@marine-pdm/simulator';
+import { initialSeverity } from '../services/ramp-mode';
 import type { CylFaultMap } from '../simulator/CylinderFaultPopup';
 
 function SectionDivider({ label, color }: { label: string; color: string }) {
@@ -70,7 +71,8 @@ export function Simulator() {
     const config = createFaultConfig(uniqueId, {
       intensity, speed,
       targetCyls: [cylIndex],
-      currentSeverity: intensity / 100,  // immediate full effect
+      // Shared with FaultInjector's Severity Ramp toggle — see services/ramp-mode.ts.
+      currentSeverity: initialSeverity(intensity),
     });
     engine.injectMTUFault(config);
     setCylFaultMap(prev => ({ ...prev, [cylIndex]: { faultType, intensity, speed, uniqueId } }));

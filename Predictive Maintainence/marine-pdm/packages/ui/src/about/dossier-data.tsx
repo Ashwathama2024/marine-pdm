@@ -16,7 +16,7 @@ import {
   exhaustTemp_MTU8000, cylExhaustTemp_MTU8000, lubeOilPressure_MTU8000, bearingTemp_MTU8000,
   chargeAirPressure_MTU8000, chargeAirTemp_MTU8000, lubeOilTemp_MTU8000, fuelRailPressure_MTU8000,
   sfoc_MTU8000, crankcasePressure_MTU8000, exhaustBackPressure_MTU8000, tcSpeed_MTU8000,
-  coolantPressure_MTU8000, fuelTemp_MTU8000, FAULT_DEFINITIONS,
+  coolantPressure_MTU8000, fuelTemp_MTU8000, FAULT_DEFINITIONS, FAULT_MAX_EFFECTS,
 } from '@marine-pdm/simulator';
 import { MTU8000, MTU8000_LIMITS, MTU8000_CYL_SPREAD, BSIDE_TEMP_BIAS } from '@marine-pdm/shared';
 import { DataTable, Hi, Code } from './AboutPrimitives';
@@ -462,8 +462,13 @@ export const DOSSIER_ENTRIES: DossierEntryData[] = [
     rated: <>≈{n(sCrank,2)} mbar at 85% load / 1150 RPM (normally negative — ventilation)</>,
     risesWhen: [
       <>Load increases (small effect, 1.5 mbar span)</>,
-      <>Piston blow-by — F08, up to +8 mbar at full severity (the dominant driver)</>,
-      <>Erratic injector spray — F07 carries a secondary blow-by term (+2.4 mbar at full severity)</>,
+      <>Piston blow-by — F08, up to +{n(FAULT_MAX_EFFECTS.F08_blowby_pressure, 0)} mbar at full severity
+        (the dominant driver, and the only fault that can trip HI P-Crankcase)</>,
+      <>Erratic injector spray — F07 carries a secondary blow-by term
+        (+{n(FAULT_MAX_EFFECTS.F08_blowby_pressure * FAULT_MAX_EFFECTS.F07_blowby_coupling, 1)} mbar at full
+        severity), which peaks around {n(sCrank + FAULT_MAX_EFFECTS.F08_blowby_pressure * FAULT_MAX_EFFECTS.F07_blowby_coupling, 1)} mbar
+        — <Hi>deliberately below the {MTU8000_LIMITS.crankcase.pressure_hi} mbar HI limit</Hi>, so it is a
+        diagnostic fingerprint, never an alarm</>,
     ],
     fallsWhen: [<>Blow-by severity reduces; ventilation restores the normal slight vacuum</>],
     cascadeConsequence: <>A sustained rise here — especially crossing from negative into positive — is the

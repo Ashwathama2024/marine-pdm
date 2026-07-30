@@ -32,6 +32,7 @@ const NAV_GROUPS: { group: string; items: { to: string; label: string; icon: str
       // Deviations / Table / Alerts / Degradation are now TABS inside the Analysis workspace (one screen, no hopping).
       { to: '/analysis',    label: 'Analysis',       icon: 'M3 3h7v7H3z M14 3h7v7h-7z M14 14h7v7h-7z M3 14h7v7H3z',                          color: '#38BDF8', glow: '56,189,248'  },
       { to: '/degradation', label: 'Degradation BI', icon: 'M13 17H3m10 0l-4-4m4 4l-4 4M21 7H11m10 0l-4-4m4 4l-4 4',                       color: '#F59E0B', glow: '245,158,11'  },
+      { to: '/training',    label: 'Training Data',  icon: 'M4 7V4h16v3 M9 20h6 M12 4v16 M4 12h4 M16 12h4',                               color: '#22D3EE', glow: '34,211,238'  },
       { to: '/knowledge',   label: 'Knowledge Base', icon: 'M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z', color: '#A78BFA', glow: '167,139,250' },
       { to: '/baselines',  label: 'Baselines',      icon: 'M3 3v18h18M7 16l4-4 4 4 5-5',                                                   color: '#10B981', glow: '16,185,129'  },
       { to: '/management', label: 'Management',     icon: 'M12 20h9 M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z',                color: '#6366F1', glow: '99,102,241'  },

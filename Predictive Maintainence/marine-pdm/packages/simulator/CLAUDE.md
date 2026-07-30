@@ -44,7 +44,7 @@ Tests in `tests/physics.test.ts` — run with `pnpm test` from this directory.
 | F04 | Bearing Overtemperature | Bearing N +45°C | SS T-Bearing N | >130°C |
 | F05 | HT Cooler Fouling | ALL 20 cyls hotter | HI T-Coolant | >100°C |
 | F06 | TC Fouling (One TC) | TC speed drops, back P rises | SD TC Speed | None |
-| F07 | Injector Spray Erratic | F01 + oscillation ±30°C | HI T-Exhaust Cyl N (osc) | >530°C |
+| F07 | Injector Spray Erratic | F01 + oscillation ±30°C (+ sub-alarm crankcase ≈+2.4 mbar) | HI T-Exhaust Cyl N (osc) | >530°C |
 | F08 | Piston Blow-by | Crankcase +8 mbar | HI P-Crankcase | None |
 
 **Key discrimination**: F05 raises ALL 20 cylinders; F01 raises exactly ONE.
@@ -137,6 +137,22 @@ The 6th param only ever receives `bearingFaults[i]` (F04) — F03 lube loss reac
 severity only added +20 °C and the **SS T-Bearing >130 °C trip never fired**. Now `·45` (matches
 `FAULT_MAX_EFFECTS.F04_bearing_temp_rise` and the matrix weight). Zero at healthy (`fault=0`) so rated
 bearing temps and the physics validation targets are unchanged.
+
+**ECS alarm preview works in RISES; crankcase alarms are ABSOLUTE — convert, don't compare**
+`getECSAlarmPreview` computes a delta from healthy (`eff × maxEffect`). `MTU8000_LIMITS.crankcase.pressure_hi`
+is an **absolute** 5 mbar, and healthy crankcase at rated is ≈ **−0.725 mbar**, so the rise needed is
+**5.725 mbar**, not 5. Comparing the rise straight to the limit made F08 trip at 63% intensity when the
+physics crosses at 72%. `CRANKCASE_HI_RISE` now derives this from `crankcasePressure_MTU8000` so it can't
+drift. Every other alarm in that switch uses hand-picked *delta* thresholds — only crankcase is pinned to a
+coded absolute limit.
+
+**F07's crankcase term is sub-alarm BY DESIGN — do not "fix" it by raising the coupling**
+F07 sets `pistonBlowby = sev × F07_blowby_coupling (0.3)`, ceiling ≈ **1.68 mbar** against the 5 mbar HI
+limit — it can never trip HI P-Crankcase at any intensity. That is intentional: the rest of the system reads
+it as a **rate** tell, not an alarm (`patterns-mtu8000.ts` P07 matches `crankcaseRate > 0.05`; only P08
+carries `ecsAlarmCode: 'HI P-Crankcase'`). P07 and P08 discriminate on exactly this axis, so raising the
+coupling until F07 trips the alarm would collapse that separation. The effect is surfaced in
+`getParameterImpactPreview` instead. Pinned by `tests/alarm-preview.test.ts`.
 
 **RateCalculator window = 15 samples (not 5)**
 With 5 samples, lube pressure noise (±0.05 bar) produces slopes ~0.9 bar/min → `scoreTrend≈100` → false WARNING. 15 samples reduces noise slope to ~0.18 bar/min → NORMAL.

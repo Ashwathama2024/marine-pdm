@@ -14,6 +14,7 @@ import { useManualOverride } from './ManualOverrideContext';
 import { useAlerts } from './AlertContext';
 import { sensorRegistry } from '../simulator/registry';
 import { recordDegradationSample } from '../services/degradation-regression';
+import { recordTrainingSample, startRun, endRun, getCurrentRun } from '../services/training-recorder';
 
 // Sensor tag → EngineSnapshot field (scalar sensors)
 const SENSOR_FIELD_MAP: Record<string, string> = {
@@ -271,7 +272,7 @@ export function EngineProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const rawSnapshot = useDataSource(src);
-  const { applyToSnapshot } = useManualOverride();
+  const { applyToSnapshot, overrides } = useManualOverride();
   // Apply sensor failure modes first, then manual value overrides on top
   const snapshot = rawSnapshot
     ? applyToSnapshot(applyRegistryToSnapshot(rawSnapshot))
@@ -288,7 +289,7 @@ export function EngineProvider({ children }: { children: React.ReactNode }) {
     return map;
   }, [snapshot]);
 
-  const { output: decision, baseline } = useDecision(snapshot);
+  const { output: decision, baseline, features } = useDecision(snapshot);
   const knowledge = useKnowledge();
   const { processSnapshot } = useAlerts();
 
@@ -334,11 +335,20 @@ export function EngineProvider({ children }: { children: React.ReactNode }) {
     const _currentState = engine.getEngineState();
     const _preOpStates = ['ENGINE_OFF', 'STANDBY', 'SAFETY_TURNING', 'CRANKING'];
     const _isRunning = !_preOpStates.includes(_currentState) && _currentState !== 'STOPPING';
+    const _wasRunning = wasRunningRef.current;   // captured before the assignment below
+
+    // Training-run lifecycle, strictly on the running EDGES. Opened here — BEFORE the recorder call
+    // further down — so the first running tick is captured rather than skipped for want of a run.
+    // Edge-triggering matters on the falling side too: testing `!_isRunning && getCurrentRun()` every
+    // tick fired endRun() once per second for as long as the engine sat stopped, and those overlapping
+    // async calls raced the next startRun(), leaving a run with zero rows.
+    if (_isRunning && !_wasRunning) startRun();
+    else if (!_isRunning && _wasRunning) void endRun();
 
     // Seed lagged baseline on the very first tick (harmless fallback) AND re-seed fresh every
     // time the engine transitions from pre-op/stopped into an operational state — so it always
     // starts from a real, current-conditions value instead of a stale pre-op snapshot.
-    if (!laggedBaselineRef.current || (_isRunning && !wasRunningRef.current)) {
+    if (!laggedBaselineRef.current || (_isRunning && !_wasRunning)) {
       laggedBaselineRef.current = {
         exhaust: baseline.expectedExhaust, lube: baseline.expectedLube,
         fuelRack: baseline.expectedFuelRack, scavenge: baseline.expectedScavenge,
@@ -434,7 +444,26 @@ export function EngineProvider({ children }: { children: React.ReactNode }) {
           crankcasePressure:       (snapshot.crankcasePressure as number) - healthyCrankcase,
         },
       });
+
+      // ── Training-data capture (durable) ─────────────────────────────────────
+      // Same tick, same lagged baselines, same fault-free physics references as above — but written
+      // to IndexedDB with the injected-fault ground truth and an analytic RUL attached. A run opens
+      // on the pre-op → running edge (below) and closes on the way back down.
+      if (features) {
+        recordTrainingSample({
+          snapshot, baseline, features, decision, history: h,
+          lagged: {
+            exhaust: lb.exhaust, jacket: lb.jacket, lube: lb.lube, tcRPM: lb.tcRPM,
+            chargeAirTemp: lb.chargeAirTemp, pistonCoolingPress: lb.pistonCoolingPress,
+          },
+          faults: engine.getMTUFaultList(),
+          rootFactors: rf,
+          engineState: _currentState,
+          degradedSensorIds: [...sensorRegistry.getActiveIds(), ...Object.keys(overrides)],
+        });
+      }
     }
+
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapshot]);
