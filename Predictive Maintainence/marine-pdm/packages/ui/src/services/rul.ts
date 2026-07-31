@@ -7,25 +7,26 @@
 // extrapolating a noisy slope. That exact value is the label; the noisy extrapolation
 // (forecast.minutesToAlarm) is recorded next to it as the naive baseline a learned model must beat.
 //
-// THE RELATION, and why this file does the arithmetic itself:
+// THE RELATION:
 //
 //   rootFactorValue = severity × rootMax          (tickFaultsMTU8000, e.g. F05: coolingEffDrop = s·0.25)
 //   deviation       = weight × rootFactorValue    (physics partial, e.g. targetCoolantTemp += drop·15)
-//                   = weight × severity × rootMax
+//                   = weight × severity × rootMax = predictEffect(mode, effect, severity)
 //
 // `severity` already carries the intensity cap — severityAt() returns min(rate·t, intensity/100) and
 // tickFaultsMTU8000 uses currentSeverity directly with no further intensity factor.
 //
-// The matrix ships a predictEffect() helper, but it returns `severity · (intensity/100) · weight`:
-// it applies intensity a second time and omits rootMax entirely, so for F05 at full severity it
-// returns 15 °C where the physics produces 3.75 °C. It is only referenced by a test that asserts
-// linearity rather than magnitude, which is how the error survived. Not calling it here is
-// deliberate — see the spawned task to fix it, after which this arithmetic should be replaced.
+// This file inverts that relation (solving for the severity at which `deviation` reaches the alarm
+// band), so it needs the slope rather than a point: `perSeverity` = deviation at severity 1.0 =
+// predictEffect(mode, effect, 1). Calling the matrix helper rather than re-deriving `weight · rootMax`
+// here is deliberate — the arithmetic previously lived in both places, and the magnitude assertions
+// that guard it (simulator/tests/degradation-matrix.test.ts) only cover predictEffect(). A local copy
+// would be free to drift away from the physics with no failing test.
 //
 // Verified: F05, weight 15 °C, rootMax 0.25, severity 1.0 → 3.75 °C, matching `(1−ce)·15` at
 // coolingEffDrop 0.25.
 
-import { DEGRADATION_MODES, ROOT_FACTORS, GROWTH_RATES } from '@marine-pdm/simulator';
+import { DEGRADATION_MODES, GROWTH_RATES, predictEffect } from '@marine-pdm/simulator';
 import type { FaultConfig } from '@marine-pdm/simulator';
 import { FORECAST_LIMITS } from './forecast';
 import { matrixIdsForForecastKey } from './sensor-map';
@@ -119,8 +120,8 @@ export function analyticRul(faults: FaultConfig[], forecastKey: string, healthyV
       .find(Boolean);
     if (!effect) continue;
 
-    const rootMax = ROOT_FACTORS[mode.rootFactor].rootMax;
-    const perSeverity = effect.weight * rootMax;          // sensor units per unit severity
+    // Sensor units per unit of severity — the deviation this effect produces at severity 1.0.
+    const perSeverity = predictEffect(mode, effect, 1);
     if (perSeverity === 0) continue;
 
     // Severity at which the accumulated deviation lands exactly on the threshold.
