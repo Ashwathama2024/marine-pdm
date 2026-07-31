@@ -272,6 +272,12 @@ export function recordTrainingSample(input: RecordInput): boolean {
 
   const row: TrainingSample = {
     runId: currentRun.runId,
+    // Stamped on every ROW, not just the run record, because the run record does not survive export.
+    // training-store.ts's schema note says "filter on schemaVersion before training" — that
+    // instruction was unfollowable from exported data, since the CSV/JSONL carry sample rows only.
+    // Mixing schema versions silently is exactly what made the previous capture untrainable, so the
+    // discriminator has to travel with the rows that would be mixed.
+    schemaVersion: SCHEMA_VERSION,
     t: snapshot.timestamp,
     tickIndex: tickIndex++,
     engineState: input.engineState,
@@ -308,10 +314,18 @@ export function recordTrainingSample(input: RecordInput): boolean {
     patternsFiring: decision.alerts.map(a => a.patternId).filter(Boolean).join('+'),
   };
 
-  // Three RUL columns per forecastable metric:
-  //   rulTrue_*      exact, solved from the linear model
-  //   minsToAlarm_*  the naive slope extrapolation a rules engine can already do
-  //   rulQuality_*   whether rulTrue_* can be trusted on THIS row
+  // Four RUL columns per forecastable metric:
+  //   rulTrue_*         exact, solved from the linear model
+  //   minsToAlarm_*     the naive slope extrapolation a rules engine can already do
+  //   rulQuality_*      whether rulTrue_* can be trusted on THIS row
+  //   rulLabelErrMin_*  the continuous quantity rulQuality_* is thresholded FROM
+  //
+  // The error-minutes column exists because the threshold it feeds — LABEL_ERROR_TOLERANCE_MIN, 0.5 —
+  // is an unmeasured judgement call, and validating it requires the distribution it cuts. That number
+  // was already computed on every row and discarded here, which made the check impossible to run from
+  // exported data: too tight silently discards good rows, too loose silently passes poison, and
+  // neither shows up in rulQuality_* alone. Recording it lets the cut be re-chosen from evidence, and
+  // re-derived at any other tolerance without re-collecting.
   //
   // The quality column is not optional bookkeeping. rulTrue_* is solved from the LAGGED baseline, and
   // that baseline is re-seeded onto the live faulted reading whenever rpm dips below 300, then takes
@@ -330,14 +344,19 @@ export function recordTrainingSample(input: RecordInput): boolean {
     row[`minsToAlarm_${key}`] = fx(minutesToAlarm(series, key) ?? undefined, 2);
 
     if (detail && healthy !== undefined && input.instantBaseline) {
-      const { quality } = classifyRulQuality({
+      const { quality, errorMinutes } = classifyRulQuality({
         forecastKey: key, detail, healthyUsed: healthy, instant: input.instantBaseline,
       });
       row[`rulQuality_${key}`] = quality;
+      // null is meaningful here, not missing: labelErrorMinutes() returns null when the label has no
+      // sensitivity to distort (no fault, no driving effect, no band), which is different from an
+      // error of zero. Keep them distinguishable in the export.
+      row[`rulLabelErrMin_${key}`] = errorMinutes === null ? null : fx(errorMinutes, 3);
     } else {
       // No instant baseline means the gap is unmeasurable, so trustworthiness is unknown — say so
       // rather than defaulting to OK, which would launder unverified rows into the training set.
       row[`rulQuality_${key}`] = detail ? 'UNKNOWN' : null;
+      row[`rulLabelErrMin_${key}`] = null;
     }
   }
 

@@ -21,7 +21,11 @@ export const DB_VERSION = 1;
 //   2 → added rulQuality_<key> per forecast key. Version-1 rows carry rulTrue_* with NO statement of
 //       whether the label was solved from a settled baseline, so they cannot be distinguished from
 //       trustworthy version-2 rows on content alone. Filter on schemaVersion before training.
-export const SCHEMA_VERSION = 2;
+//   3 → added rulLabelErrMin_<key>, the continuous label-error minutes that rulQuality_* is
+//       thresholded from. Version-2 rows carry the verdict but not the quantity, so the tolerance
+//       (LABEL_ERROR_TOLERANCE_MIN) cannot be re-validated or re-chosen from them — only v3 rows
+//       support that analysis.
+export const SCHEMA_VERSION = 3;
 
 export interface TrainingRun {
   runId: string;
@@ -39,6 +43,8 @@ export interface TrainingRun {
 export interface TrainingSample {
   runId: string;
   t: number;                       // snapshot.timestamp — the compound key's second half
+  /** SCHEMA_VERSION at write time. Per-row so exports stay self-describing — see the note above. */
+  schemaVersion: number;
   [column: string]: number | string | null;
 }
 
