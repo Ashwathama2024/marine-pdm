@@ -17,6 +17,7 @@ import {
   chargeAirPressure_MTU8000, chargeAirTemp_MTU8000, lubeOilTemp_MTU8000, fuelRailPressure_MTU8000,
   sfoc_MTU8000, crankcasePressure_MTU8000, exhaustBackPressure_MTU8000, tcSpeed_MTU8000,
   coolantPressure_MTU8000, fuelTemp_MTU8000, FAULT_DEFINITIONS, FAULT_MAX_EFFECTS,
+  DEGRADATION_MODES, predictEffect,
 } from '@marine-pdm/simulator';
 import { MTU8000, MTU8000_LIMITS, MTU8000_CYL_SPREAD, BSIDE_TEMP_BIAS } from '@marine-pdm/shared';
 import { DataTable, Hi, Code } from './AboutPrimitives';
@@ -65,6 +66,33 @@ function band(rows: (React.ReactNode)[][]): React.ReactNode {
 function couple(name: string, direction: CoupledParam['direction'], note: string, anchorId?: string): CoupledParam {
   return { name, direction, note, anchorId: anchorId ? `dossier-${anchorId}` : undefined };
 }
+
+/**
+ * The deviation a fault mode produces on one sensor at severity 1.0, read live from the degradation
+ * matrix (`weight · rootMax`) via the same helper the magnitude assertions in
+ * `simulator/tests/degradation-matrix.test.ts` pin against a real fault tick.
+ *
+ * WHY THIS IS A FUNCTION AND NOT A TYPED NUMBER: five entries below used to quote the bare `weight`
+ * — F05 coolant "+15 °C", F05 SFOC "+18", F06 SFOC "+25", F06 back-pressure "+40" — which silently
+ * drops `rootMax`. That is 1.0 for four of the six root factors, so the shortcut looked right
+ * everywhere it was checked; but it is 0.25 for `coolingEff` and 0.40 for `tcEff`, making exactly the
+ * F05 and F06 claims 4x and 2.5x too large. It is the same omission that made `predictEffect()`
+ * itself wrong until `defadec`. Computing it keeps this file's header promise ("can never numerically
+ * drift from the code") true for fault magnitudes, not just rated points.
+ *
+ * Throws rather than returning 0: a missing effect means a sensorId was renamed, and a dossier that
+ * quietly claims "+0 °C at full severity" is worse than one that fails loudly on first render.
+ */
+function atFullSeverity(modeId: string, sensorId: string): number {
+  const mode = DEGRADATION_MODES.find(m => m.id === modeId);
+  const effect = mode?.effects.find(e => e.sensorId === sensorId && e.modeled);
+  if (!mode || !effect) throw new Error(`dossier-data: no modeled effect for ${modeId} → ${sensorId}`);
+  return predictEffect(mode, effect, 1);
+}
+const f05Coolant = atFullSeverity('F05', 'coolantTempAfterEngine');
+const f05Sfoc    = atFullSeverity('F05', 'sfoc');
+const f06Sfoc    = atFullSeverity('F06', 'sfoc');
+const f06BackP   = atFullSeverity('F06', 'exhaustBackPressure');
 
 // ── The 13 dossier entries ──────────────────────────────────────────────────────────
 export interface DossierEntryData extends ParameterDossierProps {
@@ -267,7 +295,7 @@ export const DOSSIER_ENTRIES: DossierEntryData[] = [
     rated: <>≈{n(sCoolant,0)}°C at 85% load / 1150 RPM</>,
     risesWhen: [
       <>Load increases (dominant term, 55°C span)</>,
-      <>The HT cooler fouls — F05, <Code>coolingEff</Code> drops toward 0.75, worth +15°C at full severity</>,
+      <>The HT cooler fouls — F05, <Code>coolingEff</Code> drops toward 0.75, worth +{n(f05Coolant, 2)}°C at full severity</>,
     ],
     fallsWhen: [<>Load drops, or HT cooler efficiency recovers</>],
     cascadeConsequence: <>This is the mechanistically <em>true</em> root signal for HT-cooler fouling — every
@@ -351,7 +379,7 @@ export const DOSSIER_ENTRIES: DossierEntryData[] = [
       couple('Charge-Air Pressure', 'lowers', 'same tcEff root — falls together', 'chargeair'),
       couple('Exhaust Back-Pressure', 'raises', 'restricted flow when TC fouls', 'backpressure'),
       couple('Mean Exhaust Temp', 'raises', 'reduced charge-air density raises combustion temp', 'exhaust'),
-      couple('SFOC', 'raises', 'TC fouling is a real efficiency loss, up to +25 g/kWh at full severity', 'sfoc'),
+      couple('SFOC', 'raises', `TC fouling is a real efficiency loss, up to +${n(f06Sfoc, 0)} g/kWh at full severity`, 'sfoc'),
     ],
     alarmBand: band([
       ['Overspeed L1 (yellow)', `${MTU8000_LIMITS.turbocharger.speed_overspeed_l1.toLocaleString()} RPM`],
@@ -426,8 +454,8 @@ export const DOSSIER_ENTRIES: DossierEntryData[] = [
     rated: <>≈{n(sSfoc,0)} g/kWh at 85% load / 1150 RPM</>,
     risesWhen: [
       <>Load or RPM moves away from its efficient point</>,
-      <>Cooling loss (F05, +18 g/kWh at full severity)</>,
-      <>TC fouling (F06, +25 g/kWh — the single largest efficiency penalty in the model)</>,
+      <>Cooling loss (F05, +{n(f05Sfoc, 1)} g/kWh at full severity)</>,
+      <>TC fouling (F06, +{n(f06Sfoc, 0)} g/kWh — the single largest efficiency penalty in the model)</>,
       <>Piston blow-by (F08, +2 g/kWh)</>,
       <>Any injector fault (+4.5 g/kWh per faulted cylinder)</>,
     ],
@@ -499,7 +527,7 @@ export const DOSSIER_ENTRIES: DossierEntryData[] = [
     rated: <>≈{n(sBackP,0)} mbar at 85% load / 1150 RPM</>,
     risesWhen: [
       <>Load and RPM increase (90 mbar combined span)</>,
-      <>A turbocharger fouls — F06, restricted flow adds up to +40 mbar at full severity</>,
+      <>A turbocharger fouls — F06, restricted flow adds up to +{n(f06BackP, 0)} mbar at full severity</>,
     ],
     fallsWhen: [<>TC efficiency recovers, or load/RPM decrease</>],
     cascadeConsequence: <>This entry exists in the dossier purely as a corroborator, and is worth including
