@@ -67,10 +67,25 @@ validated against the physics by `tests/degradation-matrix.test.ts`.
 
 **Principle (linear → regression-friendly):**
 ```
-effect_on_sensor = severity(t) · (intensity/100) · weight
+effect_on_sensor = severity(t) · rootMax · weight
 severity(t)      = min(GROWTH_RATE[speed] · t , intensity/100)
 ```
 `weight` = the physics partial `∂sensor/∂rootFactor` at the rated point (85 % load, 1150 RPM).
+`rootMax` = `ROOT_FACTORS[mode.rootFactor].rootMax`, the root factor's span at severity 1.0
+(`FAULT_MAX_EFFECTS`) — 1.0 for `injFault`/`lubeFault`/`bearingFault`/`pistonBlowby`, but **0.25** for
+`coolingEff` and **0.40** for `tcEff`. Omitting it makes F05/F06 predictions 4× / 2.5× too large.
+
+**Intensity is applied exactly once**, as the cap on `severity(t)`. `tickFaultsMTU8000` uses
+`f.currentSeverity` raw, so `predictEffect(mode, effect, severity)` takes no `intensityPct` — passing
+intensity as a second multiplier was a real bug (fixed), and a linearity-only test will not catch its
+return. `tests/degradation-matrix.test.ts` now pins absolute magnitudes (F05 → coolant +3.75 °C,
+exhaust +8.75 °C at s=1.0) against the physics deltas.
+
+**F07 is the documented exception**: its root factors only reach a fraction of severity
+(`injFaults = s·0.8`, `pistonBlowby = s·0.3`) and it writes `pistonBlowby` despite declaring
+`rootFactor: 'injFault'`. Those fractions are folded into its **weights** (65·0.8 = 52, 8·0.3 = 2.4),
+not its `rootMax`, so `predictEffect` is still correct — but F07's weights are "per unit of F07
+severity", not bare `∂sensor/∂rootFactor`, and must not be fed to the finite-difference check.
 
 **Independent root factors** (what a fault DIRECTLY sets on `PhysicsState`): `injFault`, `coolingEff`,
 `tcEff`, `lubeFault`, `bearingFault`, `pistonBlowby`. Everything else is a *dependent* observable

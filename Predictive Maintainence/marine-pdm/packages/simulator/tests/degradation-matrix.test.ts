@@ -5,7 +5,8 @@
 //   1. Matrix ↔ physics finite-difference: every MODELED weight == the physics partial ∂sensor/∂rootFactor.
 //   2. Gap guard: every modeled:false effect has weight 0, and the known gaps are exactly the expected set.
 //   3. Combine / superposition: a shared-sensor multi-fault (F03+F05 on bearings) reflects BOTH root factors.
-//   4. Time/intensity model: severityAt() ramp + cap, predictEffect() linearity.
+//   4. Time/intensity model: severityAt() ramp + cap, predictEffect() ABSOLUTE magnitude
+//      (weight · severity · rootMax) checked against the physics deltas — not merely its linearity.
 //
 // The finite-difference is the guard against the most likely rot — the matrix drifting from the physics.
 
@@ -27,6 +28,7 @@ import { makeInitialPhysicsState, tickPhysics } from '../src/physics';
 import { tickFaultsMTU8000, createFaultConfig, FAULT_MAX_EFFECTS } from '../src/faults-mtu8000';
 import {
   DEGRADATION_MODES,
+  ROOT_FACTORS,
   getMode,
   severityAt,
   predictEffect,
@@ -230,15 +232,69 @@ describe('Combine / superposition — F03 + F05 both drive bearing temperature (
   });
 });
 
-describe('Time / intensity model — severityAt ramp+cap, predictEffect linearity', () => {
+describe('Time / intensity model — severityAt ramp+cap, predictEffect magnitude', () => {
   it('severity ramps linearly then caps at intensity/100', () => {
     expect(severityAt('MEDIUM', 100, 50)).toBeCloseTo(0.3, 6);  // 0.003·100 = 0.3 < 0.5 (linear, uncapped)
     expect(severityAt('FAST', 1000, 100)).toBe(1.0);            // caps at 1.0
     expect(severityAt('FAST', 1000, 40)).toBeCloseTo(0.4, 6);   // caps at intensity/100
   });
-  it('predictEffect is linear in severity and intensity', () => {
-    const e = eff('F05', 'exhaustMeanTemp'); // weight 35
-    expect(predictEffect(e, 0.5, 100)).toBeCloseTo(0.5 * 1.0 * 35, 6);
-    expect(predictEffect(e, 1.0, 50)).toBeCloseTo(1.0 * 0.5 * 35, 6);
+
+  // ABSOLUTE MAGNITUDE, not just linearity. The previous version of this test asserted only that
+  // predictEffect was proportional to severity/intensity — which a formula off by a constant factor
+  // (rootMax missing, intensity double-counted) satisfies perfectly. These cases pin the number
+  // against the physics partial, so the scale itself cannot drift.
+  it('predictEffect(F05) magnitude == the physics deviation at full severity (rootMax applied once)', () => {
+    const f05 = getMode('F05')!;
+    const drop = FAULT_MAX_EFFECTS.F05_cooling_eff_drop; // 0.25 — coolingEff 1.0 → 0.75 at s=1.0
+
+    // PRIMARY: physics is `targetCoolantTemp += (1−coolingEff)·15` ⇒ 0.25·15 = 3.75 °C.
+    expect(predictEffect(f05, eff('F05', 'coolantTempAfterEngine'), 1.0)).toBeCloseTo(3.75, 6);
+    // SECONDARY: `exhaustTemp_MTU8000 cooling = (1−ce)·35` ⇒ 0.25·35 = 8.75 °C.
+    expect(predictEffect(f05, eff('F05', 'exhaustMeanTemp'), 1.0)).toBeCloseTo(8.75, 6);
+
+    // Same numbers derived from the physics functions rather than hand-arithmetic.
+    const exhaustDelta =
+      exhaustTemp_MTU8000(LOAD, RPM, 1 - drop, 1.0) - exhaustTemp_MTU8000(LOAD, RPM, 1.0, 1.0);
+    expect(predictEffect(f05, eff('F05', 'exhaustMeanTemp'), 1.0)).toBeCloseTo(exhaustDelta, 6);
+    const sfocDelta = sfoc_MTU8000(LOAD, RPM, {}, 1 - drop) - sfoc_MTU8000(LOAD, RPM, {}, 1.0);
+    expect(predictEffect(f05, eff('F05', 'sfoc'), 1.0)).toBeCloseTo(sfocDelta, 6);
+
+    // Guards the specific regressions: dropping rootMax gives 15/35, re-applying intensity gives 1/4×.
+    expect(predictEffect(f05, eff('F05', 'coolantTempAfterEngine'), 1.0)).not.toBeCloseTo(15, 1);
+    expect(predictEffect(f05, eff('F05', 'exhaustMeanTemp'), 1.0)).not.toBeCloseTo(35, 1);
+  });
+
+  it('predictEffect magnitude matches the real fault tick for every root-factor span', () => {
+    // F06 rootMax 0.40 (tcEff 1.0 → 0.60): the non-unity span that catches a missing rootMax.
+    const tcDrop = FAULT_MAX_EFFECTS.F06_tc_eff_drop;
+    const f06 = getMode('F06')!;
+    const tcSpeedDelta = tcSpeed_MTU8000(RPM, LOAD, 1 - tcDrop) - tcSpeed_MTU8000(RPM, LOAD, 1.0);
+    expectWeight(predictEffect(f06, eff('F06', 'tcSpeeds[i]'), 1.0), tcSpeedDelta, 0.02);
+    expect(predictEffect(f06, eff('F06', 'exhaustBackPressure'), 1.0)).toBeCloseTo(0.4 * 40, 6); // 16 mbar
+
+    // F01 rootMax 1.0: severity maps 1:1 onto injFault, so effect == weight at s=1.0.
+    expect(predictEffect(getMode('F01')!, eff('F01', 'cylTemps[n]'), 1.0)).toBeCloseTo(65, 6);
+
+    // The rootMax that predictEffect applies is exactly the excursion tickFaultsMTU8000 produces
+    // at saturated severity — this is what makes `weight · severity · rootMax` the right composition.
+    const { updatedState } = tickFaultsMTU8000(
+      [
+        createFaultConfig('F05', { intensity: 100, speed: 'FAST' }),
+        createFaultConfig('F06', { intensity: 100, speed: 'FAST', targetTC: 0 }),
+      ],
+      makeInitialPhysicsState(RPM, LOAD),
+      200, // FAST × 200 s → severity saturates at 1.0
+    );
+    expect(1 - updatedState.coolingEff).toBeCloseTo(ROOT_FACTORS.coolingEff.rootMax, 6); // 0.25
+    expect(1 - updatedState.tcEffs[0]).toBeCloseTo(ROOT_FACTORS.tcEff.rootMax, 6);       // 0.40
+  });
+
+  it('predictEffect stays linear in severity (intensity enters only via the severity cap)', () => {
+    const f05 = getMode('F05')!;
+    const e = eff('F05', 'exhaustMeanTemp');
+    expect(predictEffect(f05, e, 0.5)).toBeCloseTo(8.75 / 2, 6);
+    // Intensity 50 caps severity at 0.5 — it must NOT also scale the effect a second time.
+    expect(predictEffect(f05, e, severityAt('FAST', 1000, 50))).toBeCloseTo(8.75 / 2, 6);
+    expect(predictEffect(f05, e, 0)).toBe(0);
   });
 });

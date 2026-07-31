@@ -58,9 +58,14 @@ export function FaultsSection() {
           background: 'var(--bg-inset)', border: '1px solid var(--border-dim)', borderRadius: 5,
           padding: '9px 12px', marginBottom: 12,
         }}>
-          effect = severity(t) × (intensity / 100) × maxEffect{'\n'}
+          effect = severity(t) × maxEffect{'\n'}
           severity(t) = min(growthRate × elapsedSeconds, intensity/100)
         </div>
+        <P>
+          Note that intensity appears <em>once</em>, in the second line: it is the ceiling on severity, not a
+          second multiplier on the effect. At 50% intensity a fault settles at severity 0.5 and therefore
+          delivers half of <Code>maxEffect</Code> — not a quarter.
+        </P>
         <DataTable columns={['Speed', 'Growth rate', 'Time to full']} colWidths={['120px', '150px', undefined]} rows={[
           ['SLOW', `${FAULT_GROWTH_RATES.SLOW} /s`, '~20 minutes'],
           ['MEDIUM', `${FAULT_GROWTH_RATES.MEDIUM} /s`, '~5 minutes'],

@@ -10,10 +10,12 @@
 //   • the calibrated coefficients in mtu8000-physics.ts            — secondary ∂sensor/∂rootFactor
 //
 // PRINCIPLE (linear → regression-friendly):
-//   effect_on_sensor = severity(t) · (intensity/100) · rootMax · weight
+//   effect_on_sensor = severity(t) · rootMax · weight
 //   severity(t)      = min(FAULT_GROWTH_RATES[speed] · t , intensity/100)
 // where `weight` is the partial derivative ∂sensor/∂rootFactor evaluated at the rated point
 // (85 % load, 1150 RPM), and `rootMax` is the root-factor's max excursion (FAULT_MAX_EFFECTS).
+// Intensity appears ONCE, as the cap on severity(t) — it is never a second multiplier on the
+// effect (tickFaultsMTU8000 likewise uses `f.currentSeverity` raw, with no intensity factor).
 
 import { FAULT_MAX_EFFECTS, FAULT_GROWTH_RATES } from './faults-mtu8000';
 import type { FaultSpeed } from './faults-mtu8000';
@@ -120,6 +122,14 @@ export const DEGRADATION_MODES: DegradationMode[] = [
   {
     id: 'F07', name: 'Injector Spray Erratic', ecsAlarmCode: 'HI T-Exhaust Cyl N (osc)',
     componentId: 'injectors', rootFactor: 'injFault', scope: 'single cylinder (oscillating)',
+    // DEVIATION (deliberate) — F07 is the one mode whose weights are NOT pure ∂sensor/∂rootFactor:
+    // tickFaultsMTU8000 drives its root factors to only a FRACTION of severity (injFaults[ci] = s·0.8,
+    // pistonBlowby = s·0.3, vs s·1.0 everywhere else), and it touches pistonBlowby even though its
+    // declared rootFactor is injFault. Those sub-unity fractions are folded into the weights below
+    // (65·0.8 = 52, 8·0.3 = 2.4) rather than into rootMax, so predictEffect() — which multiplies by
+    // ROOT_FACTORS.injFault.rootMax = 1.0 — still returns the right magnitude. Consequence: read these
+    // weights as "sensor units per unit of F07 severity", not as the ∂/∂rootFactor the other modes
+    // carry, and do NOT hand them to the finite-difference test as bare physics partials.
     effects: [
       { sensorId: 'cylTemps[n]',       kind: 'PRIMARY',   weight: FAULT_MAX_EFFECTS.F01_injector_temp_delta * 0.8, unit: '°C',   modeled: true, physicsRef: 'F07 sets inj = sev·0.8' },
       { sensorId: 'cylTemps[n]',       kind: 'SECONDARY', weight: FAULT_MAX_EFFECTS.F07_spray_erratic_amp,        unit: '°C pk-pk', modeled: true, via: 'oscillation', physicsRef: 'snapshot-time ± oscillation' },
@@ -186,16 +196,33 @@ export const DEGRADATION_MODES: DegradationMode[] = [
 
 // ── Time / intensity model ────────────────────────────────────────────────────────
 export const GROWTH_RATES = FAULT_GROWTH_RATES;          // severity units per second, per speed
-export const INTENSITY_COUPLING = 'linear' as const;     // effect ∝ intensity/100
+export const INTENSITY_COUPLING = 'linear' as const;     // effect ∝ intensity/100, via the severity cap only
 
 /** Severity at elapsed time for a given speed + intensity cap (the linear ramp). */
 export function severityAt(speed: FaultSpeed, elapsedSeconds: number, intensityPct: number): number {
   return Math.min(GROWTH_RATES[speed] * elapsedSeconds, intensityPct / 100);
 }
 
-/** Predicted effect on a sensor from one mode at a given severity (per affected root instance). */
-export function predictEffect(effect: DegradationEffect, severity: number, intensityPct: number): number {
-  return severity * (intensityPct / 100) * effect.weight;
+/**
+ * Predicted sensor deviation from one of a mode's effects, per affected root instance:
+ *
+ *     deviation = effect.weight · severity · ROOT_FACTORS[mode.rootFactor].rootMax
+ *
+ * `severity` is the fault's `currentSeverity` (0–1) — what `severityAt()` returns and what
+ * `tickFaultsMTU8000` applies. It ALREADY carries the intensity cap (`min(rate·t, intensity/100)`),
+ * so there is deliberately no `intensityPct` parameter: re-applying it here would count it twice.
+ *
+ * `rootMax` converts severity into the root factor's physical excursion (severity 1.0 moves the
+ * factor by `rootMax` — F05 at s=1.0 drops coolingEff by 0.25), which `weight` (= ∂sensor/∂rootFactor)
+ * then turns into sensor units. E.g. F05 → coolantTempAfterEngine at s=1.0: 15 · 1.0 · 0.25 = 3.75 °C,
+ * matching the physics `targetCoolantTemp += (1−coolingEff)·15`.
+ */
+export function predictEffect(
+  mode: DegradationMode,
+  effect: DegradationEffect,
+  severity: number,
+): number {
+  return effect.weight * severity * ROOT_FACTORS[mode.rootFactor].rootMax;
 }
 
 /** Lookups. */

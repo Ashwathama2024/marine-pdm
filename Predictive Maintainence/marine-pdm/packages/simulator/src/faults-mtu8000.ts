@@ -49,10 +49,12 @@ export const FAULT_MAX_EFFECTS = {
 // and only P08 carries `ecsAlarmCode: 'HI P-Crankcase'`. Raising this coupling until F07 trips the
 // alarm would collapse the P07/P08 discrimination, which separates on exactly this axis.
 
-// Actual effect = currentSeverity × maxEffect
-// Intensity is applied exactly ONCE, as the severity cap: `tickFaultsMTU8000` grows currentSeverity
-// toward intensity/100 and then uses it directly (`const s = f.currentSeverity`). Speed controls how
-// fast it reaches that cap. Never multiply an effect by intensity/100 again — that squares it.
+// Actual effect = currentSeverity × maxEffect       (see tickFaultsMTU8000)
+// Intensity is applied exactly ONCE, as the cap on severity: `tickFaultsMTU8000` grows currentSeverity
+// toward `maxSeverity = intensity / 100` and then uses it directly (`const s = f.currentSeverity`).
+// Speed controls how fast it reaches that cap. Never multiply an effect by intensity/100 again — that
+// double-counts it. `predictEffect()` in degradation-matrix.ts did exactly that, and because the error
+// is proportional it stayed perfectly linear, so a linearity-only test never caught it.
 
 // ── FAULT DEFINITIONS (metadata for UI and decision engine) ───────────────────
 export interface FaultDefinition {
