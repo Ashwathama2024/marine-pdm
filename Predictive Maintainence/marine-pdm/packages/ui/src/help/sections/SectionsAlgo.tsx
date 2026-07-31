@@ -138,16 +138,25 @@ export function DegradationSection() {
       <P>
         The degradation matrix is the typed <em>specification</em> of the physics: for every fault mode it
         lists each sensor it moves and the <Hi>weight</Hi> = the physics partial derivative{' '}
-        <Code>∂sensor / ∂rootFactor</Code> at the rated point. Because the model is linear in severity and
-        intensity, the effect on any sensor is simply:
+        <Code>∂sensor / ∂rootFactor</Code> at the rated point. Because the model is linear in severity,
+        the effect on any sensor is simply:
       </P>
       <div style={{
         fontFamily: 'var(--font)', fontSize: 12.5, color: 'var(--accent-blue)',
         background: 'var(--bg-inset)', border: '1px solid var(--border-dim)', borderRadius: 5,
         padding: '9px 12px', marginBottom: 12,
       }}>
-        effect = severity(t) × (intensity / 100) × weight
+        effect = severity(t) × rootMax × weight
       </div>
+      <P>
+        <Hi>rootMax</Hi> is the span the root factor covers at full severity — <Code>1.0</Code> for the
+        0–1 factors (injector, lube, bearing, blow-by), but <Code>0.25</Code> for HT cooling-efficiency
+        drop and <Code>0.40</Code> for TC-efficiency drop. It is what converts a severity into a physical
+        excursion before the weight converts that into sensor units: F05 at full severity fouls the cooler
+        by 0.25 efficiency, and at <Code>∂coolant/∂drop = 15</Code> that is a{' '}
+        <Hi>+3.75 °C</Hi> coolant rise — not +15 °C. Intensity does <em>not</em> appear in this formula:
+        it enters once already, as the ceiling on <Code>severity(t)</Code>.
+      </P>
 
       <SubSection title="Primary effect per mode (weight = ∂sensor/∂root)">
         <DataTable columns={['Mode', 'Name', 'Root factor', 'Primary effect (weight)']}

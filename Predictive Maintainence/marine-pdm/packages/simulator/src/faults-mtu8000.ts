@@ -39,8 +39,10 @@ export const FAULT_MAX_EFFECTS = {
   F09_multi_injector_delta: 55,   // °C per B-side cylinder (mirror of F02)
 } as const;
 
-// Actual effect = currentSeverity × (intensity / 100) × maxEffect
+// Actual effect = currentSeverity × maxEffect       (see tickFaultsMTU8000)
 // Intensity slider limits the maximum; speed controls how fast it reaches that maximum.
+// Intensity is NOT a separate multiplier here — it enters solely as the cap on currentSeverity
+// (`maxSeverity = intensity / 100`), so multiplying by intensity/100 again double-counts it.
 
 // ── FAULT DEFINITIONS (metadata for UI and decision engine) ───────────────────
 export interface FaultDefinition {
