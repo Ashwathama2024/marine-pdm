@@ -65,7 +65,22 @@ export class FeatureEngine {
     this.registry = registry;
   }
 
-  process(snap: EngineSnapshot): { features: FeatureSnapshot; baseline: BaselineSnapshot } {
+  /**
+   * `baseline` is the LAGGED expectation — the one every deviation, risk score and alert is computed
+   * against. `instantBaseline` is the same load/rpm curve evaluation with no filtering applied.
+   *
+   * Returning `instantBaseline` is purely additive and changes no existing behaviour; it exists so a
+   * consumer can measure how far the lag is from converged. That matters because the lagged value is
+   * re-seeded onto the LIVE (possibly faulted) reading by actualAsBaseline() below whenever rpm drops
+   * under RUN_RPM, and it then takes tens of ticks to climb back out. Anything that treats the lagged
+   * baseline as "the fault-free value" — the analytic RUL label does exactly that — is wrong for the
+   * whole of that recovery, and wrong directionally. See services/baseline-settling.test.ts.
+   */
+  process(snap: EngineSnapshot): {
+    features: FeatureSnapshot;
+    baseline: BaselineSnapshot;
+    instantBaseline: BaselineSnapshot;
+  } {
     // 1. Instant physics baseline at the current operating point (load/rpm ratio).
     const instant = computeBaselineSnapshot(snap, this.store);
 
@@ -132,7 +147,7 @@ export class FeatureEngine {
       fuelRackDev,
     };
 
-    return { features, baseline };
+    return { features, baseline, instantBaseline: instant };
   }
 
   reset(): void {

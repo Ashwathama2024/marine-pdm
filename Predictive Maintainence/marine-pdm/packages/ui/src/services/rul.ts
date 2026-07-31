@@ -35,15 +35,35 @@ export function baseFaultId(id: string): string {
   return id.split('_')[0]!;
 }
 
+export type RulReason =
+  | 'crosses' | 'already-breached' | 'no-fault' | 'not-driven'
+  | 'wrong-direction' | 'capped-below-threshold' | 'no-band';
+
 export interface RulDetail {
   minutes: number | null;
   faultId: string | null;
   /** Severity at which the sensor crosses the band — null when it never does at this intensity. */
   severityAtCross: number | null;
-  reason: 'crosses' | 'already-breached' | 'no-fault' | 'not-driven' | 'wrong-direction' | 'capped-below-threshold' | 'no-band';
+  reason: RulReason;
+  /**
+   * Sensor units per unit of severity (`effect.weight · rootMax`), and the winning fault's severity
+   * growth per second. Both are the denominators of this label's sensitivity to `healthyValue`:
+   *
+   *     d(minutes) / d(healthyValue) = −1 / (perSeverity · growthPerSec · 60)
+   *
+   * Returned so a caller can convert an error in the supplied `healthyValue` into an error in the
+   * LABEL, in minutes — which is the only unit in which a "is this label trustworthy" threshold can
+   * be defended. A sensor-unit epsilon cannot be: the same 0.2 bar of baseline error is negligible for
+   * a FAST fault and enormous for a SLOW one. See services/rul-quality.ts.
+   */
+  perSeverity: number | null;
+  growthPerSec: number | null;
 }
 
-const NONE: RulDetail = { minutes: null, faultId: null, severityAtCross: null, reason: 'no-fault' };
+const NONE: RulDetail = {
+  minutes: null, faultId: null, severityAtCross: null, reason: 'no-fault',
+  perSeverity: null, growthPerSec: null,
+};
 
 /**
  * Exact minutes until `forecastKey`'s metric crosses its coded alarm band, given the active faults.
@@ -73,7 +93,9 @@ export function analyticRul(faults: FaultConfig[], forecastKey: string, healthyV
   // With a fault active, a fault-free baseline already inside the band means the alarm is met on the
   // operating point alone, so there is no time left to project.
   const alreadyInBand = lim.dir === 'high' ? healthyValue >= threshold : healthyValue <= threshold;
-  if (alreadyInBand) return { minutes: 0, faultId: null, severityAtCross: 0, reason: 'already-breached' };
+  if (alreadyInBand) {
+    return { ...NONE, minutes: 0, severityAtCross: 0, reason: 'already-breached' };
+  }
 
   const matrixIds = matrixIdsForForecastKey(forecastKey);
   if (matrixIds.length === 0) return { ...NONE, reason: 'not-driven' };
@@ -110,20 +132,24 @@ export function analyticRul(faults: FaultConfig[], forecastKey: string, healthyV
       continue;
     }
 
+    const rate = GROWTH_RATES[f.speed];  // severity per second
+
     const cap = f.intensity / 100;   // severity cannot exceed this (severityAt's cap)
     if (severityAtCross > cap) {
       if (best.reason === 'not-driven' || best.reason === 'wrong-direction') {
-        best = { minutes: null, faultId: f.id, severityAtCross, reason: 'capped-below-threshold' };
+        best = {
+          minutes: null, faultId: f.id, severityAtCross, reason: 'capped-below-threshold',
+          perSeverity, growthPerSec: rate,
+        };
       }
       continue;
     }
 
-    const rate = GROWTH_RATES[f.speed];  // severity per second
     const seconds = rate > 0 ? (severityAtCross - f.currentSeverity) / rate : 0;
     const minutes = Math.max(0, seconds / 60);
 
     if (best.minutes === null || minutes < best.minutes) {
-      best = { minutes, faultId: f.id, severityAtCross, reason: 'crosses' };
+      best = { minutes, faultId: f.id, severityAtCross, reason: 'crosses', perSeverity, growthPerSec: rate };
     }
   }
 

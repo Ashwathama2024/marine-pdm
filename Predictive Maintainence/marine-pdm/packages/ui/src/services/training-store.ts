@@ -16,7 +16,12 @@
 
 export const DB_NAME = 'marine-pdm-training';
 export const DB_VERSION = 1;
-export const SCHEMA_VERSION = 1;   // bump when the sample row shape changes
+// Bump when the sample row shape changes.
+//   1 → initial schema
+//   2 → added rulQuality_<key> per forecast key. Version-1 rows carry rulTrue_* with NO statement of
+//       whether the label was solved from a settled baseline, so they cannot be distinguished from
+//       trustworthy version-2 rows on content alone. Filter on schemaVersion before training.
+export const SCHEMA_VERSION = 2;
 
 export interface TrainingRun {
   runId: string;

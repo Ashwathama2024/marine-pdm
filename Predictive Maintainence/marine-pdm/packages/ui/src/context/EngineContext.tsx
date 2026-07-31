@@ -289,7 +289,7 @@ export function EngineProvider({ children }: { children: React.ReactNode }) {
     return map;
   }, [snapshot]);
 
-  const { output: decision, baseline, features } = useDecision(snapshot);
+  const { output: decision, baseline, instantBaseline, features } = useDecision(snapshot);
   const knowledge = useKnowledge();
   const { processSnapshot } = useAlerts();
 
@@ -451,7 +451,7 @@ export function EngineProvider({ children }: { children: React.ReactNode }) {
       // on the pre-op → running edge (below) and closes on the way back down.
       if (features) {
         recordTrainingSample({
-          snapshot, baseline, features, decision, history: h,
+          snapshot, baseline, instantBaseline, features, decision, history: h,
           lagged: {
             exhaust: lb.exhaust, jacket: lb.jacket, lube: lb.lube, tcRPM: lb.tcRPM,
             chargeAirTemp: lb.chargeAirTemp, pistonCoolingPress: lb.pistonCoolingPress,

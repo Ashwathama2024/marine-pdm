@@ -27,7 +27,8 @@ import {
   putRun, putSamples, getRun, reconcileOpenRuns, SCHEMA_VERSION,
   type TrainingRun, type TrainingSample,
 } from './training-store';
-import { analyticRulMinutes, baseFaultId } from './rul';
+import { analyticRul, baseFaultId } from './rul';
+import { classifyRulQuality } from './rul-quality';
 import { minutesToAlarm, FORECAST_LIMITS } from './forecast';
 import { isRampMode } from './ramp-mode';
 import type { SensorHistory } from '../context/EngineContext';
@@ -101,6 +102,12 @@ if (typeof window !== 'undefined') {
 export interface RecordInput {
   snapshot: EngineSnapshot;
   baseline: BaselineSnapshot;
+  /**
+   * The same load/rpm curves with NO lag applied (FeatureEngine.process().instantBaseline). Used only
+   * to measure how far `baseline` is from converged, so each rulTrue_* label can declare whether it is
+   * trustworthy. See services/rul-quality.ts.
+   */
+  instantBaseline: BaselineSnapshot | null;
   features: FeatureSnapshot;
   decision: DecisionOutput;
   history: SensorHistory;
@@ -301,15 +308,37 @@ export function recordTrainingSample(input: RecordInput): boolean {
     patternsFiring: decision.alerts.map(a => a.patternId).filter(Boolean).join('+'),
   };
 
-  // Two RUL columns per forecastable metric. rulTrue_* is exact (solved from the linear model);
-  // minsToAlarm_* is the naive slope extrapolation a rules engine can already do. The gap between
-  // them is the headroom a learned model has to capture.
+  // Three RUL columns per forecastable metric:
+  //   rulTrue_*      exact, solved from the linear model
+  //   minsToAlarm_*  the naive slope extrapolation a rules engine can already do
+  //   rulQuality_*   whether rulTrue_* can be trusted on THIS row
+  //
+  // The quality column is not optional bookkeeping. rulTrue_* is solved from the LAGGED baseline, and
+  // that baseline is re-seeded onto the live faulted reading whenever rpm dips below 300, then takes
+  // tens of ticks to recover. Labels produced during the recovery are wrong directionally — RUL
+  // appears to INCREASE as the fault develops — so without a per-row flag a regressor silently
+  // averages poison. Per-key rather than per-row because the lag alphas span 10x: a slow-settling
+  // jacket must not discard a perfectly good lube label on the same tick.
   for (const key of FORECAST_KEYS) {
     const refKey = HEALTHY_REF[key];
     const healthy = refKey !== undefined ? lagged[refKey] : undefined;
-    row[`rulTrue_${key}`] = healthy === undefined ? null : fx(analyticRulMinutes(faults, key, healthy) ?? undefined, 2);
+    const detail = healthy === undefined ? null : analyticRul(faults, key, healthy);
+
+    row[`rulTrue_${key}`] = detail ? fx(detail.minutes ?? undefined, 2) : null;
+
     const series = (history[FORECAST_LIMITS[key]!.key] as number[] | undefined) ?? [];
     row[`minsToAlarm_${key}`] = fx(minutesToAlarm(series, key) ?? undefined, 2);
+
+    if (detail && healthy !== undefined && input.instantBaseline) {
+      const { quality } = classifyRulQuality({
+        forecastKey: key, detail, healthyUsed: healthy, instant: input.instantBaseline,
+      });
+      row[`rulQuality_${key}`] = quality;
+    } else {
+      // No instant baseline means the gap is unmeasurable, so trustworthiness is unknown — say so
+      // rather than defaulting to OK, which would launder unverified rows into the training set.
+      row[`rulQuality_${key}`] = detail ? 'UNKNOWN' : null;
+    }
   }
 
   buffer.push(row);
