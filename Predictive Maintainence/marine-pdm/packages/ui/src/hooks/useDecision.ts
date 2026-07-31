@@ -25,9 +25,31 @@ export interface DecisionState {
 
 export function useDecision(snapshot: EngineSnapshot | null): DecisionState {
   const historyRef = useRef<number[]>([]);
+  const lastRef = useRef<{ t: number; state: DecisionState } | null>(null);
 
   return useMemo(() => {
     if (!snapshot) return { output: null, baseline: null, instantBaseline: null, features: null, history: [] };
+
+    // Return the cached result if this tick was already processed.
+    //
+    // NOT a performance guard — a correctness one. React StrictMode double-invokes the render phase
+    // in dev, so this useMemo factory runs twice per tick, and featureEngine.process() is stateful
+    // with no internal timestamp guard: it advances the lagged baseline in place via applyLag() and
+    // pushes this.rate / this.exhaustWindow on every call. Running it twice per tick applies the lag
+    // filter twice, which is exactly the filter running at DOUBLE RATE — dev tick n lands where prod
+    // tick 2n would. It also double-fills the rolling windows (RollingWindow(30) spans 15 real ticks,
+    // RateCalculator's deliberately-15-sample window spans 7.5) and pushes systemRisk into
+    // historyRef twice, halving the 60-value trend window too.
+    //
+    // Measured at 6.19 °C on the jacket baseline and 0.177 bar on lube through a load transient —
+    // see services/strictmode-double-process.test.ts. Since the baseline IS the reference every
+    // deviation is subtracted from, that was a same-sized error in every reported deviation and risk
+    // score in dev. Steady state is unaffected (a lag filter's fixed point does not care how often it
+    // is applied), which is why it stayed invisible.
+    //
+    // Timestamp is Date.now() per engine tick at a 1 s cadence, so it is unique per real tick —
+    // training-recorder.ts:253 guards itself the same way on the same assumption.
+    if (lastRef.current?.t === snapshot.timestamp) return lastRef.current.state;
 
     // Process once — features, lagged baseline and instant baseline all come from the same call
     const { features, baseline, instantBaseline } = featureEngine.process(snapshot);
@@ -35,6 +57,8 @@ export function useDecision(snapshot: EngineSnapshot | null): DecisionState {
 
     historyRef.current = [...historyRef.current.slice(-59), output.systemRisk];
 
-    return { output, baseline, instantBaseline, features, history: [...historyRef.current] };
+    const state = { output, baseline, instantBaseline, features, history: [...historyRef.current] };
+    lastRef.current = { t: snapshot.timestamp, state };
+    return state;
   }, [snapshot]);
 }
