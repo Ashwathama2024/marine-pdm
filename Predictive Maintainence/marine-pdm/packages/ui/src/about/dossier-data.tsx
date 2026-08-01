@@ -209,10 +209,12 @@ export const DOSSIER_ENTRIES: DossierEntryData[] = [
       filter), after-filter (B5.5), piston-cooling (B5.2), last-bearing (B5.3/B5.4 — the furthest point from
       the pump, and the one MTU's own safety system watches most closely), and the oil's own temperature
       (B7), which drives its viscosity and therefore its pressure.</>,
-    howToRead: <>Gallery pressure is the primary dashboard gauge; the last-bearing reading is the one that
-      can trigger an immediate emergency stop, since it represents the worst-lubricated point in the engine.
-      A rapid, sustained drop across all four readings together (not just noise) is the tell for a pump or
-      filter problem.</>,
+    howToRead: <>Gallery and last-bearing pressure now have <em>separate</em> dashboard gauges, and the
+      distinction matters: the gallery is the healthier of the two by construction (the last bearing sits at
+      ≈55% of it), so watching only the gallery understates how close the worst-lubricated point is to its
+      limit. The last-bearing reading is the one that can trigger an immediate emergency stop. A rapid,
+      sustained drop across all four readings together (not just noise) is the tell for a pump or filter
+      problem.</>,
     rated: <>gallery ≈{n(sLube,2)} bar (at {n(sLubeT,0)}°C oil — hot-oil viscosity already pulls it down from
       the ~6.8 bar cold-oil figure)</>,
     risesWhen: [<>RPM increases (the pump is engine-driven — pump curve spans 3.5→7.5 bar idle→rated)</>],

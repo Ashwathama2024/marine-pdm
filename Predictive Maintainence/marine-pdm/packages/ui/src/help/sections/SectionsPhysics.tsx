@@ -113,6 +113,12 @@ export function PhysicsSection() {
           drivers="pump speed (RPM), hot-oil viscosity, filter ΔP, lube fault"
           expect="A rapid drop is a pump/lube fault (F03); starves the bearings → they heat up."
           band="LO 5.5 bar (gallery) · last-bearing SS < 2.0 bar" />
+        <EquationBlock name="Last-bearing LO pressure" tag="B5.3/B5.4"
+          formula="gallery pressure × 0.55"
+          rated={`${n(sLube * 0.55, 2)} bar`}
+          drivers="whatever moves the gallery — pump speed, viscosity, filter ΔP, lube fault"
+          expect="The furthest lubrication point, so it falls first and hardest under F03. Its own gauge — the LO Pressure gauge is the gallery, which stays healthier for longer."
+          band="SS < 2.0 bar — Emergency Stop" />
         <EquationBlock name="Bearing temperature" tag="B57.1–B57.11"
           formula="58 + load·28 + (rpm/1150)·10 + (oilTemp−85)·0.4 + max(0,6.5−P)·4.5 + posBias + bearingFault·45"
           rated={`${n(sBearing)} °C (free-end)`}
