@@ -135,6 +135,20 @@ export const FORECASTABLE_SENSORS: Array<{ sensorId: string; forecastKey: string
     .map(([sensorId, m]) => ({ sensorId, forecastKey: m.forecastKey!, matrixSensorIds: m.matrixSensorIds }));
 
 /** Matrix sensorIds observed by a given forecastKey — the join RUL needs. */
+/**
+ * The scalar reading for a sensor, given its meta.
+ *
+ * Necessary because not every `snapKey` holds a number: ME.BearingTemp reads `bearingTemps`, an array
+ * of 11. Taking the MAX matches how the parameter is alarmed — the SS T-Bearing override trips on any
+ * single bearing — and matches the gauge, so popup and gauge cannot disagree. Casting the array
+ * straight to a number (what a naive `snap[meta.snapKey] as number` does) renders NaN.
+ */
+export function readSensorValue(snap: EngineSnapshot, meta: SensorMeta): number {
+  const v = snap[meta.snapKey];
+  if (Array.isArray(v)) return v.length ? Math.max(...(v as number[])) : 0;
+  return typeof v === 'number' ? v : 0;
+}
+
 export function matrixIdsForForecastKey(forecastKey: string): string[] {
   return FORECASTABLE_SENSORS.find(f => f.forecastKey === forecastKey)?.matrixSensorIds ?? [];
 }

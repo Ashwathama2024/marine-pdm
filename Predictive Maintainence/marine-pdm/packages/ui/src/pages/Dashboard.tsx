@@ -13,7 +13,7 @@ import { CylinderDegradationPopup } from '../simulator/CylinderDegradationPopup'
 import { CylinderTrendPopup } from '../dashboard/CylinderTrendPopup';
 import { useEngine } from '../context/EngineContext';
 import { useDegradation, type DegradationEvent } from '../context/DegradationContext';
-import { SENSOR_META, sensorLabel } from '../services/sensor-map';
+import { SENSOR_META, sensorLabel, readSensorValue } from '../services/sensor-map';
 
 // SENSOR_META moved to services/sensor-map.ts — the AI diagnosis payload and the training recorder
 // resolve the same sensor ids, so the table is shared rather than duplicated per consumer.
@@ -126,7 +126,7 @@ export function Dashboard() {
   }
 
   const meta           = selectedSensor ? SENSOR_META[selectedSensor] : null;
-  const popupActual    = meta ? (snapshot[meta.snapKey] as number) : 0;
+  const popupActual    = meta ? readSensorValue(snapshot, meta) : 0;
   const popupExpected  = meta ? (baseline[meta.baselineKey] as number) : 0;
   const popupHist      = meta ? (history[meta.histKey] as number[]) : [];
   const popupBaseHist  = meta ? (history[meta.baseKey] as number[]) : [];
@@ -219,6 +219,7 @@ export function Dashboard() {
           activeFaults={activeFaults}
           mtuCylFaults={mtuCylFaults}
           onCylinderClick={setSelectedTrendCyl}
+          onSensorClick={setSelectedSensor}
         />
       )}
 

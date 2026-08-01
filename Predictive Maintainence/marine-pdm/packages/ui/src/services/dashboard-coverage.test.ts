@@ -59,6 +59,30 @@ describe('dashboard display coverage', () => {
   });
 });
 
+describe('trend coverage', () => {
+  // Parsed rather than imported: TrendChart is a .tsx component whose import chain reaches
+  // EngineContext, which constructs the simulator singleton at module load.
+  const TREND_CHART = read('../dashboard/TrendChart.tsx');
+  const trendedSensorIds = new Set(
+    [...TREND_CHART.matchAll(/sensorId: '([^']+)'/g)].map(m => m[1]!),
+  );
+
+  it('every gauged sensor also has a trend card', () => {
+    // A gauge shows the value now; the trend shows where it is going. Six sensors used to be trended
+    // against eleven gauges, so most of the plant could drift with only a number to show for it.
+    const gaugedWithMeta = [...gaugedSensorIds].filter(id => id in SENSOR_META);
+    const untrended = gaugedWithMeta.filter(id => !trendedSensorIds.has(id));
+
+    expect(untrended).toEqual([]);
+  });
+
+  it('every trend card resolves to a SENSOR_META entry', () => {
+    // The trend reads history via meta.histKey/baseKey, so an id with no meta would render empty.
+    const unbacked = [...trendedSensorIds].filter(id => !(id in SENSOR_META));
+    expect(unbacked).toEqual([]);
+  });
+});
+
 describe('ECS safety trips are visible to the operator', () => {
   // Every MTU8000_LIMITS threshold applyMTU8000SafetyOverride actually compares against, mapped to
   // the UI sensor that must display it. `null` = knowingly undisplayed, with the reason.

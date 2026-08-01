@@ -1,6 +1,8 @@
 import React, { useEffect } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { getCauseChain } from '../services/cause-chains';
+import { stats, minutesToAlarm, FORECAST_LIMITS, SLOPE_TICKS } from '../services/forecast';
+import { SENSOR_META } from '../services/sensor-map';
 import { useSensorAnalysis } from '../hooks/useSensorAnalysis';
 import { buildDiagnosisSystemPrompt, buildSensorDiagnosisPrompt } from '../services/prompts';
 import { isOpenAIConfigured } from '../services/openai-client';
@@ -36,6 +38,32 @@ export function SensorPopup({
   const physRange = Math.max(1, Math.max(...history, ...baselineHistory) - Math.min(...history, ...baselineHistory)) * 3;
   const col = riskColor(deviation, physRange);
   const chain = getCauseChain(sensorId);
+
+  /**
+   * Deterministic summary of the visible window: spread, drift rate, and — where the sensor has a
+   * coded alarm band — the naive linear ETA to it. Computed from the same `stats`/`minutesToAlarm`
+   * the training recorder writes as `minsToAlarm_*`, so what the operator reads here and what the
+   * dataset records are the same number rather than two independent estimates.
+   *
+   * Deliberately separate from the AI panel below: this is available with no API key, and it is the
+   * evidence against which a model's narrative can be judged.
+   */
+  const hist = React.useMemo(() => {
+    if (history.length < 2) return null;
+    const recent = history.slice(-SLOPE_TICKS);
+    const st = stats(recent);
+    const fk = SENSOR_META[sensorId]?.forecastKey;
+    const etaMin = fk ? minutesToAlarm(history, fk) : null;
+    const band = fk ? FORECAST_LIMITS[fk] : undefined;
+    return {
+      n: st.n, min: st.min, max: st.max, mean: st.mean,
+      slopePerMin: st.slope * 60,
+      etaText: !band ? null
+        : etaMin === null ? 'not trending to alarm'
+        : etaMin === 0 ? 'already in alarm band'
+        : `${etaMin.toFixed(1)} min to ${band.label}`,
+    };
+  }, [history, sensorId]);
   const dir = deviation > 0 ? 'highDeviation' : 'lowDeviation';
 
   const { analyze, result, analyzing, error, reset } = useSensorAnalysis();
@@ -114,6 +142,46 @@ export function SensorPopup({
             </div>
           ))}
         </div>
+
+        {/* Historic analysis — what the window itself says, before any AI is involved */}
+        {hist && (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 9, color: 'var(--text-dim)', letterSpacing: '0.1em', marginBottom: 6, textTransform: 'uppercase' }}>
+              HISTORIC ANALYSIS — LAST {hist.n} TICKS
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+              {[
+                { label: 'MIN', value: hist.min.toFixed(decimals) },
+                { label: 'MAX', value: hist.max.toFixed(decimals) },
+                { label: 'MEAN', value: hist.mean.toFixed(decimals) },
+                { label: 'RANGE', value: (hist.max - hist.min).toFixed(decimals) },
+              ].map(s => (
+                <div key={s.label} style={{ background: 'var(--bg-inset)', borderRadius: 6, padding: '6px 8px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 8, color: 'var(--text-dim)', letterSpacing: '0.12em' }}>{s.label}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>{s.value}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{
+              marginTop: 8, background: 'var(--bg-inset)', borderRadius: 6, padding: '8px 12px',
+              display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', fontSize: 11,
+            }}>
+              <span style={{ color: 'var(--text-secondary)' }}>
+                Trend{' '}
+                <strong style={{ color: hist.slopePerMin === 0 ? 'var(--text-muted)' : col, fontVariantNumeric: 'tabular-nums' }}>
+                  {hist.slopePerMin >= 0 ? '+' : ''}{hist.slopePerMin.toFixed(3)} {unit}/min
+                </strong>
+              </span>
+              {/* Only shown where the sensor has a coded alarm band — an ETA against no threshold
+                  would be a number with nothing to mean. */}
+              {hist.etaText && (
+                <span style={{ color: 'var(--text-secondary)' }}>
+                  Projected: <strong style={{ color: col }}>{hist.etaText}</strong>
+                </span>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Actual vs Baseline chart */}
         <div style={{ marginBottom: 14 }}>

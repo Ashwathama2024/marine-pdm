@@ -2,6 +2,8 @@ import React from 'react';
 import type { DecisionOutput } from '@marine-pdm/shared';
 import { cylName, riskColor } from './cylinder-utils';
 import { useSensorFocus, SENSOR_TO_SPARKLINE } from '../context/SensorFocusContext';
+import type { SensorHistory } from '../context/EngineContext';
+import { SENSOR_META } from '../services/sensor-map';
 
 // ── State → border/glow for sparkline cards ───────────────────────────────────
 function stateBorder(risk: number): { border: string; boxShadow: string } {
@@ -34,25 +36,32 @@ interface SparklineProps {
   baselineValues?: number[];
   decimals?: number;
   dimmed?: boolean;
+  onClick?: () => void;
 }
 
 function Sparkline({
   values, label, unit,
   color = 'var(--risk-normal)', height = 50, risk = 0,
-  baselineValues = [], decimals = 1, dimmed = false,
+  baselineValues = [], decimals = 1, dimmed = false, onClick,
 }: SparklineProps) {
+  // Same affordance as a gauge: the card is the click target for the enlarged view.
+  const clickable = onClick
+    ? { cursor: 'pointer' as const, onClick, role: 'button' as const, tabIndex: 0,
+        title: `${label} — click to enlarge` }
+    : {};
   const last         = values[values.length - 1] ?? 0;
   const lastBaseline = baselineValues.length > 0 ? baselineValues[baselineValues.length - 1] : null;
   const { border, boxShadow } = stateBorder(risk);
 
   if (values.length < 2) {
     return (
-      <div style={{
+      <div {...clickable} style={{
         flex: 1, minWidth: 110,
         background: 'var(--bg-inset)', borderRadius: 6,
         border, boxShadow, padding: '8px 10px',
         transition: 'border-color 0.5s, box-shadow 0.5s, opacity 0.3s',
         opacity: dimmed ? 0.32 : 1,
+        ...(onClick ? { cursor: 'pointer' } : {}),
       }}>
         <div className="label-xs">{label}</div>
         <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 4 }}>collecting…</div>
@@ -88,13 +97,14 @@ function Sparkline({
   const basePolyline = basePts.map(([x, y]) => `${x},${y}`).join(' ');
 
   return (
-    <div style={{
+    <div {...clickable} style={{
       flex: 1, minWidth: 110,
       background: 'var(--bg-inset)', borderRadius: 6,
       border, boxShadow, padding: '8px 10px',
       transition: 'border-color 0.5s, box-shadow 0.5s, opacity 0.3s',
       opacity: dimmed ? 0.32 : 1,
       position: 'relative', overflow: 'hidden',
+      ...(onClick ? { cursor: 'pointer' } : {}),
     }}>
       {/* State ribbon */}
       <div style={{
@@ -388,31 +398,67 @@ function CylinderPlacard({ idx, history, risk, hasFault, mtuFault, baselineHisto
 
 // ── TrendChart ────────────────────────────────────────────────────────────────
 interface Props {
-  snapHistory: {
-    exhaustTemp:     number[];
-    lubeOilPressure: number[];
-    jacketOutlet:    number[];
-    tcRPM:           number[];
-    sfoc:            number[];
-    cylTemps:        number[][];
-    systemRisk:      number[];
-    // Lagged baseline traces
-    baseExhaust:     number[];
-    baseLube:        number[];
-    baseJacket:      number[];
-    baseTcRPM:       number[];
-    baseSfoc:        number[];
-    baseCylTemps:    number[][];
-  };
+  /**
+   * The whole history buffer, not a hand-listed subset. It was a structural type naming six series,
+   * which is why only those six could be trended — adding a card meant widening this type first.
+   */
+  snapHistory: SensorHistory;
   cylRisks?: number[];
   decision?: DecisionOutput;
   activeFaults?: Record<number, number>;
   mtuCylFaults?: Record<number, MtuCylFaultEntry>;
   onCylinderClick?: (cylIndex: number) => void;
+  /** Opens the same enlarged SensorPopup a gauge click opens. */
+  onSensorClick?: (sensorId: string) => void;
 }
+
+/**
+ * Which sensors get a trend card, and how each is drawn.
+ *
+ * Keyed by SENSOR_META id rather than by history key, so a sensor with a gauge automatically has the
+ * series and baseline series needed for a trend — and so clicking a card can open the SAME
+ * SensorPopup a gauge opens. Six sensors used to be hardcoded here (exhaust, LO, jacket, TC, SFOC,
+ * risk) against sixteen live history series, so most of the plant — charge air, fuel oil, filter ΔP,
+ * piston cooling, and every parameter carrying an ECS shutdown — had a gauge but no trend, and a
+ * slow drift was only visible as a number rather than a slope.
+ *
+ * `dashboard-coverage.test.ts` pins this to SENSOR_META so a new gauge cannot ship without a trend.
+ */
+interface TrendSensor {
+  sensorId: string;
+  label: string;
+  color: string;
+  /** Which decision risk drives the card's border/glow. */
+  risk: 'exhaust' | 'lube' | 'cooling' | 'tc' | 'sfoc' | 'system';
+  /** Display multiplier — TC speed reads in kRPM so the card is not five digits wide. */
+  scale?: number;
+  unit?: string;
+  decimals?: number;
+}
+
+export const TREND_SENSORS: TrendSensor[] = [
+  { sensorId: 'ME.ExhaustTemp',                  label: 'Exhaust',        color: 'var(--risk-high)',     risk: 'exhaust' },
+  { sensorId: 'ME.LubeOilPressure',              label: 'LO Pressure',    color: 'var(--accent-blue)',   risk: 'lube' },
+  { sensorId: 'ME.JacketCoolingOutlet',          label: 'Jacket Outlet',  color: 'var(--accent-purple)', risk: 'cooling' },
+  { sensorId: 'ME.TCSpeed',                      label: 'TC Speed',       color: 'var(--risk-warning)',  risk: 'tc', scale: 1 / 1000, unit: 'kRPM', decimals: 1 },
+  { sensorId: 'ME.SFOC',                         label: 'SFOC',           color: 'var(--accent-steel)',  risk: 'sfoc' },
+  // Previously gauged but untrended.
+  { sensorId: 'ME.BearingTemp',                  label: 'Bearing Temp',   color: 'var(--risk-high)',     risk: 'lube' },
+  { sensorId: 'ME.LubeOilPressure.LastBearing',  label: 'Last Brg Press', color: 'var(--risk-warning)',  risk: 'lube' },
+  { sensorId: 'ME.FuelRailPressure',             label: 'Fuel Rail',      color: 'var(--accent-blue)',   risk: 'exhaust' },
+  { sensorId: 'ME.ChargeAirTemp',                label: 'Charge Air T',   color: 'var(--accent-purple)', risk: 'cooling' },
+  { sensorId: 'ME.ScavengeAirPressure',          label: 'Charge Air P',   color: 'var(--accent-steel)',  risk: 'exhaust' },
+  { sensorId: 'ME.FuelOilPressure',              label: 'FO Pressure',    color: 'var(--risk-warning)',  risk: 'lube' },
+  { sensorId: 'ME.FuelOilTemp',                  label: 'FO Temp',        color: 'var(--accent-steel)',  risk: 'lube' },
+  { sensorId: 'ME.LOFilterDP',                   label: 'LO Filter ΔP',   color: 'var(--accent-blue)',   risk: 'lube' },
+  { sensorId: 'ME.PistonCoolingPress',           label: 'Piston Cool P',  color: 'var(--accent-purple)', risk: 'cooling' },
+  { sensorId: 'ME.FuelRack',                     label: 'Fuel Rack',      color: 'var(--accent-steel)',  risk: 'exhaust' },
+  { sensorId: 'ME.ShaftPower',                   label: 'Shaft Power',    color: 'var(--risk-normal)',   risk: 'system' },
+];
 
 export function TrendChart({
   snapHistory, cylRisks = [], decision, activeFaults = {}, mtuCylFaults = {}, onCylinderClick,
+  onSensorClick,
 }: Props) {
   const cylTemps = snapHistory.cylTemps;
 
@@ -423,6 +469,10 @@ export function TrendChart({
   const systemRisk_  = decision?.systemRisk   ?? 0;
   const tcRisk       = Math.min(100, (exhaustRisk + coolingRisk) * 0.28);
   const sfocRisk     = Math.min(100, systemRisk_ * 0.38);
+  const riskFor = (k: TrendSensor['risk']): number => ({
+    exhaust: exhaustRisk, lube: lubeRisk, cooling: coolingRisk,
+    tc: tcRisk, sfoc: sfocRisk, system: systemRisk_,
+  }[k]);
 
   // Focus rail (workspace) → dim non-focused sparklines. Off the workspace there's no
   // provider, so focus is null and nothing dims.
@@ -454,36 +504,26 @@ export function TrendChart({
         <div style={{ marginBottom: 20 }}>
           <div className="label-xs" style={{ opacity: 0.7, marginBottom: 8 }}>SENSOR TRENDS</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <Sparkline
-              values={snapHistory.exhaustTemp}
-              baselineValues={snapHistory.baseExhaust}
-              label="Exhaust" unit="°C" decimals={1}
-              color="var(--risk-high)" risk={exhaustRisk} dimmed={dim('Exhaust')}
-            />
-            <Sparkline
-              values={snapHistory.lubeOilPressure}
-              baselineValues={snapHistory.baseLube}
-              label="LO Pressure" unit="bar" decimals={2}
-              color="var(--accent-blue)" risk={lubeRisk} dimmed={dim('LO Pressure')}
-            />
-            <Sparkline
-              values={snapHistory.jacketOutlet}
-              baselineValues={snapHistory.baseJacket}
-              label="Jacket Outlet" unit="°C" decimals={1}
-              color="var(--accent-purple)" risk={coolingRisk} dimmed={dim('Jacket Outlet')}
-            />
-            <Sparkline
-              values={snapHistory.tcRPM.map(v => v / 1000)}
-              baselineValues={snapHistory.baseTcRPM.map(v => v / 1000)}
-              label="TC Speed" unit="kRPM" decimals={1}
-              color="var(--risk-warning)" risk={tcRisk} dimmed={dim('TC Speed')}
-            />
-            <Sparkline
-              values={snapHistory.sfoc}
-              baselineValues={snapHistory.baseSfoc}
-              label="SFOC" unit="g/kWh" decimals={1}
-              color="var(--accent-steel)" risk={sfocRisk} dimmed={dim('SFOC')}
-            />
+            {TREND_SENSORS.map(t => {
+              const meta = SENSOR_META[t.sensorId]!;
+              const scale = t.scale ?? 1;
+              const vals = (snapHistory[meta.histKey] as number[]) ?? [];
+              const base = (snapHistory[meta.baseKey] as number[]) ?? [];
+              return (
+                <Sparkline
+                  key={t.sensorId}
+                  values={scale === 1 ? vals : vals.map(v => v * scale)}
+                  baselineValues={scale === 1 ? base : base.map(v => v * scale)}
+                  label={t.label}
+                  unit={t.unit ?? meta.unit}
+                  decimals={t.decimals ?? meta.decimals}
+                  color={t.color}
+                  risk={riskFor(t.risk)}
+                  dimmed={dim(t.label)}
+                  onClick={() => onSensorClick?.(t.sensorId)}
+                />
+              );
+            })}
             <Sparkline
               values={snapHistory.systemRisk}
               label="Sys Risk" unit="%" decimals={1}
