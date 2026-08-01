@@ -151,6 +151,25 @@ export const ALARM_LIMITS = {
   // and an SS Emergency Stop) while having no display at all, so a hand-copied second set of numbers
   // here is exactly the drift this file should not introduce. L1 sits below the coded HI so the gauge
   // warns before the ECS alarm rather than at the same instant.
+  // Last-bearing LO pressure (B5.3/B5.4) — the furthest lubrication point, ~55 % of gallery.
+  // shutdownLow IS the coded SS Emergency Stop, so the L1/L2 steps above it are the only warning an
+  // operator gets before the engine trips. They must clear the IDLE value (2.61 bar at 400 RPM), not
+  // just the rated one (3.51) — a pre-alarm below rated but above idle would sit latched at idle.
+  lubeLastBearingPressure: {
+    physMin: 0,
+    physMax: 6,
+    preAlarmLow:  2.5,   // L1 — below idle's 2.61, so no permanent idle alarm
+    alarmLow:     2.2,   // L2
+    shutdownLow:  MTU8000_LIMITS.lubeOil.pressure_last_bearing_min,  // L4 — SS P-Oil Last Bearing
+  },
+  // Common-rail pressure (B48). rail_pressure_min is an SD → Emergency Operation, not a full stop.
+  fuelRailPressure: {
+    physMin: 1000,
+    physMax: 2000,
+    preAlarmLow:  1450,  // L1 — idle sits at 1600, rated 1770
+    alarmLow:     1300,  // L2
+    shutdownLow:  MTU8000_LIMITS.fuel.rail_pressure_min,  // L4 — SD P-Fuel Rail
+  },
   bearingTemp: {
     physMin: 20,
     physMax: 150,

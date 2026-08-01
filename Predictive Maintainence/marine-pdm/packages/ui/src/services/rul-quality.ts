@@ -71,6 +71,8 @@ const BASELINE_FIELD: Record<string, keyof BaselineSnapshot> = {
   lube: 'expectedLube',
   pistonCoolingPress: 'expectedPistonCoolingPress',
   bearingTemp: 'expectedBearingTemp',
+  lubeLastBearing: 'expectedLubeLastBearing',
+  fuelRailPressure: 'expectedFuelRailPressure',
 };
 
 /** Forecast keys this module can assess — those with both a coded band and a baseline field. */

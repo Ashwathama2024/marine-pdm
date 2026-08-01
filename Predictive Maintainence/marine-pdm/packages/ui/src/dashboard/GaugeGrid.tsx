@@ -501,6 +501,48 @@ export function GaugeGrid({ snap, baseline, decision, isOperational = true, onGa
       ],
     },
     {
+      sensorId: 'ME.LubeOilPressure.LastBearing',
+      label: 'Last Brg Press',
+      // Distinct from the LO Pressure gauge above: that is the main gallery, this is the furthest
+      // lubrication point (≈55 % of it) and the one carrying the SS Emergency Stop at 2.0 bar.
+      actual: (snap.lubeLastBearingPressure as number | undefined) ?? 0,
+      expected: baseline.expectedLubeLastBearing,
+      unit: 'bar', risk: decision.lubeRisk, decimals: 2,
+      physMin: AL.lubeLastBearingPressure.physMin, physMax: AL.lubeLastBearingPressure.physMax,
+      ribbonColor: 'var(--risk-warning)',
+      gaugeColor: sensorValueColor(
+        (snap.lubeLastBearingPressure as number | undefined) ?? 0,
+        AL.lubeLastBearingPressure.physMin, AL.lubeLastBearingPressure.physMax,
+        AL.lubeLastBearingPressure, baseline.expectedLubeLastBearing, 0.5,
+      ),
+      alarmTicks: [
+        { value: AL.lubeLastBearingPressure.preAlarmLow, color: L1, label: 'L1↓', inner: true },
+        { value: AL.lubeLastBearingPressure.alarmLow,    color: L2, label: 'L2↓', inner: true },
+        { value: AL.lubeLastBearingPressure.shutdownLow, color: L4, label: 'L4↓', inner: true },
+      ],
+    },
+    {
+      sensorId: 'ME.FuelRailPressure',
+      label: 'Fuel Rail Press',
+      // NOT the "FO Pressure" gauge above — that is the ~8 bar supply. This is the ~1770 bar common
+      // rail, whose collapse below 1200 bar is the SD → Emergency Operation trip.
+      actual: (snap.fuelRailPressure as number | undefined) ?? 0,
+      expected: baseline.expectedFuelRailPressure,
+      unit: 'bar', risk: derivedRisk(Math.max(...decision.cylRisks), 0.5), decimals: 0,
+      physMin: AL.fuelRailPressure.physMin, physMax: AL.fuelRailPressure.physMax,
+      ribbonColor: 'var(--accent-blue)',
+      gaugeColor: sensorValueColor(
+        (snap.fuelRailPressure as number | undefined) ?? 0,
+        AL.fuelRailPressure.physMin, AL.fuelRailPressure.physMax,
+        AL.fuelRailPressure, baseline.expectedFuelRailPressure, 120,
+      ),
+      alarmTicks: [
+        { value: AL.fuelRailPressure.preAlarmLow, color: L1, label: 'L1↓', inner: true },
+        { value: AL.fuelRailPressure.alarmLow,    color: L2, label: 'L2↓', inner: true },
+        { value: AL.fuelRailPressure.shutdownLow, color: L4, label: 'L4↓', inner: true },
+      ],
+    },
+    {
       sensorId: 'ME.BearingTemp',
       label: 'Bearing Temp',
       // The HOTTEST of the 11 mains, not a mean: applyMTU8000SafetyOverride raises HI T-Bearing and

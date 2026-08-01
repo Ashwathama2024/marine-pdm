@@ -26,7 +26,9 @@ function baseline(over: Partial<BaselineSnapshot> = {}): BaselineSnapshot {
     expectedLoFilterDP: 0.15,
     expectedPistonCoolingPress: 4.0,
     expectedShaftPower: 7735,
-    expectedBearingTemp: 96,   // seed ME.BearingTemp.Mean at the rated point
+    expectedBearingTemp: 96,       // seed ME.BearingTemp.Mean at the rated point
+    expectedLubeLastBearing: 3.51, // gallery 6.39 × 0.55 at the rated point
+    expectedFuelRailPressure: 1770,
     ...over,
   };
 }

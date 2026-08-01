@@ -142,7 +142,9 @@ const BASELINE_LAG = {
   loFilterDP:       0.05,
   pistonCoolingPress: 0.05,
   shaftPower:       0.10,
-  bearingTemp:      0.03,
+  bearingTemp:      0.02,   // physics LAG.bearingTemps — large thermal mass
+  lubeLastBearing:  0.05,   // physics LAG.lubeLastBearing
+  fuelRailPressure: 0.12,   // physics LAG.fuelRailPressure
 };
 
 interface LaggedBaseline {
@@ -150,6 +152,7 @@ interface LaggedBaseline {
   tcRPM: number; jacket: number; sfoc: number; chargeAirTemp: number;
   fuelOilPressure: number; fuelOilTemp: number; loFilterDP: number;
   pistonCoolingPress: number; shaftPower: number; bearingTemp: number;
+  lubeLastBearing: number; fuelRailPressure: number;
 }
 
 // Module-level singletons — created once for the app lifetime
@@ -175,6 +178,10 @@ export interface SensorHistory {
   shaftPower:         number[];
   /** Hottest of the 11 main bearings — the scalar the SS T-Bearing override actually trips on. */
   bearingTemp:        number[];
+  /** SS P-Oil Last Bearing observable. */
+  lubeLastBearing:    number[];
+  /** SD P-Fuel Rail observable. */
+  fuelRailPressure:   number[];
   cylTemps:           number[][];   // 20 banks
   baseCylTemps:       number[][];   // per-cylinder lagged baselines
   systemRisk:         number[];
@@ -193,6 +200,8 @@ export interface SensorHistory {
   basePistonCoolingPress:  number[];
   baseShaftPower:          number[];
   baseBearingTemp:         number[];
+  baseLubeLastBearing:     number[];
+  baseFuelRailPressure:    number[];
   timestamps:              number[];
 }
 
@@ -245,12 +254,14 @@ function emptyHistory(): SensorHistory {
     tcRPM: [], jacketOutlet: [], sfoc: [], systemRisk: [],
     chargeAirTemp: [], fuelOilPressure: [], fuelOilTemp: [],
     loFilterDP: [], pistonCoolingPress: [], shaftPower: [], bearingTemp: [],
+    lubeLastBearing: [], fuelRailPressure: [],
     cylTemps: Array.from({ length: 20 }, () => []),
     baseCylTemps: Array.from({ length: 20 }, () => []),
     baseExhaust: [], baseLube: [], baseFuelRack: [], baseScavenge: [],
     baseTcRPM: [], baseJacket: [], baseSfoc: [],
     baseChargeAirTemp: [], baseFuelOilPressure: [], baseFuelOilTemp: [],
     baseLoFilterDP: [], basePistonCoolingPress: [], baseShaftPower: [], baseBearingTemp: [],
+    baseLubeLastBearing: [], baseFuelRailPressure: [],
     timestamps: [],
   };
 }
@@ -323,6 +334,8 @@ export function EngineProvider({ children }: { children: React.ReactNode }) {
     push(h.loFilterDP,         snapshot.loFilterDP);
     push(h.pistonCoolingPress, snapshot.pistonCoolingPress);
     push(h.bearingTemp, bearingTempMax(snapshot));
+    push(h.lubeLastBearing, (snapshot.lubeLastBearingPressure as number | undefined) ?? snapshot.lubeOilPressure);
+    push(h.fuelRailPressure, (snapshot.fuelRailPressure as number | undefined) ?? 0);
     push(h.shaftPower,         snapshot.shaftPower);
     push(h.systemRisk,         decision.systemRisk);
     push(h.timestamps,         snapshot.timestamp);
@@ -362,6 +375,8 @@ export function EngineProvider({ children }: { children: React.ReactNode }) {
         fuelOilPressure: baseline.expectedFuelOilPressure, fuelOilTemp: baseline.expectedFuelOilTemp,
         loFilterDP: baseline.expectedLoFilterDP, pistonCoolingPress: baseline.expectedPistonCoolingPress,
         shaftPower: baseline.expectedShaftPower, bearingTemp: baseline.expectedBearingTemp,
+        lubeLastBearing: baseline.expectedLubeLastBearing,
+        fuelRailPressure: baseline.expectedFuelRailPressure,
       };
     }
     wasRunningRef.current = _isRunning;
@@ -382,6 +397,8 @@ export function EngineProvider({ children }: { children: React.ReactNode }) {
     lb.pistonCoolingPress= applyLag(lb.pistonCoolingPress,baseline.expectedPistonCoolingPress,BASELINE_LAG.pistonCoolingPress);
     lb.shaftPower        = applyLag(lb.shaftPower,        baseline.expectedShaftPower,        BASELINE_LAG.shaftPower);
     lb.bearingTemp       = applyLag(lb.bearingTemp,       baseline.expectedBearingTemp,       BASELINE_LAG.bearingTemp);
+    lb.lubeLastBearing   = applyLag(lb.lubeLastBearing,   baseline.expectedLubeLastBearing,   BASELINE_LAG.lubeLastBearing);
+    lb.fuelRailPressure  = applyLag(lb.fuelRailPressure,  baseline.expectedFuelRailPressure,  BASELINE_LAG.fuelRailPressure);
 
     push(h.baseExhaust,            lb.exhaust);
     push(h.baseLube,               lb.lube);
@@ -397,6 +414,8 @@ export function EngineProvider({ children }: { children: React.ReactNode }) {
     push(h.basePistonCoolingPress, lb.pistonCoolingPress);
     push(h.baseShaftPower,         lb.shaftPower);
     push(h.baseBearingTemp,        lb.bearingTemp);
+    push(h.baseLubeLastBearing,    lb.lubeLastBearing);
+    push(h.baseFuelRailPressure,   lb.fuelRailPressure);
 
     // Per-cylinder lagged baselines: mean exhaust + natural spread + B-side thermal bias
     snapshot.cylTemps.forEach((_, i) => {
@@ -462,7 +481,8 @@ export function EngineProvider({ children }: { children: React.ReactNode }) {
           lagged: {
             exhaust: lb.exhaust, jacket: lb.jacket, lube: lb.lube, tcRPM: lb.tcRPM,
             chargeAirTemp: lb.chargeAirTemp, pistonCoolingPress: lb.pistonCoolingPress,
-            bearingTemp: lb.bearingTemp,
+            bearingTemp: lb.bearingTemp, lubeLastBearing: lb.lubeLastBearing,
+            fuelRailPressure: lb.fuelRailPressure,
           },
           faults: engine.getMTUFaultList(),
           rootFactors: rf,

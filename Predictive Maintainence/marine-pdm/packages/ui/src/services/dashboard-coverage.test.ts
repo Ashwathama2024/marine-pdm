@@ -70,16 +70,11 @@ describe('ECS safety trips are visible to the operator', () => {
     'cooling.coolant_temp_ss':            'ME.JacketCoolingOutlet',
     'exhaust.mean_hi':                    'ME.ExhaustTemp',
 
-    // KNOWN GAPS — both trigger Emergency-class action with no continuous display anywhere in the UI.
-    // Left null deliberately so they stay recorded rather than forgotten; closing either means adding
-    // a gauge and changing the value here to its sensor id.
-    //
-    //   pressure_last_bearing_min — SS P-Oil Last Bearing, Emergency Stop at 2.0 bar. Shown only on
-    //     the Simulator page's LOP as "LO BRG", which is not the operator's monitoring surface.
-    //   rail_pressure_min — SD P-Fuel Rail → Emergency Operation at 1200 bar. Not displayed at all;
-    //     the dashboard's "FO Pressure" gauge is fuelOilPressure (~8 bar supply), a different sensor.
-    'lubeOil.pressure_last_bearing_min':  null,
-    'fuel.rail_pressure_min':             null,
+    // Both were Emergency-class trips with no continuous display until they got their own gauges.
+    // Neither is covered by the similarly-named gauge beside it: "LO Pressure" is the main gallery,
+    // not the last bearing; "FO Pressure" is the ~8 bar supply, not the ~1770 bar common rail.
+    'lubeOil.pressure_last_bearing_min':  'ME.LubeOilPressure.LastBearing',
+    'fuel.rail_pressure_min':             'ME.FuelRailPressure',
   };
 
   const tripsInSource = [...new Set(

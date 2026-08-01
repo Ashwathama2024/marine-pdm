@@ -151,6 +151,23 @@ const PRIMARY_BASELINES: BaselineCurve[] = [
     addedDate: new Date().toISOString(), isActive: true,
   },
   {
+    sensorId: 'ME.LubeOilPressure.LastBearing',
+    // The main gallery curve above, scaled by the 0.55 the physics applies at the furthest
+    // lubrication point (`targetLubeLastB = lubeOilPressure_MTU8000(...) * 0.55`). Written out rather
+    // than referenced because a BaselineDefinition is a standalone mathjs string — so if the gallery
+    // equation is retuned, this one must be retuned with it.
+    //
+    // Validates against the coded limit's own note: idle 400 RPM / 0 % load → 2.61 bar, matching the
+    // "idle 400 RPM gives ~2.67 bar" recalibration recorded on pressure_last_bearing_min (SS 2.0 bar).
+    // Rated 1150 / 85 % → 3.51 bar.
+    equation: '(3.5 + rpm / 1150 * 4.0 - load / 100 * 1.13 - 0.15) * 0.55',
+    coefficients: { base: 3.5, rpmFactor: 4.0, loadFactor: 1.13, filterDP: 0.15, lastBearingRatio: 0.55 },
+    dependsOn: ['load', 'rpm'],
+    validLoadMin: 0, validLoadMax: 100,
+    source: 'MTU 8000 M71L Physics Model v3 (physics.ts targetLubeLastB = gallery × 0.55)',
+    addedDate: new Date().toISOString(), isActive: true,
+  },
+  {
     sensorId: 'ME.FuelRack',
     equation: '0',
     coefficients: {},

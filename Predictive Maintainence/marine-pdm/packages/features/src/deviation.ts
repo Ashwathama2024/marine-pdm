@@ -63,6 +63,14 @@ export function computeBaselineSnapshot(
   // expectedExhaust. Falls back to the hottest live bearing so a snapshot without bearingTemps —
   // the plain EngineSnapshot used by several tests — yields deviation 0 rather than NaN.
   const expectedBearingTemp = store.getExpected('ME.BearingTemp.Mean', ctx) ?? bearingTempMax(snap);
+  // Both reach the UI through EngineSnapshot's index signature, so they need the same widen-and-fall-
+  // back treatment: a snapshot without them yields deviation 0 rather than NaN.
+  const liveNum = (k: string, fallback: number) =>
+    typeof snap[k] === 'number' ? (snap[k] as number) : fallback;
+  const expectedLubeLastBearing =
+    store.getExpected('ME.LubeOilPressure.LastBearing', ctx) ?? liveNum('lubeLastBearingPressure', expectedLube);
+  const expectedFuelRailPressure =
+    store.getExpected('ME.FuelRailPressure', ctx) ?? liveNum('fuelRailPressure', 0);
 
   return {
     expectedExhaust,
@@ -80,5 +88,7 @@ export function computeBaselineSnapshot(
     expectedPistonCoolingPress,
     expectedShaftPower,
     expectedBearingTemp,
+    expectedLubeLastBearing,
+    expectedFuelRailPressure,
   };
 }

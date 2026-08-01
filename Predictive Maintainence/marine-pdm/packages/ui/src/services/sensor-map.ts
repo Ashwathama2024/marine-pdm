@@ -105,6 +105,18 @@ export const SENSOR_META: Record<string, SensorMeta> = {
     // The single-bearing effect is therefore what moves the max, so it must be resolved first.
     matrixSensorIds: ['bearingTemps[i]', 'bearingTemps[all]'],
   },
+  'ME.LubeOilPressure.LastBearing': {
+    unit: 'bar', decimals: 2, histKey: 'lubeLastBearing', baseKey: 'baseLubeLastBearing',
+    snapKey: 'lubeLastBearingPressure', baselineKey: 'expectedLubeLastBearing',
+    forecastKey: 'lubeLastBearing',
+    matrixSensorIds: ['lubeLastBearingPressure'],
+  },
+  'ME.FuelRailPressure': {
+    unit: 'bar', decimals: 0, histKey: 'fuelRailPressure', baseKey: 'baseFuelRailPressure',
+    snapKey: 'fuelRailPressure', baselineKey: 'expectedFuelRailPressure',
+    forecastKey: 'fuelRailPressure',
+    matrixSensorIds: ['fuelRailPressure'],
+  },
   'ME.ShaftPower': {
     unit: 'kW', decimals: 0, histKey: 'shaftPower', baseKey: 'baseShaftPower',
     snapKey: 'shaftPower', baselineKey: 'expectedShaftPower',

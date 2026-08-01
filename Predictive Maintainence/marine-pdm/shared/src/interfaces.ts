@@ -48,6 +48,10 @@ export interface BaselineSnapshot {
   expectedShaftPower: number;
   /** Fault-free bearing temperature — one shared curve for all 11 (see seed.ts ME.BearingTemp.Mean). */
   expectedBearingTemp: number;
+  /** Fault-free last-bearing LO pressure — the SS P-Oil Last Bearing observable. */
+  expectedLubeLastBearing: number;
+  /** Fault-free common-rail pressure — the SD P-Fuel Rail observable. */
+  expectedFuelRailPressure: number;
   [key: string]: number | number[];
 }
 

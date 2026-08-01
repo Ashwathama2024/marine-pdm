@@ -56,6 +56,10 @@ export const FORECAST_LIMITS: Record<string, ForecastLimit> = {
   // makes bearing temperature forecastable (minsToAlarm_*) and labellable (rulTrue_*/rulQuality_*) —
   // it was the only SS-trip parameter with no RUL column, despite F04 being a modelled fault.
   bearingTemp:        { key: 'bearingTemp',       unit: '°C',   label: 'Bearing temp (hottest)', dir: 'high', hi: L.lubeOil.bearing_temp_hi,                  ss: L.lubeOil.bearing_temp_max },
+  // The other two Emergency-class trips. Both are `dir: 'low'` — the alarm is a COLLAPSE, so the
+  // band is `lo` and the fault must drive the reading down to reach it.
+  lubeLastBearing:    { key: 'lubeLastBearing',   unit: 'bar',  label: 'Last-bearing LO pressure',dir: 'low', lo: L.lubeOil.pressure_last_bearing_min },
+  fuelRailPressure:   { key: 'fuelRailPressure',  unit: 'bar',  label: 'Common-rail pressure',   dir: 'low',  lo: L.fuel.rail_pressure_min },
   systemRisk:         { key: 'systemRisk',        unit: '0–100',label: 'System risk',            dir: 'high', hi: 70,                                          ss: 90 },
 };
 export const FORECAST_METRICS = Object.keys(FORECAST_LIMITS);

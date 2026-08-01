@@ -29,9 +29,13 @@ const BLAG = {
   pistonCoolingPress: 0.06,
   shaftPower:         0.10,
   fuelRack:           0.08,
-  // Bearings are a thermal mass heated through the oil film, so they settle on the slow side —
-  // between jacket (0.02) and fuelOilTemp (0.04). Additive: no existing alpha is touched.
-  bearingTemp:        0.03,
+  // physics LAG.bearingTemps — large thermal mass. Every other entry here mirrors the physics alpha
+  // for the same sensor (lube 0.06, jacket ↔ coolantTemp 0.02, sfoc 0.03); an initial guess of 0.03
+  // broke that rule, so the expected value settled at a different rate from the sensor it is measured
+  // against and the gap between them read as label error. Additive: no existing alpha is touched.
+  bearingTemp:        0.02,
+  lubeLastBearing:    0.05,   // physics LAG.lubeLastBearing
+  fuelRailPressure:   0.12,   // physics LAG.fuelRailPressure
 };
 
 // Build a baseline equal to the live sensor values → all deviations read zero.
@@ -53,6 +57,10 @@ function actualAsBaseline(snap: EngineSnapshot): BaselineSnapshot {
     expectedPistonCoolingPress: snap.pistonCoolingPress,
     expectedShaftPower:         snap.shaftPower,
     expectedBearingTemp:        bearingTempMax(snap),
+    expectedLubeLastBearing:    typeof snap['lubeLastBearingPressure'] === 'number'
+      ? snap['lubeLastBearingPressure'] as number : snap.lubeOilPressure,
+    expectedFuelRailPressure:   typeof snap['fuelRailPressure'] === 'number'
+      ? snap['fuelRailPressure'] as number : 0,
   };
 }
 
