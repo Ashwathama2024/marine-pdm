@@ -102,6 +102,13 @@ export const MTU8000_LIMITS = {
   },
 
   // Crankcase (B50)
+  // Hottest-bearing position bias, from bearingTemp_MTU8000's `positionBias` (index 10 → +5 °C,
+  // indices 8–9 → +3). Every bearing shares the same load/rpm/oil terms, so at healthy the hottest is
+  // always the one carrying the largest bias — which is what the MAX-of-11 observable reports and
+  // what the SS T-Bearing override trips on. The shared ME.BearingTemp.Mean curve is per-bearing and
+  // deliberately excludes it; whoever reduces the 11 to a max adds it back.
+  bearingMaxPositionBias: 5,
+
   crankcase: {
     pressure_hi: 5,    // mbar — HI P-Crankcase
     pressure_normal: -2, // mbar — normal slightly negative (ventilation)

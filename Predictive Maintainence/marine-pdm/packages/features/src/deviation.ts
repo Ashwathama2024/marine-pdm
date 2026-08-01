@@ -1,5 +1,5 @@
 import type { EngineSnapshot, BaselineSnapshot } from '@marine-pdm/shared';
-import { bearingTempMax } from '@marine-pdm/shared';
+import { bearingTempMax, MTU8000_LIMITS } from '@marine-pdm/shared';
 import type { BaselineStore } from '@marine-pdm/knowledge';
 import type { SensorRegistry } from '@marine-pdm/knowledge';
 
@@ -62,7 +62,12 @@ export function computeBaselineSnapshot(
   // faultHeat terms are zero at healthy oil temp and pressure), mirroring how expectedCyls reuses
   // expectedExhaust. Falls back to the hottest live bearing so a snapshot without bearingTemps —
   // the plain EngineSnapshot used by several tests — yields deviation 0 rather than NaN.
-  const expectedBearingTemp = store.getExpected('ME.BearingTemp.Mean', ctx) ?? bearingTempMax(snap);
+  // The seed curve is the per-bearing mean; every consumer of expectedBearingTemp compares it against
+  // the HOTTEST of the 11, so the hottest bearing's position bias belongs here. Without it the
+  // expected value is a permanent 5 °C below a healthy engine's reading — a standing deviation on the
+  // gauge and a standing contribution to P04's bearing score.
+  const expectedBearingTemp = (store.getExpected('ME.BearingTemp.Mean', ctx) ?? bearingTempMax(snap))
+    + MTU8000_LIMITS.bearingMaxPositionBias;
   // Both reach the UI through EngineSnapshot's index signature, so they need the same widen-and-fall-
   // back treatment: a snapshot without them yields deviation 0 rather than NaN.
   const liveNum = (k: string, fallback: number) =>

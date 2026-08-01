@@ -275,16 +275,34 @@ const PRIMARY_BASELINES: BaselineCurve[] = [
   },
   {
     sensorId: 'ME.BearingTemp.Mean',
-    // Mirrors the healthy (fault=0) terms of bearingTemp_MTU8000: base + load + rpm only — the
-    // oilHeat/pressureDef/positionBias/faultHeat terms are all zero at a healthy rated oil temp
-    // (85°C) and pressure (≥6.5 bar), so this is the fault-free expected value shared across all 11
-    // bearings (same simplification already used for per-cylinder baselines above, which all share
-    // one expectedExhaust rather than 20 independent curves).
-    equation: '58 + load / 100 * 28 + rpm / 1150 * 10',
-    coefficients: { base: 58, loadFactor: 28, rpmFactor: 10, rpmDivisor: 1150 },
+    // Healthy (fault=0) terms of bearingTemp_MTU8000, shared across all 11 bearings — the same
+    // simplification the per-cylinder baselines use in reusing one expectedExhaust for 20 cylinders.
+    //
+    // NOW INCLUDES oilHeat, previously dropped. The old comment justified omitting it as "zero at a
+    // healthy rated oil temp (85°C)", but 85 is the REFERENCE in `(lubeOilTemp − 85)·0.4`, not the
+    // operating point: lubeOilTemp_MTU8000 returns 98.2 °C at rated, so oilHeat is +5.28 °C there,
+    // not 0. The curve read 91.8 °C at rated against its own source note of "~96 °C".
+    //
+    // The resulting 10.8 °C shortfall against the true hottest bearing was invisible while nothing
+    // displayed or labelled bearing temperature, and rulQuality cannot catch it either — that flag
+    // compares the LAGGED baseline against the INSTANT one, and a bias in the shared curve cancels
+    // out of both. It surfaced only once analyticRul divided by it: severityAtCross came out 0.516
+    // against an intensity cap of 0.5, so F04 at 50 % was labelled NO_CROSS ("cannot reach the
+    // band") while the sensor sat at ~125 °C, well past the 115 °C HI. Restored, it is 0.276.
+    //
+    // Folded algebraically so the curve stays a pure function of load/rpm:
+    //   oilHeat = (63 + load/100·32 + rpm/1150·8 − 85)·0.4 = load/100·12.8 + rpm/1150·3.2 − 8.8
+    //   base 58 − 8.8 = 49.2 ·  load 28 + 12.8 = 40.8 ·  rpm 10 + 3.2 = 13.2
+    //
+    // pressureDef stays omitted: 0.5 °C at rated, though ~8 °C at idle where the gallery sits
+    // furthest below its 6.5 bar reference. No alarm band applies at idle, so that residual costs a
+    // small display deviation there and nothing in the RUL labels. positionBias is not in this curve
+    // either — it is per-bearing, and the consumer adds it (see BEARING_MAX_POSITION_BIAS).
+    equation: '49.2 + load / 100 * 40.8 + rpm / 1150 * 13.2',
+    coefficients: { base: 49.2, loadFactor: 40.8, rpmFactor: 13.2, rpmDivisor: 1150 },
     dependsOn: ['load', 'rpm'],
     validLoadMin: 0, validLoadMax: 100,
-    source: 'MTU 8000 M71L Physics Model v3 (rated → ~96°C at healthy oil temp/pressure)',
+    source: 'MTU 8000 M71L Physics Model v3 (rated → 97.1°C incl. oilHeat; idle → 53.8°C)',
     addedDate: new Date().toISOString(), isActive: true,
   },
   {
