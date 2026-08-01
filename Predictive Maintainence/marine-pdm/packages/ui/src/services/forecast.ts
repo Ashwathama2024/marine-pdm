@@ -52,6 +52,10 @@ export const FORECAST_LIMITS: Record<string, ForecastLimit> = {
   tcSpeed:            { key: 'tcRPM',             unit: 'RPM',  label: 'TC speed (overspeed)',   dir: 'high', hi: L.turbocharger.speed_overspeed_l1,          ss: L.turbocharger.speed_overspeed_l2 },
   lube:               { key: 'lubeOilPressure',   unit: 'bar',  label: 'LO gallery pressure',    dir: 'low',  lo: L.lubeOil.pressure_before_filter_min },
   pistonCoolingPress: { key: 'pistonCoolingPress',unit: 'bar',  label: 'Piston-cooling pressure',dir: 'low',  lo: L.lubeOil.piston_cooling_min },
+  // Hottest of the 11 mains. The band is the one the safety override already enforces, so this key
+  // makes bearing temperature forecastable (minsToAlarm_*) and labellable (rulTrue_*/rulQuality_*) —
+  // it was the only SS-trip parameter with no RUL column, despite F04 being a modelled fault.
+  bearingTemp:        { key: 'bearingTemp',       unit: '°C',   label: 'Bearing temp (hottest)', dir: 'high', hi: L.lubeOil.bearing_temp_hi,                  ss: L.lubeOil.bearing_temp_max },
   systemRisk:         { key: 'systemRisk',        unit: '0–100',label: 'System risk',            dir: 'high', hi: 70,                                          ss: 90 },
 };
 export const FORECAST_METRICS = Object.keys(FORECAST_LIMITS);

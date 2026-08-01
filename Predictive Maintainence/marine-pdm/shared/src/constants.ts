@@ -3,6 +3,8 @@
 // Idle: 400 RPM / ~4% load; rated: 1150 RPM / 85% load (MTU 8000 Group 1B continuous)
 // Exhaust mean at rated: 440°C, LO pressure: 6.82 bar, Charge air: 3.04 bar
 import { CYLINDER_COUNT } from './interfaces';
+// mtu8000.constants.ts has no imports of its own, so this cannot cycle.
+import { MTU8000_LIMITS } from './mtu8000.constants';
 export { CYLINDER_COUNT };
 
 export const TICK_MS = 1000;
@@ -140,6 +142,24 @@ export const ALARM_LIMITS = {
     physMin: 0,
     physMax: 10000,
     alarmHigh:    9500,  // L2 — overload (MTU 8000 M71L max 9100 kW)
+  },
+  // Main-bearing temperature (B57.1–B57.11), reported as the HOTTEST of the 11 — the safety override
+  // trips on ANY single bearing, so a mean would hide the exact case the limit exists to catch.
+  //
+  // Bands are DERIVED from MTU8000_LIMITS rather than retyped: bearing temp is the one parameter
+  // whose ECS thresholds already existed and were enforced (override-mtu8000.ts raises HI T-Bearing
+  // and an SS Emergency Stop) while having no display at all, so a hand-copied second set of numbers
+  // here is exactly the drift this file should not introduce. L1 sits below the coded HI so the gauge
+  // warns before the ECS alarm rather than at the same instant.
+  bearingTemp: {
+    physMin: 20,
+    physMax: 150,
+    normalMin: 60,
+    normalMax: 110,
+    preAlarmHigh: MTU8000_LIMITS.lubeOil.bearing_temp_hi - 5,   // L1 — 110 °C, early warning
+    alarmHigh:    MTU8000_LIMITS.lubeOil.bearing_temp_hi,       // L2 — 115 °C, HI T-Bearing
+    slowdownHigh: (MTU8000_LIMITS.lubeOil.bearing_temp_hi + MTU8000_LIMITS.lubeOil.bearing_temp_max) / 2, // L3 — 122.5 °C
+    shutdownHigh: MTU8000_LIMITS.lubeOil.bearing_temp_max,      // L4 — 130 °C, SS T-Bearing
   },
 };
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import type { EngineSnapshot, BaselineSnapshot, DecisionOutput } from '@marine-pdm/shared';
-import { ALARM_LIMITS } from '@marine-pdm/shared';
+import { ALARM_LIMITS, bearingTempMax } from '@marine-pdm/shared';
 
 const CX = 60, CY = 64, R = 48;
 const CIRC      = 2 * Math.PI * R;
@@ -498,6 +498,28 @@ export function GaugeGrid({ snap, baseline, decision, isOperational = true, onGa
         { value: AL.pistonCoolingPress.preAlarmLow, color: L1, label: 'L1↓', inner: true },
         { value: AL.pistonCoolingPress.alarmLow,    color: L2, label: 'L2↓', inner: true },
         { value: AL.pistonCoolingPress.shutdownLow, color: L4, label: 'L4↓', inner: true },
+      ],
+    },
+    {
+      sensorId: 'ME.BearingTemp',
+      label: 'Bearing Temp',
+      // The HOTTEST of the 11 mains, not a mean: applyMTU8000SafetyOverride raises HI T-Bearing and
+      // an SS Emergency Stop on ANY single bearing, so averaging would hide the single-bearing case
+      // F04 produces — which is the whole reason the limit exists.
+      actual: bearingTempMax(snap, baseline.expectedBearingTemp),
+      expected: baseline.expectedBearingTemp,
+      unit: '°C', risk: derivedRisk(decision.lubeRisk, 0.8), decimals: 1,
+      physMin: AL.bearingTemp.physMin, physMax: AL.bearingTemp.physMax,
+      ribbonColor: 'var(--risk-high)',
+      gaugeColor: sensorValueColor(
+        bearingTempMax(snap, baseline.expectedBearingTemp),
+        AL.bearingTemp.physMin, AL.bearingTemp.physMax, AL.bearingTemp, baseline.expectedBearingTemp, 8,
+      ),
+      alarmTicks: [
+        { value: AL.bearingTemp.preAlarmHigh, color: L1, label: 'L1' },
+        { value: AL.bearingTemp.alarmHigh,    color: L2, label: 'L2' },
+        { value: AL.bearingTemp.slowdownHigh, color: L3, label: 'L3' },
+        { value: AL.bearingTemp.shutdownHigh, color: L4, label: 'L4' },
       ],
     },
     {

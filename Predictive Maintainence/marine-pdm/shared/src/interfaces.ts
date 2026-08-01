@@ -46,6 +46,8 @@ export interface BaselineSnapshot {
   expectedLoFilterDP: number;
   expectedPistonCoolingPress: number;
   expectedShaftPower: number;
+  /** Fault-free bearing temperature — one shared curve for all 11 (see seed.ts ME.BearingTemp.Mean). */
+  expectedBearingTemp: number;
   [key: string]: number | number[];
 }
 

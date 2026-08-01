@@ -41,9 +41,15 @@ describe('SENSOR_META ↔ DEGRADATION_MODES', () => {
     //
     // crankcasePressure is the consequential one: it is F08 piston blow-by's PRIMARY effect, so F08
     // can never surface as a candidate fault for a gauge, and rulTrue has no metric to project it
-    // onto. Adding a crankcase gauge to SENSOR_META would close both gaps.
+    // onto. It DOES have a dashboard gauge, but no SENSOR_META entry to back it — which is why it is
+    // still listed here. Adding one would close both gaps.
+    //
+    // bearingTemps[i] / bearingTemps[all] were on this list until ME.BearingTemp was added. They were
+    // the worst case in it: unlike the rest, bearing temperature is enforced by
+    // applyMTU8000SafetyOverride (HI T-Bearing 115 °C, SS Emergency Stop 130 °C), so F04 could trip a
+    // shutdown with no gauge, no trend and no RUL column anywhere in the UI.
     expect(orphans.sort()).toEqual(
-      ['bearingTemps[all]', 'bearingTemps[i]', 'crankcasePressure', 'cylImbalance', 'exhaustBackPressure', 'lubeOilTemp'].sort(),
+      ['crankcasePressure', 'cylImbalance', 'exhaustBackPressure', 'lubeOilTemp'].sort(),
     );
   });
 });

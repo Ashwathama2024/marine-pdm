@@ -1,5 +1,5 @@
 import type { EngineSnapshot, FeatureSnapshot, BaselineSnapshot } from '@marine-pdm/shared';
-import { applyLag } from '@marine-pdm/shared';
+import { applyLag, bearingTempMax } from '@marine-pdm/shared';
 import type { BaselineStore, SensorRegistry } from '@marine-pdm/knowledge';
 import { computeDeviations, computeBaselineSnapshot } from './deviation';
 import { RateCalculator } from './rate';
@@ -29,6 +29,9 @@ const BLAG = {
   pistonCoolingPress: 0.06,
   shaftPower:         0.10,
   fuelRack:           0.08,
+  // Bearings are a thermal mass heated through the oil film, so they settle on the slow side —
+  // between jacket (0.02) and fuelOilTemp (0.04). Additive: no existing alpha is touched.
+  bearingTemp:        0.03,
 };
 
 // Build a baseline equal to the live sensor values → all deviations read zero.
@@ -49,6 +52,7 @@ function actualAsBaseline(snap: EngineSnapshot): BaselineSnapshot {
     expectedLoFilterDP:         snap.loFilterDP,
     expectedPistonCoolingPress: snap.pistonCoolingPress,
     expectedShaftPower:         snap.shaftPower,
+    expectedBearingTemp:        bearingTempMax(snap),
   };
 }
 
@@ -116,6 +120,7 @@ export class FeatureEngine {
       lb.expectedPistonCoolingPress = applyLag(lb.expectedPistonCoolingPress, instant.expectedPistonCoolingPress, BLAG.pistonCoolingPress);
       lb.expectedShaftPower         = applyLag(lb.expectedShaftPower,         instant.expectedShaftPower,         BLAG.shaftPower);
       lb.expectedFuelRack           = applyLag(lb.expectedFuelRack,           instant.expectedFuelRack,           BLAG.fuelRack);
+      lb.expectedBearingTemp        = applyLag(lb.expectedBearingTemp,        instant.expectedBearingTemp,        BLAG.bearingTemp);
       // Per-cylinder expected mirrors the lagged mean exhaust (computeBaselineSnapshot sets all = mean).
       lb.expectedCyls = instant.expectedCyls.map(() => lb.expectedExhaust);
       baseline = lb;

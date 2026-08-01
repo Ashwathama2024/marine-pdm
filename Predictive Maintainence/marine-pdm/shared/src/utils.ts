@@ -1,5 +1,29 @@
 // shared/utils.ts — Core math utilities used by all packages
 
+import type { EngineSnapshot } from './interfaces';
+
+/**
+ * The 11 main-bearing temperatures (B57.1–B57.11), or `[]` if this snapshot has none.
+ *
+ * `bearingTemps` reaches the UI through EngineSnapshot's index signature rather than a declared
+ * field, so every consumer has to widen it by hand. One helper instead of a private copy per package
+ * — decision already had its own, and the display layer needed a third.
+ */
+export function bearingTemps(snap: EngineSnapshot): number[] {
+  const bt = snap['bearingTemps'];
+  return Array.isArray(bt) ? (bt as number[]) : [];
+}
+
+/**
+ * The HOTTEST bearing — the correct scalar summary for both the gauge and the RUL label, because
+ * the safety override trips on ANY single bearing exceeding the limit. A mean would mask exactly the
+ * single-bearing case F04 produces. Returns `fallback` when the snapshot carries no bearing array.
+ */
+export function bearingTempMax(snap: EngineSnapshot, fallback = 0): number {
+  const bt = bearingTemps(snap);
+  return bt.length ? Math.max(...bt) : fallback;
+}
+
 /**
  * Exponential lag filter — smooths signal transitions.
  * alpha=0.08 → slow response (exhaust temp); alpha=0.5 → fast response

@@ -241,6 +241,7 @@ function featureColumns(f: MTU8000Features): Record<string, number | null> {
 const HEALTHY_REF: Record<string, string> = {
   exhaust: 'exhaust', jacket: 'jacket', chargeAirTemp: 'chargeAirTemp',
   tcSpeed: 'tcRPM', lube: 'lube', pistonCoolingPress: 'pistonCoolingPress',
+  bearingTemp: 'bearingTemp',
 };
 
 /**

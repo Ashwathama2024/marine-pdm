@@ -96,6 +96,15 @@ export const SENSOR_META: Record<string, SensorMeta> = {
     snapKey: 'pistonCoolingPress', baselineKey: 'expectedPistonCoolingPress',
     forecastKey: 'pistonCoolingPress', matrixSensorIds: ['pistonCoolingPress'],
   },
+  'ME.BearingTemp': {
+    unit: '°C', decimals: 1, histKey: 'bearingTemp', baseKey: 'baseBearingTemp',
+    snapKey: 'bearingTemps', baselineKey: 'expectedBearingTemp',
+    forecastKey: 'bearingTemp',
+    // Declared order matters (see the ME.ExhaustTemp note): the observed series is the HOTTEST of the
+    // 11, and F04 drives ONE bearing by +45 °C while F05 warms all eleven by only +6 °C via oil heat.
+    // The single-bearing effect is therefore what moves the max, so it must be resolved first.
+    matrixSensorIds: ['bearingTemps[i]', 'bearingTemps[all]'],
+  },
   'ME.ShaftPower': {
     unit: 'kW', decimals: 0, histKey: 'shaftPower', baseKey: 'baseShaftPower',
     snapKey: 'shaftPower', baselineKey: 'expectedShaftPower',

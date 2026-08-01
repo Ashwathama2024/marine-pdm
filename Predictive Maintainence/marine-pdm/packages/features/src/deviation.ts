@@ -1,4 +1,5 @@
 import type { EngineSnapshot, BaselineSnapshot } from '@marine-pdm/shared';
+import { bearingTempMax } from '@marine-pdm/shared';
 import type { BaselineStore } from '@marine-pdm/knowledge';
 import type { SensorRegistry } from '@marine-pdm/knowledge';
 
@@ -57,6 +58,11 @@ export function computeBaselineSnapshot(
   const expectedLoFilterDP = store.getExpected('ME.LOFilterDP', ctx) ?? snap.loFilterDP;
   const expectedPistonCoolingPress = store.getExpected('ME.PistonCoolingPress', ctx) ?? snap.pistonCoolingPress;
   const expectedShaftPower = store.getExpected('ME.ShaftPower', ctx) ?? snap.shaftPower;
+  // Bearings share ONE fault-free curve across all 11 (the seed equation's oilHeat/pressureDef/
+  // faultHeat terms are zero at healthy oil temp and pressure), mirroring how expectedCyls reuses
+  // expectedExhaust. Falls back to the hottest live bearing so a snapshot without bearingTemps —
+  // the plain EngineSnapshot used by several tests — yields deviation 0 rather than NaN.
+  const expectedBearingTemp = store.getExpected('ME.BearingTemp.Mean', ctx) ?? bearingTempMax(snap);
 
   return {
     expectedExhaust,
@@ -73,5 +79,6 @@ export function computeBaselineSnapshot(
     expectedLoFilterDP,
     expectedPistonCoolingPress,
     expectedShaftPower,
+    expectedBearingTemp,
   };
 }
