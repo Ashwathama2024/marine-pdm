@@ -3,7 +3,7 @@
 // Single computed source of truth for the System Dossier's 13 parameter entries. Feeds:
 //   - SectionsDossier.tsx      (§3 — one ParameterDossier card per entry)
 //   - SectionsInterconnect.tsx (§4 — node labels/anchors for the causality diagram)
-//   - SectionsReference.tsx    (§9 — the all-parameters table)
+//   - SectionsReference.tsx    (§10 — the all-parameters table)
 // Rated values are LIVE-computed by calling the real physics functions at the 85% load / 1150 RPM
 // rated point — the same functions and chained-argument pattern already used by
 // packages/ui/src/help/sections/SectionsPhysics.tsx — so these numbers can never numerically drift

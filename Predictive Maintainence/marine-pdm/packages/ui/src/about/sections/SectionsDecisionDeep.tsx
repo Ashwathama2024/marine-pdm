@@ -29,7 +29,7 @@ const SENSOR_LABELS: Record<string, string> = {
   exhaustTemp: 'Exhaust Temp (mean)', cylTemp: 'Cylinder Temp (per-cyl)', jacketOutlet: 'Coolant / Jacket Temp',
   chargeAirTemp: 'Charge-Air Temp', fuelOilTemp: 'Fuel Oil Temp', lubeOilPressure: 'Lube Oil Pressure',
   fuelOilPressure: 'Fuel Oil Pressure', scavengeAir: 'Charge-Air Pressure', pistonCoolingPress: 'Piston Cooling Pressure',
-  loFilterDP: 'LO Filter ΔP', tcRPM: 'Turbocharger Speed', sfoc: 'SFOC', shaftPower: 'Shaft Power', fuelRack: 'Fuel Rack',
+  loFilterDP: 'LO Filter ΔP', tcRPM: 'Turbocharger Speed', sfoc: 'SFOC', shaftPower: 'Shaft Power',
 };
 
 function riskColor(r: number) {
@@ -261,7 +261,7 @@ function RiskCalculator() {
           4-step pipeline). It does not run these values through the{' '}
           <Hi color="var(--risk-critical)">safety-override layer</Hi> (step 4) — on the real engine, e.g.
           last-bearing pressure below 2.0 bar or bearing temp above 130°C forces risk to <Code>100</Code>{' '}
-          immediately, deterministically, regardless of what this weighted formula computes. See §7 Hidden
+          immediately, deterministically, regardless of what this weighted formula computes. See §8 Hidden
           Strengths and <Link to="/help#algorithm" style={{ color: 'var(--accent-blue)' }}>the User Manual's
           Algorithm section</Link> for the override thresholds this calculator intentionally leaves out.
         </Callout>

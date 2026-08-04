@@ -11,7 +11,8 @@
 // constants (FAULT_DEFINITIONS, DEGRADATION_MODES, MTU8000_PATTERNS) so new faults/patterns appear
 // automatically, and predictiveCapabilities() reads its ramp timings and RUL column list from
 // GROWTH_RATES / FORECAST_LIMITS for the same reason. Hand-authored, and therefore the sync points to
-// keep current: APP_MAP (add a row when a page is added), the identity prose, and the *explanatory*
+// keep current: APP_MAP (add a row when a page is added — /help's Page-by-Page guide renders from it,
+// so that row is the only place a new route has to be described), the identity prose, and the *explanatory*
 // prose in predictiveCapabilities() — the latter describes INTENT (why blind diagnosis, why rulTrue can
 // legitimately be null), which no constant can regenerate.
 
@@ -25,8 +26,13 @@ import { FORECAST_LIMITS } from './forecast';
 // ./training-store are pure.
 
 // ── App map (the one hand-maintained list — keep in sync with Sidebar/App routes) ──
-interface Feature { route: string; label: string; group: string; purpose: string }
-const APP_MAP: Feature[] = [
+//
+// Exported because the User Manual's Page-by-Page guide (help/sections/SectionsUI.tsx) renders FROM
+// this array rather than keeping a second route list. There used to be two, and the /help one fell
+// three pages behind — Training Data, System Dossier and JARVIS all shipped without appearing in the
+// guide that claims to document every route. One list, two readers (the model and the operator).
+export interface Feature { route: string; label: string; group: string; purpose: string }
+export const APP_MAP: Feature[] = [
   { route: '/', label: 'Dashboard', group: 'OPERATE', purpose: 'Live gauges, 20-cylinder view, AI decision panel (system risk, evidence chain, active alerts), rolling trend chart.' },
   { route: '/simulator', label: 'Simulator', group: 'OPERATE', purpose: 'Inject faults (F01–F09 at chosen intensity/speed) and sensor failures (52 tags, 5 failure modes). This is where you TEST anything.' },
   { route: '/analysis', label: 'Analysis Workspace', group: 'ANALYZE', purpose: 'Tabs: per-sensor deviations, full sensor table with baselines, and alert analytics.' },

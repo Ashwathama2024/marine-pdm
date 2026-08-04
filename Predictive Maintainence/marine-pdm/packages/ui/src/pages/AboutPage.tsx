@@ -12,6 +12,7 @@ import { SystemIdentitySection, ModuleArchitectureSection } from '../about/secti
 import { ParameterDossierSection } from '../about/sections/SectionsDossier';
 import { InterconnectionSection } from '../about/sections/SectionsInterconnect';
 import { DecisionDeepDiveSection } from '../about/sections/SectionsDecisionDeep';
+import { PredictionLayerSection } from '../about/sections/SectionsPrediction';
 import { PlaybookSection } from '../about/sections/SectionsPlaybook';
 import { StrengthsSection, LimitationsSection } from '../about/sections/SectionsCandor';
 import { ReferenceTableSection, GlossaryLinkSection } from '../about/sections/SectionsReference';
@@ -109,6 +110,7 @@ export function AboutPage() {
         <ParameterDossierSection />
         <InterconnectionSection />
         <DecisionDeepDiveSection />
+        <PredictionLayerSection />
         <PlaybookSection />
         <StrengthsSection />
         <LimitationsSection />

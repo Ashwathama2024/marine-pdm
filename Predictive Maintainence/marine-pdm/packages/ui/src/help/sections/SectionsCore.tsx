@@ -59,9 +59,11 @@ export function OverviewSection() {
         black box — this manual documents every equation, every score, and every graph.
       </P>
       <P>
-        It is called a <em>living</em> twin because there is no recorded dataset: the engine state is generated
-        live from calibrated physics, so you can inject a fault and watch the entire chain of consequences
-        propagate in real time. You are the sole operator; there is no multi-user or data-privacy concern.
+        It is called a <em>living</em> twin because nothing is replayed: the engine state is generated live
+        from calibrated physics, so you can inject a fault and watch the entire chain of consequences
+        propagate in real time. Data flows <em>out</em> rather than in — every running tick is recorded and
+        labelled with whatever fault is injected (§9), but no recording ever drives the engine. You are the
+        sole operator; there is no multi-user or data-privacy concern.
       </P>
 
       <SubSection title="The pipeline — how a number reaches the screen">

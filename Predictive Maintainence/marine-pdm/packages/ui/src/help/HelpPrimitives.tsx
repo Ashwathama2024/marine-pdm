@@ -19,10 +19,12 @@ export const HELP_SECTIONS: HelpSectionMeta[] = [
   { id: 'sensorfail',  title: '6 · Sensor-Failure Modes',      hint: 'Dropout · drift · spike…' },
   { id: 'algorithm',   title: '7 · The Algorithm',             hint: 'How the AI scores risk' },
   { id: 'degradation', title: '8 · Degradation & Regression',  hint: 'The weight matrix' },
-  { id: 'pages',       title: '9 · Page-by-Page Guide',        hint: 'All 10 routes' },
-  { id: 'graphs',      title: '10 · Graph-by-Graph Guide',     hint: 'How to read every chart' },
-  { id: 'legend',      title: '11 · Colour & Status Legend',   hint: 'What every colour means' },
-  { id: 'glossary',    title: '12 · Glossary & References',    hint: 'Codes, terms, files' },
+  { id: 'predict',     title: '9 · Prediction & Training',     hint: 'Time-to-alarm · RUL · dataset' },
+  { id: 'jarvis',      title: '10 · JARVIS — Assistant',       hint: 'Read-only tools · settings' },
+  { id: 'pages',       title: '11 · Page-by-Page Guide',       hint: 'Every route in the sidebar' },
+  { id: 'graphs',      title: '12 · Graph-by-Graph Guide',     hint: 'How to read every chart' },
+  { id: 'legend',      title: '13 · Colour & Status Legend',   hint: 'What every colour means' },
+  { id: 'glossary',    title: '14 · Glossary & References',    hint: 'Codes, terms, files' },
 ];
 
 // ── Section shell ─────────────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 // packages/ui/src/about/sections/SectionsCandor.tsx
-// Dossier sections §7 Hidden Strengths, §8 Known Limitations.
+// Dossier sections §8 Hidden Strengths, §9 Known Limitations.
 //
 // Every claim below was checked directly against current source in the same session this file was
 // written (mtu8000-physics.ts, degradation-matrix.ts, risk.ts, decision-engine.ts, interfaces.ts,
@@ -12,7 +12,7 @@ import { StrengthCallout, LimitationCallout } from '../AboutPrimitives';
 
 export function StrengthsSection() {
   return (
-    <Section id="strengths" title="7 · Hidden Strengths"
+    <Section id="strengths" title="8 · Hidden Strengths"
       subtitle="Design choices that aren't visible on any gauge, but are load-bearing for why this system doesn't cry wolf.">
       <StrengthCallout title="The lag-matched baseline is the real anti-false-alarm mechanism" verifiedCurrent>
         Every sensor is passed through a first-order lag each tick, and critically, its <em>expected</em>{' '}
@@ -47,6 +47,21 @@ export function StrengthsSection() {
         line in <Code>EngineContext.tsx</Code> — everything downstream of that line is simulator-agnostic by
         construction, not by convention.
       </StrengthCallout>
+      <StrengthCallout title="Every RUL label states whether it can be trusted" verifiedCurrent>
+        The analytic labels are solved from the lagged baseline, which is re-seeded onto the live reading
+        whenever RPM drops below 300 — so labels produced during the recovery are wrong, and wrong
+        <em>directionally</em> (remaining life appears to grow as the fault develops). Rather than silently
+        emitting them, every row carries a per-metric <Code>rulQuality_*</Code> verdict plus the continuous{' '}
+        <Code>rulLabelErrMin_*</Code> it was thresholded from, so a training run can filter poison instead of
+        averaging it — and the threshold itself can be re-chosen later from the distribution it cuts, without
+        re-collecting a single row. See <Hi>§6 The Prediction Layer</Hi>.
+      </StrengthCallout>
+      <StrengthCallout title="The forecast the operator sees is the one a real ship could compute" verifiedCurrent>
+        The exact, analytic time-to-alarm needs the injected fault's identity — information no ship has. So it
+        is used only as a training <em>label</em>, and every number on screen (the sensor pop-up's ETA,
+        JARVIS's forecast tool) comes from the plain slope-extrapolation that works on sensor history alone.
+        The system never shows the operator a figure that depended on knowing the answer in advance.
+      </StrengthCallout>
       <StrengthCallout title="Persistence and spike-damping don't fight fast-fault detection" verifiedCurrent>
         A brand-new deviation is deliberately under-weighted (40%) until it survives 3 ticks, which is what
         stops single-tick sensor noise from ever reaching an alert. But that same damping only applies to the
@@ -60,7 +75,7 @@ export function StrengthsSection() {
 
 export function LimitationsSection() {
   return (
-    <Section id="limitations" title="8 · Known Limitations"
+    <Section id="limitations" title="9 · Known Limitations"
       subtitle="Documented gaps, not discovered ones — these are deliberate modeling decisions the codebase already states plainly.">
       <LimitationCallout title="F05 does not reach charge-air temperature — by design, not oversight" verifiedCurrent>
         HT-cooler fouling (F05) raises exhaust, lube oil, bearings, and SFOC — but charge-air temperature is
@@ -84,6 +99,18 @@ export function LimitationsSection() {
         is a genuine trap for anyone who edits the wrong one expecting it to change what the AI actually
         alerts on.
       </LimitationCallout>
+      <LimitationCallout title="One vestigial tag survives in the snapshot: fuelRack" verifiedCurrent>
+        A fuel rack is the linkage of a <em>mechanical</em> governor. This engine is common-rail — fuel is
+        metered by rail pressure and injection timing — so the tag can only ever read 0, and it does.
+        <Code>EngineSnapshot.fuelRack</Code> is retained because that interface is the wire format an
+        OPC-UA source fills in and a real plant's tag list may still carry the point; everything derived
+        from it has been removed (baseline curve, deviation feature, alarm band, trend card, cause chain).
+        It had been surfaced as a live sensor for some time, which is worse than useless on two counts: a
+        permanently flat trace is the exact signature this system teaches you to read as a{' '}
+        <Hi color="var(--risk-warning)">FROZEN sensor</Hi>, and its degradation-matrix mapping pointed at{' '}
+        <Code>fuelRailPressure</Code> — a millimetre reading joined to a bar-unit effect — so the AI
+        diagnosis payload was told injector faults drive it.
+      </LimitationCallout>
       <LimitationCallout title="EngineSnapshot's index signature hides missing-field bugs from the compiler" verifiedCurrent>
         <Code>EngineSnapshot</Code> carries a <Code>[key: string]: number | number[]</Code> index signature
         for backwards compatibility, which means TypeScript cannot catch a typo'd or missing field name on a
@@ -91,10 +118,27 @@ export function LimitationsSection() {
         full migration off <Code>EngineSnapshot</Code> is still an open step.
       </LimitationCallout>
       <LimitationCallout title="This is a calibrated physics twin, not a model trained on fleet failure data" verifiedCurrent>
-        Every session is generated live from the calibrated equations — there is no recorded historical
-        dataset, and no persistence layer stores past sessions. That makes the physics fully inspectable (the
-        whole point of this dossier), but it also means the system has never learned from a real failure it
-        didn't already know how to simulate.
+        Every session is generated live from the calibrated equations, so the system has never learned from a
+        real failure it didn't already know how to simulate. Sessions <em>are</em> now persisted — every
+        running tick is recorded to a local IndexedDB store, labelled with the injected fault — but that
+        dataset is simulator output, not fleet history: a model trained on it learns this model's physics
+        faithfully and a real engine's idiosyncrasies not at all. Nothing in the shipped decision path is
+        learned from it yet; the risk engine remains entirely rule- and physics-based.
+      </LimitationCallout>
+      <LimitationCallout title="Both predictions assume the fault ramps linearly" verifiedCurrent>
+        The analytic RUL inverts a model that is linear in severity, and the observable ETA is a straight-line
+        projection of a {' '}30-tick slope. Inside this twin that is exact by construction. On real plant, wear
+        accelerates — so both numbers are <Hi color="var(--risk-warning)">optimistic bounds</Hi>, not
+        schedules, and a non-linear fault arrives sooner than either states. <Code>forecast.ts</Code> attaches
+        that caveat to every projection it returns rather than leaving it implicit.
+      </LimitationCallout>
+      <LimitationCallout title="The label-quality flag cannot see a biased baseline curve" verifiedCurrent>
+        <Code>rulQuality</Code> measures the gap between the <em>lagged</em> baseline and the <em>instant</em>{' '}
+        one, which catches an unsettled filter but not a wrong curve: an error in <Code>seed.ts</Code> itself
+        is present in both terms and cancels, and the row is reported <Code>OK</Code>. A 10.8 °C bearing-baseline
+        shortfall hid behind exactly this cancellation until <Code>analyticRul()</Code> divided by it. The
+        residual rule — <Hi>a label that contradicts the live sensor indicts the curve, not the flag</Hi> — is
+        documented in §6, but it is a human check, not an automated one.
       </LimitationCallout>
     </Section>
   );

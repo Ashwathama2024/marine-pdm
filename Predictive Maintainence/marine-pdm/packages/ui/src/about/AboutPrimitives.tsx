@@ -25,11 +25,12 @@ export const ABOUT_SECTIONS: AboutSectionMeta[] = [
   { id: 'dossier',       title: '3 · Parameter Dossier',          hint: 'Every gauge, in depth — start here' },
   { id: 'interconnect',  title: '4 · Interconnection Map',        hint: 'How every parameter is coupled' },
   { id: 'decision-deep', title: '5 · Decision Logic — Deep Dive', hint: 'Worked example, tick by tick' },
-  { id: 'playbook',      title: '6 · Health Assessment Playbook', hint: 'How to read the whole engine' },
-  { id: 'strengths',     title: '7 · Hidden Strengths',           hint: 'Design choices worth knowing' },
-  { id: 'limitations',   title: '8 · Known Limitations',          hint: 'Candid gaps, not hidden' },
-  { id: 'ref-table',     title: '9 · All-Parameters Reference',   hint: 'One table, every tag' },
-  { id: 'ref-glossary',  title: '10 · Glossary',                  hint: 'Points to the User Manual' },
+  { id: 'prediction',    title: '6 · The Prediction Layer',       hint: 'Time-to-alarm · RUL · labels' },
+  { id: 'playbook',      title: '7 · Health Assessment Playbook', hint: 'How to read the whole engine' },
+  { id: 'strengths',     title: '8 · Hidden Strengths',           hint: 'Design choices worth knowing' },
+  { id: 'limitations',   title: '9 · Known Limitations',          hint: 'Candid gaps, not hidden' },
+  { id: 'ref-table',     title: '10 · All-Parameters Reference',  hint: 'One table, every tag' },
+  { id: 'ref-glossary',  title: '11 · Glossary',                  hint: 'Points to the User Manual' },
 ];
 
 // ── Coupled-parameter chip — used inside ParameterDossier and the interconnection map ──

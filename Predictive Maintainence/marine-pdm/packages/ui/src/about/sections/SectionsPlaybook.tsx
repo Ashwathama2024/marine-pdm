@@ -1,5 +1,5 @@
 // packages/ui/src/about/sections/SectionsPlaybook.tsx
-// Dossier section §6 — Health Assessment Playbook. Distinct from the User Manual's Quick Start
+// Dossier section §7 — Health Assessment Playbook. Distinct from the User Manual's Quick Start
 // (which is about operating the plant): this is about assessing it once something looks off.
 
 import React from 'react';
@@ -8,7 +8,7 @@ import { Section, P, Code, Hi, Callout, Steps } from '../AboutPrimitives';
 
 export function PlaybookSection() {
   return (
-    <Section id="playbook" title="6 · Health Assessment Playbook"
+    <Section id="playbook" title="7 · Health Assessment Playbook"
       subtitle="A practical order of operations for reading the whole engine, not just one gauge.">
       <P>
         This is not a substitute for the <Link to="/help" style={{ color: 'var(--accent-blue)' }}>User
@@ -39,6 +39,11 @@ export function PlaybookSection() {
         <><Hi>Use Related Faults to close the loop.</Hi> Every dossier entry in §3 lists which fault IDs
           manifest primarily through it — that maps straight to an ECS alarm code and an MTU maintenance work
           order, which is where the diagnosis turns into an action.</>,
+        <><Hi>Only then ask “how long have I got?”</Hi> Click the gauge (or its trend card) and read the
+          HISTORIC ANALYSIS block: drift per minute and, where the sensor has a coded band, the projected
+          time to it. Do this <em>last</em> — an ETA computed from a slope you have not yet explained is a
+          number without a diagnosis behind it, and the projection is linear, so a fault that accelerates
+          arrives sooner than it says (§6).</>,
       ]} />
       <Callout kind="tip">
         The fastest way to build intuition for this checklist is to practice it against a known cause: open{' '}

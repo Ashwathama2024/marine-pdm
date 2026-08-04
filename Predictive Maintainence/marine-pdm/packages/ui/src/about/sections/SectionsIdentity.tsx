@@ -127,8 +127,8 @@ export function ModuleArchitectureSection() {
           <><Code>simulator</Code> — engine physics, faults, sensor failures, the 11-state engine lifecycle. This dossier's Parameter Dossier (§3) and Interconnection Map (§4) are almost entirely sourced from here.</>,
           <><Code>features</Code> — turns a raw snapshot into deviation/rate/σ/imbalance features.</>,
           <><Code>decision</Code> — risk scoring, safety overrides, pattern matching. §5's worked example is sourced from here.</>,
-          <><Code>knowledge</Code> — the live baseline curves that risk scoring actually uses (see §8, the dual-baseline-system limitation).</>,
-          <><Code>ingestion</Code> — the OPC-UA client + 52-tag map; the one-line swap point for a real ship (see §7).</>,
+          <><Code>knowledge</Code> — the live baseline curves that risk scoring actually uses (see §9, the dual-baseline-system limitation).</>,
+          <><Code>ingestion</Code> — the OPC-UA client + 52-tag map; the one-line swap point for a real ship (see §8).</>,
           <><Code>ui</Code> — everything you're reading right now. Depends on all the above; nothing depends on it.</>,
         ]} />
       </SubSection>

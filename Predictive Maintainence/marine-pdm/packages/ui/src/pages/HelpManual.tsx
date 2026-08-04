@@ -10,6 +10,8 @@ import { OverviewSection, QuickStartSection, EngineStatesSection } from '../help
 import { PhysicsSection } from '../help/sections/SectionsPhysics';
 import { FaultsSection, SensorFailuresSection } from '../help/sections/SectionsFaults';
 import { AlgorithmSection, DegradationSection } from '../help/sections/SectionsAlgo';
+import { PredictionSection } from '../help/sections/SectionsPredict';
+import { JarvisSection } from '../help/sections/SectionsJarvis';
 import { PagesSection, GraphsSection, LegendSection, GlossarySection } from '../help/sections/SectionsUI';
 
 // Cross-route hash links (e.g. from /about) don't auto-scroll under React Router — resolve on mount.
@@ -105,6 +107,8 @@ export function HelpManual() {
         <SensorFailuresSection />
         <AlgorithmSection />
         <DegradationSection />
+        <PredictionSection />
+        <JarvisSection />
         <PagesSection />
         <GraphsSection />
         <LegendSection />

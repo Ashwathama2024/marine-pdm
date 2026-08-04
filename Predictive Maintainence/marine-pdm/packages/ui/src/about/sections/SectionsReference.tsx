@@ -1,5 +1,5 @@
 // packages/ui/src/about/sections/SectionsReference.tsx
-// Dossier sections §9 All-Parameters Reference, §10 Glossary (link-only, no duplication).
+// Dossier sections §10 All-Parameters Reference, §11 Glossary (link-only, no duplication).
 
 import React from 'react';
 import { Link } from 'react-router-dom';
@@ -25,7 +25,7 @@ export function ReferenceTableSection() {
     </a>,
   ]);
   return (
-    <Section id="ref-table" title="9 · All-Parameters Reference"
+    <Section id="ref-table" title="10 · All-Parameters Reference"
       subtitle="Every dossier entry in one table. Rated values and related faults are read from the same computed data that builds the cards in §3, so the two views can never disagree.">
       <DataTable
         columns={['Tag', 'Name', 'Unit', 'Rated (85% / 1150 RPM)', 'Related faults', '']}
@@ -39,7 +39,7 @@ export function ReferenceTableSection() {
 
 export function GlossaryLinkSection() {
   return (
-    <Section id="ref-glossary" title="10 · Glossary">
+    <Section id="ref-glossary" title="11 · Glossary">
       <Callout kind="info">
         Abbreviations (SFOC, TC/ETC, HT/LT, ECS, IPMS, MCR…), ECS alarm-code prefixes (SS/HI/LO/SD,
         W-number work orders), and pointers into the codebase all live in the{' '}

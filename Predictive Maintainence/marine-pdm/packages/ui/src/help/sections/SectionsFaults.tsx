@@ -78,6 +78,25 @@ export function FaultsSection() {
         </Callout>
       </SubSection>
 
+      <SubSection title="The SEVERITY RAMP toggle — the precondition for that formula">
+        <P>
+          The growth equation above only describes what happens with <Hi>SEVERITY RAMP</Hi> on (the default,
+          in the fault-injector panel). It governs both injectors — the F02–F06/F08/F09 panel and the
+          per-cylinder F01/F07 panel — so the two can never disagree about how a fault develops.
+        </P>
+        <DataTable columns={['Toggle', 'Severity at injection', 'What you get']} colWidths={['110px', '150px', undefined]} rows={[
+          [<Hi color="var(--risk-normal)">ON (default)</Hi>, <Code>0</Code>,
+            <>Severity grows from zero at the selected speed. SLOW / MEDIUM / FAST actually mean something, and the <em>incipient</em> phase — the part a prediction has to be made from — is recorded.</>],
+          [<Hi color="var(--risk-warning)">OFF (demo)</Hi>, <Code>intensity / 100</Code>,
+            <>The fault lands at its cap immediately. Alarms fire at once, which is convenient for a demo, but the speed control is inert and every recorded sample sits at a fully-developed fault.</>],
+        ]} />
+        <Callout kind="warn">
+          Leave it ON when you are collecting training data (§9). A dataset gathered with the ramp off can
+          only ever teach a model to recognise faults that have <em>already</em> tripped their alarm — there
+          is nothing in it to predict from.
+        </Callout>
+      </SubSection>
+
       <SubSection title="Cross-correlations — read faults as fingerprints">
         <P>A real fault never moves one sensor alone. Each mode has a signature set of secondary effects:</P>
         <Bullets items={FAULT_DEFINITIONS.slice(0, 9).map(f => (

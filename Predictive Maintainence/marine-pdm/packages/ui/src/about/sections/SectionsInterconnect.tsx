@@ -120,7 +120,7 @@ export function InterconnectionSection() {
           own cross-correlation metadata makes but the physics equations do <em>not</em> actually produce —
           most notably F05 (HT cooler fouling) claiming an effect on charge-air temperature, which is
           physically impossible in this model (charge air is LT/seawater-cooled, a separate circuit). See{' '}
-          <strong>§8 Known Limitations</strong> for the full list and why each was deliberately left unmodeled
+          <strong>§9 Known Limitations</strong> for the full list and why each was deliberately left unmodeled
           rather than silently "fixed."
         </Callout>
       )}
