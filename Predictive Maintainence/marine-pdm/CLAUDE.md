@@ -34,9 +34,11 @@ marine-pdm/
 ```
 SimulatorEngine (or OpcUaClient)
   → EngineSnapshot (every TICK_MS = 1000ms)
-  → FeatureEngine  → FeatureSnapshot
+  → FeatureEngine  → FeatureSnapshot (+ lagged baseline AND un-lagged instantBaseline)
   → DecisionEngine → DecisionOutput (systemRisk, alerts, evidenceChain)
   → React UI via useEffect + engine.subscribe()
+       ├→ forecast.ts / rul.ts → time-to-alarm shown on every sensor popup
+       └→ training-recorder.ts → one labelled row per running tick (IndexedDB)
 ```
 
 One-line real-IPMS swap: change `packages/ui/src/context/EngineContext.ts` from `SimulatorEngine` to `OpcUaClient`.
@@ -78,9 +80,11 @@ cd packages/ui && pnpm dev
 pnpm tsc --noEmit
 
 # Run unit tests (all packages)
-pnpm -r test                    # simulator: physics + degradation-matrix (finite-diff) ; ui: regression math
+pnpm -r test                    # simulator: physics + degradation-matrix (finite-diff)
 cd packages/simulator && pnpm test   # simulator only
-cd packages/ui && pnpm test          # ui only (regression OLS/linregress)
+cd packages/ui && pnpm test          # ui only — 11 vitest suites: regression math, RUL + label
+                                     #   quality, baseline conventions, dashboard/sensor-map coverage
+                                     #   guards, StrictMode double-invoke, JARVIS knowledge
 
 # Rebuild shared (required when shared types change)
 cd shared && pnpm build
@@ -113,22 +117,47 @@ cd shared && pnpm build
 3. Add physics equation in `packages/simulator/src/mtu8000-physics.ts`
 4. Wire into `engine.ts` tick output
 5. Add `SensorDefinition` in knowledge base
-6. Update `/help` (add an `EquationBlock` in `packages/ui/src/help/sections/SectionsPhysics.tsx`) AND
+6. Add a `SENSOR_META` entry in `packages/ui/src/services/sensor-map.ts` (unit, decimals, snapshot +
+   history keys, `matrixSensorIds`) — the gauge, the popup, the AI diagnosis payload and the training
+   recorder all resolve the sensor through it. `dashboard-coverage.test.ts` fails if a gauged sensor
+   has no entry or no trend card.
+7. If the sensor has a **coded MTU alarm band**, wire the prediction layer too — five files, listed in
+   `packages/ui/CLAUDE.md` → Prediction & Training Layer. Miss one and the RUL columns are silently null.
+8. Update `/help` (add an `EquationBlock` in `packages/ui/src/help/sections/SectionsPhysics.tsx`) AND
    `/about` (add a `ParameterDossier` entry in `packages/ui/src/about/dossier-data.tsx`, which
    automatically feeds the reference table and the interconnection diagram if `sensorIds` overlaps an
    existing `DEGRADATION_MODES` effect)
 
-### Keeping `/help` and `/about` in sync
-Both are living, drift-resistant documentation pages, not static write-once docs — this is why both
+### New page / route
+1. Register the route in `packages/ui/src/App.tsx`
+2. Add the nav entry in `packages/ui/src/layout/Sidebar.tsx`
+3. Add a row to `APP_MAP` in `packages/ui/src/services/jarvis-self-knowledge.ts` — **this is the single
+   route list**. `/help`'s Page-by-Page guide renders from it and JARVIS answers "what pages are there"
+   from it, so a route added here appears in both. Operator prose per route goes in `PAGE_NOTES` inside
+   `packages/ui/src/help/sections/SectionsUI.tsx`; a route with no note still renders, described by its
+   `APP_MAP` purpose. There used to be a second hardcoded table in `/help` and it fell three pages
+   behind — do not re-create one.
+
+### Keeping `/help`, `/about` and JARVIS in sync
+There are **three** consumers of the same engine facts, not two: `/help` (the Operator's Manual),
+`/about` (the System Dossier) and `services/jarvis-self-knowledge.ts` (what the assistant is told).
+All three are living, drift-resistant documents, not static write-once docs — this is why all three
 maximize live-imports from the actual source constants/functions (`@marine-pdm/simulator`,
 `@marine-pdm/shared`, `@marine-pdm/decision`) rather than hand-typed numbers: most numeric content
-updates itself automatically on rebuild. What does **not** update itself is hand-authored prose that
+updates itself automatically on rebuild. The third one is the easiest to forget and has drifted alone
+before — it now carries `engine-knowledge.test.ts`, which pins its magnitudes *and* guards against the
+pre-fix strings returning. What does **not** update itself is hand-authored prose that
 describes *why* a number matters (`/about`'s cascade-consequence paragraphs, `/help`'s `expect` fields)
 — when a coefficient change alters the qualitative story (a sensor becomes coupled/decoupled from a
 fault, a threshold crosses from "never fires" to "fires normally"), that prose must be re-read and
-updated by hand in both pages, not just left to the live numbers to silently reinterpret. Treat "did I
-update `/help` and `/about`" as a mandatory step alongside any new fault, new sensor, changed physics
-coefficient, changed alarm threshold, or changed algorithm weight.
+updated by hand in all three, not just left to the live numbers to silently reinterpret. Treat "did I
+update `/help`, `/about` and JARVIS" as a mandatory step alongside any new fault, new sensor, changed
+physics coefficient, changed alarm threshold, or changed algorithm weight.
+
+Section numbering is part of the contract: `HELP_SECTIONS` (`ui/src/help/HelpPrimitives.tsx`) and
+`ABOUT_SECTIONS` (`ui/src/about/AboutPrimitives.tsx`) drive each page's index and scroll-spy, and the
+prose cross-references sections by number (`§7 Hidden Strengths`). Inserting a section means renumbering
+its `Section title=` and every `§n` reference that follows it — `grep -rn "§" src/help src/about`.
 
 ---
 
@@ -136,7 +165,7 @@ coefficient, changed alarm threshold, or changed algorithm weight.
 
 | # | Where | Gotcha |
 |---|-------|--------|
-| 1 | `packages/ui` | Port 5173 sometimes stuck — run `pkill -f vite && pkill -f node` |
+| 1 | `packages/ui` | Port 5173 sometimes stuck. On Windows: `netstat -ano \| findstr :5173`, stop that PID. `.claude/launch.json`'s `--port 5174` never reaches Vite — the preview binds 5173 |
 | 2 | `packages/ui` | TWO baseline systems — only `seed.ts` affects live risk. See `ui/CLAUDE.md` |
 | 3 | `shared` | `EngineSnapshot` has `[key: string]` index signature — use `MTU8000Snapshot` for type-safe access |
 | 4 | `packages/simulator` | `exhaustTemp_MTU8000` uses `base=276` (not 320) to hit 440°C rated target |
@@ -148,6 +177,10 @@ coefficient, changed alarm threshold, or changed algorithm weight.
 | 10 | root | Parent-level `vite.config.ts` exists only for preview tool CWD workaround — canonical is `packages/ui/vite.config.ts` |
 | 11 | `packages/simulator` | `degradation-matrix.ts` is the model SPEC — its `weight`s must equal the `mtu8000-physics.ts` partials. `tests/degradation-matrix.test.ts` (finite-difference) fails on drift. See `simulator/CLAUDE.md` → Degradation Model |
 | 12 | `shared` / `packages/simulator` | `chargeAirTemp_MTU8000` rated ≈ 63°C is intended (LT-cooled). `MTU8000_LIMITS.chargeAir` alarm band is hi 75 / max 80 (above rated), NOT 50/55. Don't lower the physics to match old limits — it desyncs the `seed.ts` baseline mirror. See `simulator/CLAUDE.md` |
+| 13 | `packages/ui` | StrictMode is ON — every per-tick consumer needs a duplicate-timestamp guard, or prev-tick-state features (`*Rate`) zero out. See `ui/CLAUDE.md` gotcha 5 |
+| 14 | `packages/ui` / `packages/knowledge` | Bearing temperature is the MAX of 11, never a mean — and the `ME.BearingTemp.Mean` seed curve excludes `positionBias`, so the consumer adds `bearingMaxPositionBias` (+5°C) back. See `ui/CLAUDE.md` gotcha 6 |
+| 15 | `packages/ui` | `rulQuality` compares the lagged baseline against the instant one, so a bias in the seed CURVE cancels and reports `OK`. A label that contradicts the live sensor indicts `seed.ts`, not the flag |
+| 16 | `packages/ui` | Importing `services/training-recorder.ts` has side effects (pagehide listeners + IndexedDB reconciliation). Read constants from `training-store.ts` / `forecast.ts` instead — both are pure |
 
 ---
 
