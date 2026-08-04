@@ -18,9 +18,13 @@
 
 import { MTU8000 } from '@marine-pdm/shared';
 import {
+  BANK_MID_X,
+  BLOCK_END_X,
   bearingTransform,
+  chargeDuctTransform,
   cylBank,
   cylinderTransform,
+  headTransform,
   manifoldTransform,
   tcTransform,
   type Vec3,
@@ -77,11 +81,14 @@ export const SUBASSEMBLIES: Subassembly[] = [
   { id: 'bank.B', label: 'B-Bank', order: 2 },
   { id: 'crankshaft', label: 'Crankshaft & Bearings', order: 3 },
   { id: 'turbo', label: 'Turbochargers', order: 4 },
-  { id: 'exhaust', label: 'Exhaust Manifolds', order: 5 },
-  { id: 'cooling', label: 'Cooling', order: 6 },
-  { id: 'lube', label: 'Lube Oil', order: 7 },
-  { id: 'fuel', label: 'Fuel', order: 8 },
-  { id: 'harness', label: 'Sensor Harness', order: 9 },
+  { id: 'exhaust', label: 'Exhaust', order: 5 },
+  { id: 'chargeair', label: 'Charge Air', order: 6 },
+  { id: 'cooling', label: 'Cooling', order: 7 },
+  { id: 'lube', label: 'Lube Oil', order: 8 },
+  { id: 'fuel', label: 'Fuel', order: 9 },
+  { id: 'structure', label: 'Block & Structure', order: 10 },
+  { id: 'control', label: 'ECU / EMU', order: 11 },
+  { id: 'harness', label: 'Sensor Harness', order: 12 },
 ];
 
 // ── Generated parts ───────────────────────────────────────────────────────────
@@ -105,6 +112,27 @@ const cylinders: PartDef[] = MTU8000.CYL_NAMES.map((name, i) => {
   };
 });
 
+// The row of heads is what makes the side view recognisable, and it is where the B4.x exhaust probe
+// actually sits — so a head reads the same tag and index as the cylinder under it.
+const heads: PartDef[] = MTU8000.CYL_NAMES.map((name, i) => {
+  const t = headTransform(i);
+  return {
+    id: `head.${name}`,
+    label: `Cylinder Head ${name}`,
+    subassembly: `bank.${cylBank(i)}`,
+    note: `Carries the B4.${i + 1} exhaust probe and the ${name} injector`,
+    kind: 'box' as const,
+    position: t.position,
+    rotation: t.rotation,
+    size: [0.4, 0.34, 0.42] as Vec3,
+    sensorTags: ['ME.ExhaustTemp'],
+    mtuDesignation: `B4.${i + 1}`,
+    componentId: 'injectors',
+    dossierId: 'dossier-cylinders',
+    instanceIndex: i,
+  };
+});
+
 const bearings: PartDef[] = Array.from({ length: 11 }, (_, i) => {
   const t = bearingTransform(i);
   return {
@@ -115,7 +143,7 @@ const bearings: PartDef[] = Array.from({ length: 11 }, (_, i) => {
     kind: 'torus' as const,
     position: t.position,
     rotation: t.rotation,
-    size: [0.2, 0.05, 0] as Vec3,
+    size: [0.22, 0.055, 0] as Vec3,
     sensorTags: ['ME.BearingTemp'],
     mtuDesignation: `B57.${i + 1}`,
     componentId: 'bearings',
@@ -142,7 +170,7 @@ const turbos: PartDef[] = TC_SPEC.map((tc, i) => {
     kind: 'cylinder' as const,
     position: t.position,
     rotation: t.rotation,
-    size: [0.26, 0.44, 0.26] as Vec3,
+    size: [0.3, 0.56, 0.3] as Vec3,
     sensorTags: ['ME.TCSpeed'],
     mtuDesignation: tc.desig,
     componentId: 'turbocharger',
@@ -157,6 +185,7 @@ const manifolds: PartDef[] = (['A', 'B'] as const).map(bank => {
     id: `manifold.${bank}`,
     label: `${bank}-Bank Exhaust Manifold`,
     subassembly: 'exhaust',
+    note: 'Runs inboard, in the V-valley, feeding aft to the turbochargers',
     kind: 'box' as const,
     position: t.position,
     rotation: t.rotation,
@@ -167,33 +196,85 @@ const manifolds: PartDef[] = (['A', 'B'] as const).map(bank => {
   };
 });
 
+const chargeDucts: PartDef[] = (['A', 'B'] as const).map(bank => {
+  const t = chargeDuctTransform(bank);
+  return {
+    id: `charge.duct.${bank}`,
+    label: `${bank}-Bank Charge-Air Duct`,
+    subassembly: 'chargeair',
+    note: 'Cold side, outboard — the widest structure on the engine',
+    kind: 'box' as const,
+    position: t.position,
+    rotation: t.rotation,
+    size: t.size,
+    sensorTags: ['ME.ScavengeAirPressure'],
+    mtuDesignation: 'B10',
+    dossierId: 'dossier-chargeair',
+  };
+});
+
+const chargeCoolers: PartDef[] = (['A', 'B'] as const).map(bank => ({
+  id: `cooler.charge.${bank}`,
+  label: `${bank}-Bank Charge-Air Cooler`,
+  subassembly: 'chargeair',
+  kind: 'box' as const,
+  // z pulled to 0.86 so the 0.5 m depth still clears the published 2279 mm overall width.
+  position: [BLOCK_END_X + 0.62, 0.42, bank === 'A' ? -0.86 : 0.86] as Vec3,
+  size: [0.8, 0.62, 0.5] as Vec3,
+  sensorTags: ['ME.ChargeAirTemp'],
+  mtuDesignation: 'B9',
+  dossierId: 'dossier-chargeair',
+}));
+
 // ── Hand-placed parts ─────────────────────────────────────────────────────────
-// Positions here are our best reading of a 20V 8000 layout and are the first thing the reference
-// photographs should correct. Domain bindings are exact.
+// Positions read off the MTU sensor-overview drawings (top view, right-side view) and the product
+// photo. Domain bindings are exact; positions are proportional readings, not surveyed points.
 
 const ancillaries: PartDef[] = [
+  {
+    id: 'crankcase',
+    label: 'Crankcase',
+    subassembly: 'structure',
+    kind: 'box',
+    position: [BLOCK_END_X / 2, -0.05, 0],
+    size: [BLOCK_END_X, 0.85, 1.45],
+    sensorTags: [],
+    mtuDesignation: 'B50',
+    dossierId: 'dossier-crankcase',
+  },
+  {
+    id: 'oilpan',
+    label: 'Oil Pan / Sump',
+    subassembly: 'structure',
+    kind: 'box',
+    position: [BLOCK_END_X / 2, -0.62, 0],
+    size: [BLOCK_END_X - 0.2, 0.76, 1.25],
+    sensorTags: [],
+    componentId: 'lube_system',
+    dossierId: 'dossier-lube',
+  },
+  {
+    id: 'flywheel',
+    label: 'Flywheel / Output Coupling',
+    subassembly: 'structure',
+    note: 'Driving end (KS) — cylinder 1 is this end',
+    kind: 'torus',
+    position: [0.22, 0, 0],
+    rotation: [0, Math.PI / 2, 0],
+    size: [0.52, 0.1, 0],
+    sensorTags: [],
+  },
   {
     id: 'cooler.ht',
     label: 'HT Cooler',
     subassembly: 'cooling',
     kind: 'box',
-    position: [1.55, 0.12, -1.18],
-    size: [1.0, 0.42, 0.3],
+    position: [2.4, -0.38, -0.96],
+    size: [1.3, 0.5, 0.32],
     sensorTags: ['ME.JacketCoolingOutlet'],
     mtuDesignation: 'B6.1',
     componentId: 'ht_cooler',
     dossierId: 'dossier-coolant',
-  },
-  {
-    id: 'cooler.charge',
-    label: 'Charge-Air Cooler',
-    subassembly: 'cooling',
-    kind: 'box',
-    position: [2.85, 0.12, -1.18],
-    size: [0.9, 0.42, 0.3],
-    sensorTags: ['ME.ChargeAirTemp'],
-    mtuDesignation: 'B9',
-    dossierId: 'dossier-chargeair',
   },
   {
     id: 'lube.module',
@@ -201,8 +282,8 @@ const ancillaries: PartDef[] = [
     subassembly: 'lube',
     note: 'Pump, filter and cooler — B5.1 main gallery, B5.2 after filter',
     kind: 'box',
-    position: [0.85, -0.2, 1.18],
-    size: [0.85, 0.5, 0.3],
+    position: [1.5, -0.5, 0.96],
+    size: [1.2, 0.5, 0.32],
     sensorTags: ['ME.LubeOilPressure'],
     mtuDesignation: 'B5.1',
     componentId: 'lube_system',
@@ -213,8 +294,8 @@ const ancillaries: PartDef[] = [
     label: 'LO Filter (ΔP)',
     subassembly: 'lube',
     kind: 'cylinder',
-    position: [1.85, -0.2, 1.18],
-    size: [0.16, 0.4, 0.16],
+    position: [2.9, -0.45, 0.94],
+    size: [0.18, 0.44, 0.18],
     sensorTags: ['ME.LOFilterDP'],
     mtuDesignation: 'B5.3/B5.4',
     componentId: 'lube_system',
@@ -225,9 +306,9 @@ const ancillaries: PartDef[] = [
     label: 'A-Bank Fuel Rail',
     subassembly: 'fuel',
     kind: 'cylinder',
-    position: [2.0, 0.78, -0.3],
+    position: [BANK_MID_X, 0.72, -0.62],
     rotation: [0, 0, Math.PI / 2],
-    size: [0.05, 3.4, 0.05],
+    size: [0.05, 4.7, 0.05],
     sensorTags: ['ME.FuelRailPressure'],
     mtuDesignation: 'B48',
     dossierId: 'dossier-fuelrail',
@@ -237,12 +318,44 @@ const ancillaries: PartDef[] = [
     label: 'B-Bank Fuel Rail',
     subassembly: 'fuel',
     kind: 'cylinder',
-    position: [2.0, 0.78, 0.3],
+    position: [BANK_MID_X, 0.72, 0.62],
     rotation: [0, 0, Math.PI / 2],
-    size: [0.05, 3.4, 0.05],
+    size: [0.05, 4.7, 0.05],
     sensorTags: ['ME.FuelRailPressure'],
     mtuDesignation: 'B48',
     dossierId: 'dossier-fuelrail',
+  },
+  {
+    id: 'ecu',
+    label: 'Engine Control Unit (ECU)',
+    subassembly: 'control',
+    note: 'Mounted on top of the engine, mid-length',
+    kind: 'box',
+    position: [3.05, 1.78, 0],
+    size: [0.78, 0.24, 0.56],
+    sensorTags: [],
+    mtuDesignation: 'B13.1 (ECU)',
+  },
+  {
+    id: 'emu.1',
+    label: 'Engine Monitoring Unit EMU 1',
+    subassembly: 'control',
+    note: 'Two EMUs are fitted, alongside the ECU on the engine top',
+    kind: 'box',
+    position: [2.2, 1.62, -0.32],
+    size: [0.5, 0.2, 0.34],
+    sensorTags: [],
+    mtuDesignation: 'B13.2 (EMU)',
+  },
+  {
+    id: 'emu.2',
+    label: 'Engine Monitoring Unit EMU 2',
+    subassembly: 'control',
+    kind: 'box',
+    position: [2.2, 1.62, 0.32],
+    size: [0.5, 0.2, 0.34],
+    sensorTags: [],
+    mtuDesignation: 'B13.2 (EMU)',
   },
   {
     id: 'jbox.A',
@@ -250,8 +363,8 @@ const ancillaries: PartDef[] = [
     subassembly: 'harness',
     note: 'Placeholder position — awaiting vessel drawing',
     kind: 'box',
-    position: [1.9, 1.2, -0.98],
-    size: [0.26, 0.3, 0.16],
+    position: [3.4, 1.05, -1.02],
+    size: [0.28, 0.32, 0.18],
     sensorTags: [],
   },
   {
@@ -260,18 +373,8 @@ const ancillaries: PartDef[] = [
     subassembly: 'harness',
     note: 'Placeholder position — awaiting vessel drawing',
     kind: 'box',
-    position: [1.9, 1.2, 0.98],
-    size: [0.26, 0.3, 0.16],
-    sensorTags: [],
-  },
-  {
-    id: 'ecu.8',
-    label: 'ECU-8 Engine Control Unit',
-    subassembly: 'harness',
-    note: 'Aggregates the 52-tag namespace and publishes it on CAN',
-    kind: 'box',
-    position: [0.2, 1.35, 0],
-    size: [0.42, 0.3, 0.5],
+    position: [3.4, 1.05, 1.02],
+    size: [0.28, 0.32, 0.18],
     sensorTags: [],
   },
   {
@@ -280,7 +383,7 @@ const ancillaries: PartDef[] = [
     subassembly: 'harness',
     note: 'Off-engine. This system reads the OPC-UA namespace from here',
     kind: 'box',
-    position: [-1.5, 1.5, 0],
+    position: [-1.8, 1.6, 0],
     size: [0.4, 0.5, 0.4],
     sensorTags: [],
   },
@@ -288,9 +391,12 @@ const ancillaries: PartDef[] = [
 
 export const PARTS: PartDef[] = [
   ...cylinders,
+  ...heads,
   ...bearings,
   ...turbos,
   ...manifolds,
+  ...chargeDucts,
+  ...chargeCoolers,
   ...ancillaries,
 ];
 
@@ -302,7 +408,7 @@ export const PARTS: PartDef[] = [
 export const CABLES: CableDef[] = [
   {
     cableNo: 'SEED-001',
-    from: { partId: 'cyl.A4', terminal: 'B4.4' },
+    from: { partId: 'head.A4', terminal: 'B4.4' },
     to: { partId: 'jbox.A' },
     kind: 'signal',
     cores: 2,
@@ -327,20 +433,20 @@ export const CABLES: CableDef[] = [
   {
     cableNo: 'SEED-004',
     from: { partId: 'jbox.A' },
-    to: { partId: 'ecu.8' },
+    to: { partId: 'ecu' },
     kind: 'can',
     provenance: 'seed',
   },
   {
     cableNo: 'SEED-005',
     from: { partId: 'jbox.B' },
-    to: { partId: 'ecu.8' },
+    to: { partId: 'ecu' },
     kind: 'can',
     provenance: 'seed',
   },
   {
     cableNo: 'SEED-006',
-    from: { partId: 'ecu.8' },
+    from: { partId: 'ecu' },
     to: { partId: 'ipms' },
     kind: 'can',
     provenance: 'seed',

@@ -10,7 +10,18 @@ import { DEGRADATION_COMPONENTS } from '@marine-pdm/simulator';
 import { MTU8000 } from '@marine-pdm/shared';
 import { getSensorMeta } from '../services/sensor-map';
 import { CABLES, PARTS, getPart, partsIn } from './topology';
-import { HALF_V, bearingTransform, cylinderTransform, tcTransform } from './engine-layout';
+import {
+  BLOCK_END_X,
+  BORE,
+  BORE_SPACING,
+  ENGINE_HEIGHT,
+  ENGINE_LEN,
+  ENGINE_WIDTH,
+  HALF_V,
+  bearingTransform,
+  cylinderTransform,
+  tcTransform,
+} from './engine-layout';
 
 describe('parts registry', () => {
   it('has a unique id for every part', () => {
@@ -18,10 +29,21 @@ describe('parts registry', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it('models all 20 cylinders, 11 main bearings and 4 turbochargers', () => {
-    expect(PARTS.filter(p => p.componentId === 'injectors')).toHaveLength(MTU8000.CYLINDERS);
+  it('models all 20 cylinders, 20 heads, 11 main bearings and 4 turbochargers', () => {
+    expect(PARTS.filter(p => p.id.startsWith('cyl.'))).toHaveLength(MTU8000.CYLINDERS);
+    expect(PARTS.filter(p => p.id.startsWith('head.'))).toHaveLength(MTU8000.CYLINDERS);
     expect(PARTS.filter(p => p.componentId === 'bearings')).toHaveLength(11);
     expect(PARTS.filter(p => p.componentId === 'turbocharger')).toHaveLength(4);
+  });
+
+  it('gives each head the same tag and index as the cylinder beneath it', () => {
+    MTU8000.CYL_NAMES.forEach((name, i) => {
+      const cyl = getPart(`cyl.${name}`);
+      const head = getPart(`head.${name}`);
+      expect(head?.instanceIndex).toBe(cyl?.instanceIndex);
+      expect(head?.mtuDesignation).toBe(cyl?.mtuDesignation);
+      expect(head?.instanceIndex).toBe(i);
+    });
   });
 
   it('resolves every declared sensor tag through SENSOR_META', () => {
@@ -90,6 +112,99 @@ describe('cable registry', () => {
     // If this fails, real vessel cabling has landed — update the badge copy in PartDetailPanel and
     // the caveat in APP_MAP, which both still say the routing is invented.
     expect(CABLES.every(c => c.provenance === 'seed')).toBe(true);
+  });
+});
+
+describe('published dimensions', () => {
+  it('matches the MTU 8000 data sheet envelope for the 20V', () => {
+    expect(ENGINE_LEN).toBeCloseTo(6.622, 6);
+    expect(ENGINE_WIDTH).toBeCloseTo(2.279, 6);
+    expect(ENGINE_HEIGHT).toBeCloseTo(3.439, 6);
+  });
+
+  it('derives the cylinder pitch from the 16V/20V length difference', () => {
+    // 6622 - 5682 = 940 mm buys two extra cylinders per bank, so the pitch is 470 mm. This is the
+    // number the whole model scales from — if it moves, every position moves with it.
+    expect(BORE_SPACING).toBeCloseTo(0.47, 6);
+    expect(BORE_SPACING).toBeGreaterThan(BORE); // pitch must clear the bore
+  });
+
+  it('fits the cylinder block inside the published length', () => {
+    expect(BLOCK_END_X).toBeLessThan(ENGINE_LEN);
+    // The turbocharger stack and its coolers live in what is left beyond the block.
+    expect(ENGINE_LEN - BLOCK_END_X).toBeGreaterThan(1.0);
+  });
+});
+
+describe('assembled model fits the published envelope', () => {
+  /** Half-extents of a part's geometry before rotation, per geometry kind. */
+  function halfExtents(p: (typeof PARTS)[number]): [number, number, number] {
+    const [a, b] = p.size;
+    switch (p.kind) {
+      case 'cylinder':
+      case 'capsule':
+        return [a, b / 2, a];
+      case 'sphere':
+        return [a, a, a];
+      case 'torus':
+        return [a + b, a + b, b]; // ring in XY, tube thickness along Z
+      case 'box':
+      default:
+        return [p.size[0] / 2, p.size[1] / 2, p.size[2] / 2];
+    }
+  }
+
+  function rot(v: number[], r: [number, number, number]): number[] {
+    let [x, y, z] = v;
+    const [rx, ry, rz] = r;
+    // Single-axis rotations only in this registry, so sequential application is exact.
+    let c = Math.cos(rx), s = Math.sin(rx);
+    [y, z] = [y * c - z * s, y * s + z * c];
+    c = Math.cos(ry); s = Math.sin(ry);
+    [x, z] = [x * c + z * s, -x * s + z * c];
+    c = Math.cos(rz); s = Math.sin(rz);
+    [x, y] = [x * c - y * s, x * s + y * c];
+    return [x, y, z];
+  }
+
+  /** World-space AABB of every part except the explicitly off-engine IPMS cabinet. */
+  function bbox() {
+    const lo = [Infinity, Infinity, Infinity];
+    const hi = [-Infinity, -Infinity, -Infinity];
+    for (const p of PARTS) {
+      if (p.id === 'ipms') continue;
+      const h = halfExtents(p);
+      const r = p.rotation ?? [0, 0, 0];
+      for (const sx of [-1, 1])
+        for (const sy of [-1, 1])
+          for (const sz of [-1, 1]) {
+            const c = rot([sx * h[0], sy * h[1], sz * h[2]], r);
+            for (let k = 0; k < 3; k++) {
+              const w = p.position[k] + c[k];
+              if (w < lo[k]) lo[k] = w;
+              if (w > hi[k]) hi[k] = w;
+            }
+          }
+    }
+    return { lo, hi, size: [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]] };
+  }
+
+  it('never exceeds the data-sheet L x W x H', () => {
+    const { size } = bbox();
+    expect(size[0]).toBeLessThanOrEqual(ENGINE_LEN);
+    expect(size[2]).toBeLessThanOrEqual(ENGINE_WIDTH);
+    expect(size[1]).toBeLessThanOrEqual(ENGINE_HEIGHT);
+  });
+
+  it('fills most of that envelope, so the model is not a toy inside its own box', () => {
+    const { size } = bbox();
+    expect(size[0] / ENGINE_LEN).toBeGreaterThan(0.85);
+    expect(size[2] / ENGINE_WIDTH).toBeGreaterThan(0.85);
+    expect(size[1] / ENGINE_HEIGHT).toBeGreaterThan(0.85);
+  });
+
+  it('keeps the whole engine forward of the driving-end face', () => {
+    expect(bbox().lo[0]).toBeGreaterThanOrEqual(0);
   });
 });
 
