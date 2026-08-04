@@ -24,6 +24,7 @@ const NAV_GROUPS: { group: string; items: { to: string; label: string; icon: str
     items: [
       { to: '/',          label: 'Dashboard', icon: 'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z', color: '#00D4AA', glow: '0,212,170'  },
       { to: '/simulator', label: 'Simulator', icon: 'M9.5 2A2.5 2.5 0 017 4.5v1A2.5 2.5 0 009.5 8h5A2.5 2.5 0 0017 5.5v-1A2.5 2.5 0 0014.5 2h-5zM4 10h16M4 14h16M4 18h16', color: '#F97316', glow: '249,115,22' },
+      { to: '/engine3d',  label: '3D Engine', icon: 'M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z M3.27 6.96L12 12.01l8.73-5.05 M12 22.08V12', color: '#39FF9E', glow: '57,255,158' },
     ],
   },
   {

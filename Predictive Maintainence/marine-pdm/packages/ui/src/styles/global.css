@@ -49,6 +49,9 @@
   --accent-purple: #A78BFA;
   --accent-pink:   #F472B6;
   --accent-steel:  #94A3B8;
+  /* Phosphor green — the 3D engine view only. Deliberately NOT --risk-normal's teal, so the
+     wireframe reads as a schematic rather than as "every reading is normal". */
+  --accent-green:  #39FF9E;
 
   /* ── RGB triples for glow shadows ────────────────── */
   --glow-normal-rgb:   0, 212, 170;

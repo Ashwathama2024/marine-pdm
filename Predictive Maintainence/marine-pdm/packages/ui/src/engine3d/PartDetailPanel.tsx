@@ -1,0 +1,314 @@
+// engine3d/PartDetailPanel.tsx — "which part is this?", answered from live data.
+//
+// A side panel rather than a modal: the whole point of the view is that you keep rotating while you
+// read. Everything shown here resolves through registries that already exist — SENSOR_META for the
+// live number, DEGRADATION_COMPONENTS for what can fail, DOSSIER_ENTRIES for the prose — so this
+// panel cannot drift from the rest of the app.
+
+import React, { useState } from 'react';
+import { DEGRADATION_COMPONENTS, DEGRADATION_MODES } from '@marine-pdm/simulator';
+import type { BaselineSnapshot, EngineSnapshot } from '@marine-pdm/shared';
+import { getSensorMeta, readSensorValue, sensorLabel } from '../services/sensor-map';
+import { getDossierEntry } from '../about/dossier-data';
+import { SensorPopup } from '../dashboard/SensorPopup';
+import { useEngine } from '../context/EngineContext';
+import { cablesTouching, getPart, SUBASSEMBLIES } from './topology';
+import { GREEN } from './palette';
+
+const LABEL: React.CSSProperties = {
+  fontSize: 9,
+  letterSpacing: '0.14em',
+  color: 'var(--text-dim)',
+  fontWeight: 700,
+};
+
+interface Reading {
+  label: string;
+  value: number;
+  unit: string;
+  decimals: number;
+  context?: string;
+}
+
+function mean(xs: number[]): number {
+  return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0;
+}
+
+/**
+ * The live number for a part. Instance-addressable parts read their own array element — clicking
+ * cylinder A4 must show A4's probe, not the 20-cylinder mean that ME.ExhaustTemp resolves to.
+ */
+function reading(
+  partId: string,
+  snapshot: EngineSnapshot | null,
+  baseline: BaselineSnapshot | null,
+): Reading | null {
+  const part = getPart(partId);
+  if (!part || !snapshot) return null;
+  const i = part.instanceIndex;
+
+  if (part.componentId === 'injectors' && i !== undefined) {
+    const cyl = snapshot.cylTemps as number[];
+    const v = cyl?.[i];
+    if (typeof v !== 'number') return null;
+    // Bank mean, not engine mean: the A/B banks sit ~4 °C apart by design (BSIDE_TEMP_BIAS).
+    const bank = i < 10 ? cyl.slice(0, 10) : cyl.slice(10, 20);
+    const d = v - mean(bank);
+    return {
+      label: 'Exhaust temp',
+      value: v,
+      unit: '°C',
+      decimals: 1,
+      context: `${d >= 0 ? '+' : ''}${d.toFixed(1)} °C vs ${i < 10 ? 'A' : 'B'}-bank mean`,
+    };
+  }
+
+  if (part.componentId === 'bearings' && i !== undefined) {
+    const brg = snapshot.bearingTemps as number[];
+    const v = brg?.[i];
+    if (typeof v !== 'number') return null;
+    const max = Math.max(...brg);
+    return {
+      label: 'Bearing temp',
+      value: v,
+      unit: '°C',
+      decimals: 1,
+      context:
+        v === max
+          ? 'Hottest of the 11 — this is the one the safety system watches'
+          : `${(max - v).toFixed(1)} °C below the hottest bearing`,
+    };
+  }
+
+  if (part.componentId === 'turbocharger' && i !== undefined) {
+    const tc = snapshot.tcSpeeds as number[];
+    const v = tc?.[i];
+    if (typeof v !== 'number') return null;
+    return {
+      label: 'TC speed',
+      value: v,
+      unit: 'rpm',
+      decimals: 0,
+      context: v < 100 ? 'Not cut in at this engine speed' : undefined,
+    };
+  }
+
+  const tag = part.sensorTags[0];
+  const meta = tag ? getSensorMeta(tag) : null;
+  if (!meta) return null;
+  const v = readSensorValue(snapshot, meta);
+  const expected = baseline ? (baseline[meta.baselineKey] as number) : undefined;
+  return {
+    label: sensorLabel(tag),
+    value: v,
+    unit: meta.unit,
+    decimals: meta.decimals,
+    context:
+      typeof expected === 'number'
+        ? `expected ${expected.toFixed(meta.decimals)} ${meta.unit}`
+        : undefined,
+  };
+}
+
+/** Fault modes that can degrade this part, straight off the degradation matrix. */
+function faultsFor(componentId: string | undefined) {
+  if (!componentId) return [];
+  const comp = DEGRADATION_COMPONENTS.find(c => c.id === componentId);
+  if (!comp) return [];
+  return DEGRADATION_MODES.filter(m => comp.modeIds.includes(m.id));
+}
+
+export function PartDetailPanel({ partId, onClose }: { partId: string; onClose: () => void }) {
+  const { snapshot, baseline, history } = useEngine();
+  const [showFull, setShowFull] = useState(false);
+  const [showProse, setShowProse] = useState(false);
+
+  const part = getPart(partId);
+  if (!part) return null;
+
+  const r = reading(partId, snapshot, baseline);
+  const faults = faultsFor(part.componentId);
+  const cables = cablesTouching(partId);
+  const dossier = part.dossierId ? getDossierEntry(part.dossierId) : undefined;
+  const subLabel = SUBASSEMBLIES.find(s => s.id === part.subassembly)?.label ?? part.subassembly;
+
+  const tag = part.sensorTags[0];
+  const meta = tag ? getSensorMeta(tag) : null;
+
+  return (
+    <>
+      <div
+        className="glass-card-hi"
+        style={{
+          position: 'absolute',
+          top: 16,
+          right: 16,
+          width: 340,
+          maxHeight: 'calc(100% - 32px)',
+          overflowY: 'auto',
+          padding: '16px 18px',
+          zIndex: 40,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ ...LABEL, color: GREEN }}>{subLabel.toUpperCase()}</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', marginTop: 3 }}>
+              {part.label}
+            </div>
+            {part.mtuDesignation && (
+              <div style={{ fontSize: 10, color: 'var(--accent-blue)', marginTop: 2 }}>
+                MTU {part.mtuDesignation}
+                {tag ? ` · ${tag}` : ''}
+              </div>
+            )}
+          </div>
+          <button className="mag-btn" onClick={onClose} style={{ padding: '2px 8px', fontSize: 14 }}>
+            ×
+          </button>
+        </div>
+
+        {part.note && (
+          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 8, lineHeight: 1.5 }}>
+            {part.note}
+          </div>
+        )}
+
+        {r ? (
+          <div
+            style={{
+              marginTop: 14,
+              padding: '10px 12px',
+              background: 'var(--bg-inset)',
+              border: '1px solid var(--border-dim)',
+              borderRadius: 'var(--radius)',
+            }}
+          >
+            <div style={LABEL}>{r.label.toUpperCase()}</div>
+            <div
+              style={{
+                fontSize: 26,
+                fontWeight: 700,
+                color: GREEN,
+                fontVariantNumeric: 'tabular-nums',
+                marginTop: 2,
+              }}
+            >
+              {r.value.toFixed(r.decimals)}
+              <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 5 }}>{r.unit}</span>
+            </div>
+            {r.context && (
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3 }}>{r.context}</div>
+            )}
+          </div>
+        ) : (
+          <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 14, lineHeight: 1.5 }}>
+            No instrumented sensor on this part — it carries signal but is not itself measured.
+          </div>
+        )}
+
+        {faults.length > 0 && (
+          <div style={{ marginTop: 16 }}>
+            <div style={LABEL}>WHAT CAN GO WRONG HERE</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 7 }}>
+              {faults.map(f => (
+                <div key={f.id} style={{ fontSize: 10, lineHeight: 1.45 }}>
+                  <span style={{ color: 'var(--risk-warning)', fontWeight: 700 }}>{f.id}</span>
+                  <span style={{ color: 'var(--text-secondary)' }}> · {f.name}</span>
+                  <div style={{ color: 'var(--text-dim)', fontSize: 9 }}>
+                    {f.ecsAlarmCode} · {f.scope}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {cables.length > 0 && (
+          <div style={{ marginTop: 16 }}>
+            <div style={LABEL}>CABLES</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 7 }}>
+              {cables.map(c => (
+                <div key={c.cableNo} style={{ fontSize: 10, color: 'var(--text-secondary)' }}>
+                  <span style={{ fontWeight: 700 }}>{c.cableNo}</span>
+                  {c.provenance === 'seed' && (
+                    <span
+                      style={{
+                        marginLeft: 6,
+                        fontSize: 8,
+                        padding: '1px 5px',
+                        borderRadius: 3,
+                        background: 'rgba(245,158,11,0.12)',
+                        border: '1px solid rgba(245,158,11,0.35)',
+                        color: 'var(--risk-warning)',
+                        letterSpacing: '0.08em',
+                      }}
+                    >
+                      PLACEHOLDER
+                    </span>
+                  )}
+                  <div style={{ color: 'var(--text-dim)', fontSize: 9 }}>
+                    {c.from.partId} → {c.to.partId} · {c.kind}
+                    {c.cores ? ` · ${c.cores} core` : ''}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {dossier && (
+          <div style={{ marginTop: 16 }}>
+            <button
+              className="mag-btn"
+              onClick={() => setShowProse(p => !p)}
+              style={{ width: '100%', fontSize: 9 }}
+            >
+              {showProse ? 'HIDE' : 'WHAT THIS READING MEANS'}
+            </button>
+            {showProse && (
+              <div
+                style={{
+                  fontSize: 10,
+                  lineHeight: 1.6,
+                  color: 'var(--text-secondary)',
+                  marginTop: 10,
+                }}
+              >
+                <div>{dossier.definition}</div>
+                <div style={{ marginTop: 10, color: 'var(--text-muted)' }}>
+                  {dossier.cascadeConsequence}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {meta && (
+          <button
+            className="mag-btn"
+            onClick={() => setShowFull(true)}
+            style={{ width: '100%', marginTop: 10, fontSize: 9 }}
+          >
+            FULL SENSOR ANALYSIS
+          </button>
+        )}
+      </div>
+
+      {/* The dashboard's own popup, mounted unchanged — charts, cause chain, AI diagnosis. */}
+      {showFull && meta && tag && snapshot && (
+        <SensorPopup
+          sensorId={tag}
+          label={sensorLabel(tag)}
+          unit={meta.unit}
+          decimals={meta.decimals}
+          actual={readSensorValue(snapshot, meta)}
+          expected={baseline ? (baseline[meta.baselineKey] as number) : 0}
+          history={(history[meta.histKey] as number[]) ?? []}
+          baselineHistory={(history[meta.baseKey] as number[]) ?? []}
+          onClose={() => setShowFull(false)}
+        />
+      )}
+    </>
+  );
+}

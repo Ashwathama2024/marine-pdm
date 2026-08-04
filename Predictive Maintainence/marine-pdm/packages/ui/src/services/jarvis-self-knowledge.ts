@@ -35,6 +35,7 @@ export interface Feature { route: string; label: string; group: string; purpose:
 export const APP_MAP: Feature[] = [
   { route: '/', label: 'Dashboard', group: 'OPERATE', purpose: 'Live gauges, 20-cylinder view, AI decision panel (system risk, evidence chain, active alerts), rolling trend chart.' },
   { route: '/simulator', label: 'Simulator', group: 'OPERATE', purpose: 'Inject faults (F01–F09 at chosen intensity/speed) and sensor failures (52 tags, 5 failure modes). This is where you TEST anything.' },
+  { route: '/engine3d', label: '3D Engine', group: 'OPERATE', purpose: 'Rotatable 3D wireframe of the engine. Click any cylinder, main bearing, turbocharger or ancillary to identify it and read its own live value (cylinder A4 shows A4\'s probe, not the mean), the fault modes that can degrade it, and its cable runs. Parts colour by live severity — a single hot cylinder lights up alone. Geometry is procedural from the MTU8000 constants, not CAD, and cable routing is placeholder until the vessel schedule is loaded.' },
   { route: '/analysis', label: 'Analysis Workspace', group: 'ANALYZE', purpose: 'Tabs: per-sensor deviations, full sensor table with baselines, and alert analytics.' },
   { route: '/degradation', label: 'Degradation BI', group: 'ANALYZE', purpose: 'Live regression of sensor deviations against the 6 root factors — validates the ∂sensor/∂root model against physics.' },
   { route: '/knowledge', label: 'Knowledge Base', group: 'ANALYZE', purpose: 'Sensor definitions, alarm bands, and baseline curves.' },
