@@ -7,7 +7,7 @@
 
 import React, { useState } from 'react';
 import { DEGRADATION_COMPONENTS, DEGRADATION_MODES } from '@marine-pdm/simulator';
-import type { BaselineSnapshot, EngineSnapshot } from '@marine-pdm/shared';
+import { MTU8000, type BaselineSnapshot, type EngineSnapshot } from '@marine-pdm/shared';
 import { getSensorMeta, readSensorValue, sensorLabel } from '../services/sensor-map';
 import { getDossierEntry } from '../about/dossier-data';
 import { SensorPopup } from '../dashboard/SensorPopup';
@@ -28,6 +28,12 @@ interface Reading {
   unit: string;
   decimals: number;
   context?: string;
+  /**
+   * What the Dashboard shows for the same parameter. Instance-addressable parts read their own
+   * probe while the dashboard gauge shows an engine-level aggregate, so the two legitimately differ
+   * — stating both is the difference between "this is per-cylinder" and "these numbers disagree".
+   */
+  compare?: string;
 }
 
 function mean(xs: number[]): number {
@@ -55,11 +61,12 @@ function reading(
     const bank = i < 10 ? cyl.slice(0, 10) : cyl.slice(10, 20);
     const d = v - mean(bank);
     return {
-      label: 'Exhaust temp',
+      label: `Exhaust temp · ${MTU8000.CYL_NAMES[i]} probe`,
       value: v,
       unit: '°C',
       decimals: 1,
       context: `${d >= 0 ? '+' : ''}${d.toFixed(1)} °C vs ${i < 10 ? 'A' : 'B'}-bank mean`,
+      compare: `Dashboard "Exhaust Temp" gauge shows the engine mean, ${snapshot.exhaustTemp.toFixed(1)} °C`,
     };
   }
 
@@ -69,7 +76,7 @@ function reading(
     if (typeof v !== 'number') return null;
     const max = Math.max(...brg);
     return {
-      label: 'Bearing temp',
+      label: `Bearing temp · Brg ${i + 1}`,
       value: v,
       unit: '°C',
       decimals: 1,
@@ -77,6 +84,7 @@ function reading(
         v === max
           ? 'Hottest of the 11 — this is the one the safety system watches'
           : `${(max - v).toFixed(1)} °C below the hottest bearing`,
+      compare: `Dashboard "Bearing Temp" gauge shows the hottest of the 11, ${max.toFixed(1)} °C`,
     };
   }
 
@@ -84,12 +92,17 @@ function reading(
     const tc = snapshot.tcSpeeds as number[];
     const v = tc?.[i];
     if (typeof v !== 'number') return null;
+    const tcName = ['A1', 'A2', 'B1', 'B2'][i] ?? String(i);
     return {
-      label: 'TC speed',
+      label: `TC speed · ${tcName}`,
       value: v,
       unit: 'rpm',
       decimals: 0,
       context: v < 100 ? 'Not cut in at this engine speed' : undefined,
+      compare:
+        i === 0
+          ? undefined
+          : `Dashboard "TC Speed" gauge tracks A1, ${(tc[0] ?? 0).toFixed(0)} rpm`,
     };
   }
 
@@ -208,6 +221,20 @@ export function PartDetailPanel({
             </div>
             {r.context && (
               <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3 }}>{r.context}</div>
+            )}
+            {r.compare && (
+              <div
+                style={{
+                  fontSize: 9,
+                  color: 'var(--text-dim)',
+                  marginTop: 5,
+                  paddingTop: 5,
+                  borderTop: '1px solid var(--border-dim)',
+                  lineHeight: 1.5,
+                }}
+              >
+                {r.compare}
+              </div>
             )}
           </div>
         ) : (
