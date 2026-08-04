@@ -12,6 +12,7 @@ import { getSensorMeta } from '../services/sensor-map';
 import { CABLES, PARTS, getPart, partsIn } from './topology';
 import {
   BLOCK_END_X,
+  BLOCK_START_X,
   BORE,
   BORE_SPACING,
   ENGINE_HEIGHT,
@@ -33,7 +34,11 @@ describe('parts registry', () => {
     expect(PARTS.filter(p => p.id.startsWith('cyl.'))).toHaveLength(MTU8000.CYLINDERS);
     expect(PARTS.filter(p => p.id.startsWith('head.'))).toHaveLength(MTU8000.CYLINDERS);
     expect(PARTS.filter(p => p.componentId === 'bearings')).toHaveLength(11);
-    expect(PARTS.filter(p => p.componentId === 'turbocharger')).toHaveLength(4);
+    // Instance-addressable only: the module housing shares componentId 'turbocharger' but reads no
+    // single tcSpeeds[] element, so it carries no instanceIndex.
+    expect(
+      PARTS.filter(p => p.componentId === 'turbocharger' && p.instanceIndex !== undefined),
+    ).toHaveLength(4);
   });
 
   it('gives each head the same tag and index as the cylinder beneath it', () => {
@@ -61,12 +66,16 @@ describe('parts registry', () => {
     }
   });
 
-  it('uses the OEM sensor designations from the ingestion tag map', () => {
-    // Cylinders are B4.1–B4.20 in CYL_NAMES order, bearings B57.1–B57.11, TC speeds the four
-    // B44 codes — matching packages/ingestion/src/tag-map.ts.
+  it('uses the OEM sensor designations from the MTU sensor-overview manual', () => {
+    // MS15082/00E names the exhaust probes B4 + bank + number (B4A1..B4A10, B4B1..B4B10), NOT the
+    // flat B4.1–B4.20 that packages/ingestion/src/tag-map.ts uses. Bearings are B57.1–B57.11 and
+    // TC speeds the four B44 codes, which both sources agree on.
     MTU8000.CYL_NAMES.forEach((name, i) => {
-      expect(getPart(`cyl.${name}`)?.mtuDesignation).toBe(`B4.${i + 1}`);
+      const bank = i < 10 ? 'A' : 'B';
+      expect(getPart(`cyl.${name}`)?.mtuDesignation).toBe(`B4${bank}${(i % 10) + 1}`);
     });
+    expect(getPart('cyl.A4')?.mtuDesignation).toBe('B4A4');
+    expect(getPart('cyl.B10')?.mtuDesignation).toBe('B4B10');
     for (let i = 0; i < 11; i++) {
       expect(getPart(`bearing.${i + 1}`)?.mtuDesignation).toBe(`B57.${i + 1}`);
     }
@@ -129,10 +138,13 @@ describe('published dimensions', () => {
     expect(BORE_SPACING).toBeGreaterThan(BORE); // pitch must clear the bore
   });
 
-  it('fits the cylinder block inside the published length', () => {
+  it('splits the length into turbocharger zone, block, and gear-train zone', () => {
+    // Driving end first (the bulky turbocharger and exhaust group), then the 10-cylinder block,
+    // then the comparatively shallow free-end gear train — and the three must sum to the envelope.
+    expect(BLOCK_START_X).toBeGreaterThan(1.0);
+    expect(BLOCK_END_X - BLOCK_START_X).toBeCloseTo(10 * BORE_SPACING, 6);
+    expect(ENGINE_LEN - BLOCK_END_X).toBeGreaterThan(0.4);
     expect(BLOCK_END_X).toBeLessThan(ENGINE_LEN);
-    // The turbocharger stack and its coolers live in what is left beyond the block.
-    expect(ENGINE_LEN - BLOCK_END_X).toBeGreaterThan(1.0);
   });
 });
 
@@ -234,11 +246,27 @@ describe('procedural layout', () => {
     expect(xs[10].position[0]).toBeGreaterThan(cylinderTransform(9).position[0]);
   });
 
-  it('puts all four turbochargers past the free end, two per side', () => {
+  it('puts all four turbochargers at the DRIVING end, two per side', () => {
+    // MS15082/00E top view: the B44 turbocharger group sits at the same end as cylinder 1, i.e. the
+    // driving end (KS). An earlier revision had them at the free end — this pins the correction.
     const tcs = [0, 1, 2, 3].map(tcTransform);
-    const lastCyl = cylinderTransform(9).position[0];
-    expect(tcs.every(t => t.position[0] > lastCyl)).toBe(true);
+    expect(tcs.every(t => t.position[0] < cylinderTransform(0).position[0])).toBe(true);
     expect(tcs.filter(t => t.position[2] < 0)).toHaveLength(2); // A-side
     expect(tcs.filter(t => t.position[2] > 0)).toHaveLength(2); // B-side
+  });
+
+  it('puts the gear train and its pumps at the FREE end, past cylinder 10', () => {
+    const lastCyl = cylinderTransform(19).position[0];
+    for (const id of ['gear.cover', 'pump.hp.A', 'pump.hp.B', 'pump.coolant', 'pump.rawwater']) {
+      expect(getPart(id)?.position[0], id).toBeGreaterThan(lastCyl);
+    }
+    // And no turbocharger is down there — that asymmetry is what fixes the engine's orientation.
+    expect(partsIn('turbo').every(p => p.position[0] < lastCyl)).toBe(true);
+  });
+
+  it('runs cylinder 1 at the driving end and cylinder 10 at the free end', () => {
+    expect(cylinderTransform(0).position[0]).toBeLessThan(cylinderTransform(9).position[0]);
+    expect(getPart('flywheel')!.position[0]).toBeLessThan(cylinderTransform(0).position[0]);
+    expect(getPart('gear.cover')!.position[0]).toBeGreaterThan(cylinderTransform(9).position[0]);
   });
 });

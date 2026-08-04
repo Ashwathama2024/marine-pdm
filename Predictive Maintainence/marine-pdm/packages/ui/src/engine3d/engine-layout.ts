@@ -3,22 +3,32 @@
 // Every layout number in the 3D view is derived HERE and nowhere else, so the model stays tied to
 // the same constants the physics runs on.
 //
-// DIMENSIONS ARE MEASURED, NOT GUESSED. The MTU 8000 data sheet gives, for the external
-// heat-exchanger version, maximum dimensions L x W x H:
-//     16V 8000 — 5682 x 2279 x 3410 mm
-//     20V 8000 — 6622 x 2279 x 3439 mm
-// The 940 mm length difference buys exactly two extra cylinders per bank, which fixes the cylinder
-// pitch at 940 / 2 = 470 mm — the one number that sets the whole scale of the model. (An earlier
-// revision guessed 1.40 x bore = 371 mm and was 27% short.)
+// SOURCES, in order of authority:
+//   1. MTU 8000 data sheet — maximum dimensions L x W x H, external heat-exchanger version:
+//          16V 8000 — 5682 x 2279 x 3410 mm
+//          20V 8000 — 6622 x 2279 x 3439 mm
+//      The 940 mm length difference buys exactly two extra cylinders per bank, which fixes the
+//      cylinder pitch at 940 / 2 = 470 mm. That single number sets the scale of everything else.
+//   2. MS15082/00E "Sensors and actuators 20V - Overview" (TD0000012614/12618/12620) — the four
+//      general-arrangement views. These fix WHICH END IS WHICH, see below.
+//   3. Proportional reading of those views for the remaining splits, marked ESTIMATE.
 //
-// What is still estimated, and flagged inline as ESTIMATE: how the 6622 mm splits between driving
-// end, block and turbocharger end, and the vertical budget inside the 3439 mm envelope. Those come
-// from proportional reading of the MTU sensor-overview drawings (top view and right-side view).
+// END ORIENTATION — this was wrong in an earlier revision and is worth stating plainly.
+// In the top view (TD0000012620) the exhaust-temperature callouts run B4B10 at the left through
+// B4B1 at the right, and the turbocharger group (B44.1/2/11/12, B4.30, B41.1, Y26, Y29) sits at the
+// RIGHT-hand end — the same end as cylinder 1. Cylinder 1 is the driving end (KS), so:
+//
+//     DRIVING END (KS)  = cylinder 1, bearing 1, flywheel, ALL FOUR TURBOCHARGERS, exhaust outlet
+//     FREE END (KGS)    = cylinder 10, bearing 11, gear train, HP fuel pumps, coolant and raw-water
+//                         pumps, coolant cooler, fuel filters
+//
+// The free-end view (TD0000012618) confirms it: camshaft speed, HP pump A/B, coolant pressure
+// before/after cooler and raw-water pressure all appear there, and no turbocharger does.
 //
 // Frame convention (metres, right-handed, matching three.js):
-//   +X = crank axis, x=0 is the DRIVING END face (KS). Free end (KGS) is at +X.
+//   +X runs from the DRIVING END face at x=0 toward the FREE END at x=6.622.
 //   +Y = up, y=0 is the crank axis.
-//   +Z = B-side.  -Z = A-side.  (CYL_NAMES comment: "A-side = left from driving end".)
+//   +Z = B-side.  -Z = A-side.  (CYL_NAMES: "A-side = left from driving end".)
 
 import { MTU8000 } from '@marine-pdm/shared';
 
@@ -33,7 +43,7 @@ export const HALF_V = (MTU8000.V_ANGLE_DEG / 2) * DEG; // 24°
 
 export const PER_BANK = MTU8000.CYLINDERS / 2; // 10
 
-// ── Published envelope (MTU 8000 data sheet, 20V, external heat exchanger) ────
+// ── Published envelope ───────────────────────────────────────────────────────
 export const ENGINE_LEN = 6.622;
 export const ENGINE_WIDTH = 2.279;
 export const ENGINE_HEIGHT = 3.439;
@@ -41,18 +51,25 @@ export const ENGINE_HEIGHT = 3.439;
 /** Cylinder pitch, derived from the 16V/20V length difference. See header. */
 export const BORE_SPACING = (6.622 - 5.682) / 2; // 0.470 m
 
-// ESTIMATE: driving-end housing depth before cylinder 1, read off the top-view drawing.
-export const CYL_1_X = 0.755;
-export const LAST_CYL_X = CYL_1_X + (PER_BANK - 1) * BORE_SPACING; // 4.985
-/** Free-end face of the cylinder block; the turbocharger stack lives beyond this. */
-export const BLOCK_END_X = LAST_CYL_X + BORE_SPACING / 2; // 5.220
+// ── Longitudinal budget, summing to 6.622 m ──────────────────────────────────
+// ESTIMATE, read proportionally off the top view: the turbocharger/exhaust group at the driving end
+// is by far the bulkiest section, the gear-train end is comparatively shallow.
+export const TC_ZONE_LEN = 1.4;
+export const BLOCK_START_X = TC_ZONE_LEN;
+export const BLOCK_LEN = PER_BANK * BORE_SPACING; // 4.700
+export const BLOCK_END_X = BLOCK_START_X + BLOCK_LEN; // 6.100
+export const FREE_END_X = ENGINE_LEN; // 6.622
+
+/** Cylinder 1 sits half a pitch inside the block face, at the driving end. */
+export const CYL_1_X = BLOCK_START_X + BORE_SPACING / 2; // 1.635
+export const LAST_CYL_X = CYL_1_X + (PER_BANK - 1) * BORE_SPACING; // 5.865
 
 // ── Vertical budget, summing to the published 3439 mm ────────────────────────
-// ESTIMATE, from the right-side-view drawing: deep marine sump below the crank, heads and V-valley
-// above it, turbocharger and air-filter stack on top.
+// ESTIMATE, from the left-side view: deep marine sump below the crank, heads and V-valley above it,
+// turbocharger and exhaust stack on top at the driving end.
 export const PAN_BOTTOM_Y = -1.0;
 export const HEAD_RISE = 1.05; // head centre, along the bank axis
-export const TC_TOP_Y = 2.24;
+export const TC_TOP_Y = 2.12;
 
 export type Vec3 = [number, number, number];
 
@@ -67,14 +84,19 @@ export function cylBank(i: number): 'A' | 'B' {
   return i < PER_BANK ? 'A' : 'B';
 }
 
+/** Cylinder number within its bank, 1-10. 1 is the driving end. */
+export function cylNumber(i: number): number {
+  return (i % PER_BANK) + 1;
+}
+
 /** Crank-axis station of cylinder `i`. */
 export function cylX(i: number): number {
   return CYL_1_X + (i % PER_BANK) * BORE_SPACING;
 }
 
-// Liner runs from roughly crank-throw clearance up to the head face. Crank radius is STROKE/2 and a
-// typical rod is ~2x stroke, putting piston TDC near 0.79 m from the axis — so a 0.46 m liner
-// centred at 0.60 m spans the working length.
+// Liner runs from crank-throw clearance up to the head face. Crank radius is STROKE/2 and a typical
+// rod is ~2x stroke, putting piston TDC near 0.79 m from the axis — so a 0.46 m liner centred at
+// 0.60 m spans the working length.
 export const CYL_RISE = 0.6;
 export const CYL_LEN = 0.46;
 
@@ -92,7 +114,7 @@ export function cylinderTransform(i: number): { position: Vec3; rotation: Vec3 }
   };
 }
 
-/** Cylinder head, sat on top of its liner — the row of blocks that dominates the side view. */
+/** Cylinder head — the row of blocks that dominates the side elevation. */
 export function headTransform(i: number): { position: Vec3; rotation: Vec3 } {
   const bank = cylBank(i);
   const d = bankDir(bank);
@@ -102,10 +124,10 @@ export function headTransform(i: number): { position: Vec3; rotation: Vec3 } {
   };
 }
 
-/** 10 crank throws means 11 main bearings — they straddle the cylinders, half a pitch outboard. */
-export const BEARING_1_X = CYL_1_X - BORE_SPACING / 2; // 0.520
+/** 10 crank throws means 11 main bearings — bearing 1 at the driving-end block face. */
+export const BEARING_1_X = BLOCK_START_X;
 
-/** Transform for main bearing `i` (0-10, index 10 = free end). Torus axis rotated onto +X. */
+/** Transform for main bearing `i` (0-10; 0 = driving end, 10 = free end). */
 export function bearingTransform(i: number): { position: Vec3; rotation: Vec3 } {
   return { position: [BEARING_1_X + i * BORE_SPACING, 0, 0], rotation: [0, Math.PI / 2, 0] };
 }
@@ -113,28 +135,27 @@ export function bearingTransform(i: number): { position: Vec3; rotation: Vec3 } 
 /**
  * Transform for turbocharger `i`, in tcSpeeds[] order: 0=A1, 1=A2, 2=B1, 3=B2.
  *
- * All four sit beyond the free-end face in a 2x2 stack, two per bank — the arrangement visible in
- * the top view (two large housings side by side) and in the product photo (four intake filters).
- * The two BASIC units (A2/B2, always running) are the lower pair; the two SWITCHABLE units (A1/B1,
- * cut in at 850 and 1000 rpm) sit above them.
+ * All four sit in the driving-end group, two per bank, impeller axis across the engine. The BASIC
+ * units (A2/B2, always running) are the lower pair; the SWITCHABLE units (A1/B1, cut in at 850 and
+ * 1000 rpm, controlled by solenoids Y26 and Y29) sit above them.
  */
 export function tcTransform(i: number): { position: Vec3; rotation: Vec3 } {
   const side = i < 2 ? -1 : 1; // A-side is -Z
   const basic = i % 2 === 1; // indices 1 and 3 are A2 / B2
   return {
-    position: [BLOCK_END_X + 0.62, basic ? 0.95 : 1.82, side * 0.62],
-    rotation: [0, 0, Math.PI / 2], // impeller axis across the engine
+    position: [0.72, basic ? 0.95 : 1.82, side * 0.62],
+    rotation: [Math.PI / 2, 0, 0], // impeller axis across the engine
   };
 }
 
-/** Span of the cylinder block along the crank axis, used by anything that runs its full length. */
-export const BANK_SPAN = LAST_CYL_X - CYL_1_X + BORE_SPACING;
+/** Span of the cylinder block along the crank axis, for anything running its full length. */
+export const BANK_SPAN = BLOCK_LEN;
 export const BANK_MID_X = (CYL_1_X + LAST_CYL_X) / 2;
 
 /**
  * Exhaust manifold. On the 8000 the hot side is INBOARD — the manifolds run the length of the
- * V-valley and feed aft to the turbochargers, which is why the valley reads as a covered duct in
- * the top view rather than as open vee.
+ * V-valley and feed FORWARD to the turbochargers at the driving end, which is why the valley reads
+ * as a covered duct rather than an open vee in the top view.
  */
 export function manifoldTransform(bank: 'A' | 'B'): {
   position: Vec3;
