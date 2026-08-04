@@ -12,7 +12,7 @@ import { getSensorMeta, readSensorValue, sensorLabel } from '../services/sensor-
 import { getDossierEntry } from '../about/dossier-data';
 import { SensorPopup } from '../dashboard/SensorPopup';
 import { useEngine } from '../context/EngineContext';
-import { cablesTouching, getPart, SUBASSEMBLIES } from './topology';
+import { cablesTouching, getPart, partsInside, SUBASSEMBLIES } from './topology';
 import { GREEN } from './palette';
 
 const LABEL: React.CSSProperties = {
@@ -118,7 +118,15 @@ function faultsFor(componentId: string | undefined) {
   return DEGRADATION_MODES.filter(m => comp.modeIds.includes(m.id));
 }
 
-export function PartDetailPanel({ partId, onClose }: { partId: string; onClose: () => void }) {
+export function PartDetailPanel({
+  partId,
+  onClose,
+  onSelect,
+}: {
+  partId: string;
+  onClose: () => void;
+  onSelect?: (id: string) => void;
+}) {
   const { snapshot, baseline, history } = useEngine();
   const [showFull, setShowFull] = useState(false);
   const [showProse, setShowProse] = useState(false);
@@ -127,6 +135,7 @@ export function PartDetailPanel({ partId, onClose }: { partId: string; onClose: 
   if (!part) return null;
 
   const r = reading(partId, snapshot, baseline);
+  const contained = partsInside(partId);
   const faults = faultsFor(part.componentId);
   const cables = cablesTouching(partId);
   const dossier = part.dossierId ? getDossierEntry(part.dossierId) : undefined;
@@ -204,6 +213,28 @@ export function PartDetailPanel({ partId, onClose }: { partId: string; onClose: 
         ) : (
           <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 14, lineHeight: 1.5 }}>
             No instrumented sensor on this part — it carries signal but is not itself measured.
+          </div>
+        )}
+
+        {contained.length > 0 && (
+          <div style={{ marginTop: 16 }}>
+            <div style={LABEL}>CONTAINS — {contained.length} PARTS</div>
+            <div style={{ fontSize: 9, color: 'var(--text-dim)', marginTop: 3, lineHeight: 1.5 }}>
+              Clicking through this housing in the scene selects whatever is behind it; use these to
+              pick directly.
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 7 }}>
+              {contained.map(c => (
+                <button
+                  key={c.id}
+                  className="mag-btn"
+                  onClick={() => onSelect?.(c.id)}
+                  style={{ fontSize: 9, padding: '4px 8px' }}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 

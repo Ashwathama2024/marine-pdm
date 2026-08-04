@@ -76,6 +76,12 @@ export interface PartDef {
   dossierId?: string;
   instanceIndex?: number;
   motion?: PartMotion;
+  /**
+   * This part geometrically contains others (a housing, a casing, the crankcase). Enclosures are
+   * drawn as an open boundary rather than a solid, and they never steal a click from the part
+   * inside them — see resolvePick in Parts.tsx.
+   */
+  enclosure?: boolean;
 }
 
 export interface CableDef {
@@ -270,6 +276,7 @@ const drivingEnd: PartDef[] = [
     kind: 'box',
     position: [0.72, 1.12, 0],
     size: [1.24, 1.88, 1.84],
+    enclosure: true,
     sensorTags: ['ME.TCSpeed'],
     componentId: 'turbocharger',
     dossierId: 'dossier-turbo',
@@ -334,6 +341,7 @@ const freeEnd: PartDef[] = [
     kind: 'box',
     position: [6.34, 0.25, 0],
     size: [0.52, 2.0, 1.5],
+    enclosure: true,
     sensorTags: [],
   },
   {
@@ -419,6 +427,7 @@ const ancillaries: PartDef[] = [
     kind: 'box',
     position: [(BLOCK_START_X + BLOCK_END_X) / 2, -0.05, 0],
     size: [BLOCK_END_X - BLOCK_START_X, 0.85, 1.45],
+    enclosure: true, // the 11 main bearings sit inside it
     sensorTags: [],
     mtuDesignation: 'B50',
     dossierId: 'dossier-crankcase',
@@ -660,6 +669,49 @@ export function getPart(id: string): PartDef | null {
 
 export function partsIn(subassemblyId: string): PartDef[] {
   return PARTS.filter(p => p.subassembly === subassemblyId);
+}
+
+/**
+ * Parts sitting geometrically inside an enclosure, tested by centre point. Every enclosure is an
+ * axis-aligned box, so this is exact rather than approximate. Used both to route clicks past a
+ * housing and to list its contents in the detail panel.
+ */
+export function partsInside(enclosureId: string): PartDef[] {
+  const e = getPart(enclosureId);
+  if (!e?.enclosure) return [];
+  return PARTS.filter(p => p.id !== e.id && !p.enclosure && enclosureContains(e, p));
+}
+
+/**
+ * Does box `a` hold `b`'s centre? Tested with a tolerance because parts routinely sit exactly on a
+ * face — main bearing 1 is precisely on the crankcase's driving-end face, and without the epsilon
+ * accumulated float error drops it outside its own housing.
+ *
+ * Shared by partsInside and by the test that enforces enclosure marking, so both agree on what
+ * "inside" means. Enclosures are axis-aligned boxes, so this is otherwise exact.
+ */
+export function enclosureContains(a: PartDef, b: PartDef): boolean {
+  const EPS = 1e-6;
+  return (
+    Math.abs(b.position[0] - a.position[0]) <= a.size[0] / 2 + EPS &&
+    Math.abs(b.position[1] - a.position[1]) <= a.size[1] / 2 + EPS &&
+    Math.abs(b.position[2] - a.position[2]) <= a.size[2] / 2 + EPS
+  );
+}
+
+/**
+ * Which part a click means, given the part ids the ray hit in depth order.
+ *
+ * A housing sits in front of everything it contains, so the raw nearest hit is always the housing —
+ * which made the four turbochargers and all eleven main bearings unselectable. Take the first hit
+ * that is NOT an enclosure. Falling back to the enclosure means clicking a housing where nothing is
+ * behind it (a corner, an empty face) still selects the housing, which is what you would expect.
+ */
+export function resolvePick(hitPartIds: string[], fallbackId: string): string {
+  for (const id of hitPartIds) {
+    if (!getPart(id)?.enclosure) return id;
+  }
+  return fallbackId;
 }
 
 /** Every cable touching a part, either end. */

@@ -9,7 +9,15 @@ import { describe, expect, it } from 'vitest';
 import { DEGRADATION_COMPONENTS } from '@marine-pdm/simulator';
 import { MTU8000 } from '@marine-pdm/shared';
 import { getSensorMeta } from '../services/sensor-map';
-import { CABLES, PARTS, getPart, partsIn } from './topology';
+import {
+  CABLES,
+  PARTS,
+  enclosureContains,
+  getPart,
+  partsIn,
+  partsInside,
+  resolvePick,
+} from './topology';
 import {
   BLOCK_END_X,
   BLOCK_START_X,
@@ -102,6 +110,62 @@ describe('parts registry', () => {
     for (const part of PARTS) {
       expect(partsIn(part.subassembly).length, part.id).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('enclosures never hide what is inside them', () => {
+  it('marks every box that swallows another part', () => {
+    // THE REGRESSION GUARD. An unmarked box sits in front of its contents and eats their clicks —
+    // that is how the four turbochargers and all eleven main bearings became unselectable.
+    for (const a of PARTS) {
+      if (a.kind !== 'box' || a.enclosure) continue;
+      for (const b of PARTS) {
+        if (a.id === b.id || b.enclosure) continue;
+        expect(
+          enclosureContains(a, b),
+          `${a.id} contains ${b.id} but is not marked enclosure:true`,
+        ).toBe(false);
+      }
+    }
+  });
+
+  it('reports the parts each declared enclosure holds', () => {
+    expect(partsInside('tc.module').map(p => p.id)).toEqual(
+      expect.arrayContaining(['tc.A1', 'tc.A2', 'tc.B1', 'tc.B2']),
+    );
+    expect(partsInside('crankcase').map(p => p.id)).toEqual(
+      expect.arrayContaining(Array.from({ length: 11 }, (_, i) => `bearing.${i + 1}`)),
+    );
+    expect(partsInside('gear.housing').map(p => p.id)).toEqual(
+      expect.arrayContaining(['gear.cover', 'pump.hp.A', 'pump.hp.B', 'pump.coolant']),
+    );
+  });
+
+  it('never nests an enclosure inside its own contents list', () => {
+    for (const e of PARTS.filter(p => p.enclosure)) {
+      for (const c of partsInside(e.id)) expect(c.enclosure).toBeFalsy();
+    }
+  });
+});
+
+describe('click resolution past a housing', () => {
+  it('picks the turbocharger behind the module, not the module', () => {
+    expect(resolvePick(['tc.module', 'tc.A1'], 'tc.module')).toBe('tc.A1');
+  });
+
+  it('picks the bearing behind the crankcase, not the crankcase', () => {
+    expect(resolvePick(['crankcase', 'bearing.7'], 'crankcase')).toBe('bearing.7');
+  });
+
+  it('still selects the housing where nothing is behind it', () => {
+    expect(resolvePick(['tc.module'], 'tc.module')).toBe('tc.module');
+    expect(resolvePick([], 'gear.housing')).toBe('gear.housing');
+  });
+
+  it('skips several stacked enclosures to reach a real part', () => {
+    expect(resolvePick(['tc.module', 'crankcase', 'gear.housing', 'bearing.3'], 'tc.module')).toBe(
+      'bearing.3',
+    );
   });
 });
 

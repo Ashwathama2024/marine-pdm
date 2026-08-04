@@ -13,7 +13,7 @@ import React, { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { MTU8000, MTU8000_LIMITS } from '@marine-pdm/shared';
-import { PARTS, type PartDef } from './topology';
+import { PARTS, resolvePick, type PartDef } from './topology';
 import { riskColor, FILL, GREEN } from './palette';
 import { partRisk } from './part-risk';
 import type { LiveRef } from './useLiveBridge';
@@ -63,6 +63,16 @@ function makeGeometry(part: PartDef): THREE.BufferGeometry {
   }
 }
 
+/** R3F hands over the full depth-sorted hit list; topology decides which of them a click means. */
+function pickFrom(intersections: THREE.Intersection[], fallbackId: string): string {
+  const ids: string[] = [];
+  for (const hit of intersections) {
+    const pid = hit.object.userData?.partId as string | undefined;
+    if (pid) ids.push(pid);
+  }
+  return resolvePick(ids, fallbackId);
+}
+
 interface PartMeshProps {
   part: PartDef;
   register: (id: string, mat: THREE.LineBasicMaterial) => void;
@@ -88,21 +98,30 @@ function PartMesh({ part, register, registerSpin, onSelect, hoveredRef }: PartMe
         {/* Near-black fill so the wireframe occludes correctly instead of reading as an x-ray. */}
         <mesh
           geometry={geom}
+          userData={{ partId: part.id }}
           onClick={e => {
             e.stopPropagation();
-            onSelect(part.id);
+            onSelect(pickFrom(e.intersections, part.id));
           }}
           onPointerOver={e => {
             e.stopPropagation();
-            hoveredRef.current = part.id;
+            // Highlight what the click would actually select, not what the ray hit first.
+            hoveredRef.current = pickFrom(e.intersections, part.id);
             document.body.style.cursor = 'pointer';
           }}
           onPointerOut={() => {
-            if (hoveredRef.current === part.id) hoveredRef.current = null;
+            hoveredRef.current = null;
             document.body.style.cursor = '';
           }}
         >
-          <meshBasicMaterial color={FILL} transparent opacity={0.72} />
+          {/* An enclosure is a boundary, not a solid: barely tinted and never occluding, so the
+              parts inside stay visible through it. */}
+          <meshBasicMaterial
+            color={FILL}
+            transparent
+            opacity={part.enclosure ? 0.04 : 0.72}
+            depthWrite={!part.enclosure}
+          />
         </mesh>
 
         <lineSegments geometry={edges} raycast={() => null}>

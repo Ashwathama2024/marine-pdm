@@ -243,7 +243,9 @@ export function Engine3D() {
         })}
       </div>
 
-      {selected && <PartDetailPanel partId={selected} onClose={handleMiss} />}
+      {selected && (
+        <PartDetailPanel partId={selected} onClose={handleMiss} onSelect={handleSelect} />
+      )}
     </div>
   );
 }
