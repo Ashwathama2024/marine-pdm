@@ -7,7 +7,7 @@ import { extractTextFromPDF } from '../services/pdf-extract';
 
 const DOC_TYPES: DocType[] = ['CASE_STUDY', 'MANUAL', 'HISTORIC_LOG', 'NOTE'];
 const SENSOR_TAGS = [
-  'ME.ExhaustTemp', 'ME.LubeOilPressure', 'ME.FuelRack',
+  'ME.ExhaustTemp', 'ME.LubeOilPressure',
   'ME.ScavengeAirPressure', 'ME.TCSpeed', 'ME.JacketCoolingOutlet', 'ME.SFOC',
 ];
 

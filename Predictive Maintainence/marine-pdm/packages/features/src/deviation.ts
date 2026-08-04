@@ -44,7 +44,6 @@ export function computeBaselineSnapshot(
   const expectedExhaust = store.getExpected('ME.ExhaustTemp', ctx) ?? snap.exhaustTemp;
   const expectedLube = store.getExpected('ME.LubeOilPressure', ctx) ?? snap.lubeOilPressure;
   const expectedJacket = store.getExpected('ME.JacketCoolingOutlet', ctx) ?? snap.jacketOutlet;
-  const expectedFuelRack = store.getExpected('ME.FuelRack', ctx) ?? snap.fuelRack;
   const expectedScavenge = store.getExpected('ME.ScavengeAirPressure', ctx) ?? snap.scavengeAir;
   const expectedTcRPM = store.getExpected('ME.TCSpeed', ctx) ?? snap.tcRPM;
   const expectedSfoc = store.getExpected('ME.SFOC', ctx) ?? snap.sfoc;
@@ -82,7 +81,6 @@ export function computeBaselineSnapshot(
     expectedLube,
     expectedCyls,
     expectedJacket,
-    expectedFuelRack,
     expectedScavenge,
     expectedTcRPM,
     expectedSfoc,

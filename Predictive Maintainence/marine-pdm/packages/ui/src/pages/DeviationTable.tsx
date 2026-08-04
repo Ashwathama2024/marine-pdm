@@ -27,7 +27,7 @@ interface DeviationRow {
 }
 
 const PHYS_RANGES: Record<string, number> = {
-  exhaustTemp: 400, lubeOilPressure: 6.5, fuelRack: 115,
+  exhaustTemp: 400, lubeOilPressure: 6.5,
   scavengeAir: 4.5, tcRPM: 30000, jacketOutlet: 55, sfoc: 85,
   chargeAirTemp: 75, fuelOilPressure: 9.0, fuelOilTemp: 35,
   loFilterDP: 2.0, pistonCoolingPress: 8.0, shaftPower: 6000,
@@ -135,7 +135,6 @@ export function DeviationTable() {
     { sensorId: 'ME.FuelOilTemp',         label: 'FO Temp',        unit: '°C',    decimals: 1, actual: snapshot.fuelOilTemp,         expected: baseline.expectedFuelOilTemp,       risk: decision.lubeRisk * 0.2,                    histKey: 'fuelOilTemp' },
     { sensorId: 'ME.LOFilterDP',          label: 'LO Filter ΔP',   unit: 'bar',   decimals: 3, actual: snapshot.loFilterDP,          expected: baseline.expectedLoFilterDP,        risk: decision.lubeRisk * 0.7,                    histKey: 'loFilterDP' },
     { sensorId: 'ME.PistonCoolingPress',  label: 'Piston Cool P',  unit: 'bar',   decimals: 2, actual: snapshot.pistonCoolingPress,  expected: baseline.expectedPistonCoolingPress,risk: decision.coolingRisk * 0.6,                 histKey: 'pistonCoolingPress' },
-    { sensorId: 'ME.FuelRack',            label: 'Fuel Rack',      unit: 'mm',    decimals: 1, actual: snapshot.fuelRack,            expected: baseline.expectedFuelRack,          risk: Math.max(...decision.cylRisks) * 0.3,       histKey: 'fuelRack' },
     { sensorId: 'ME.SFOC',               label: 'SFOC',           unit: 'g/kWh', decimals: 1, actual: snapshot.sfoc,                expected: baseline.expectedSfoc,              risk: decision.coolingRisk * 0.6,                 histKey: 'sfoc' },
     { sensorId: 'ME.ShaftPower',          label: 'Shaft Power',    unit: 'kW',    decimals: 0, actual: snapshot.shaftPower,          expected: baseline.expectedShaftPower,        risk: decision.systemRisk * 0.3,                  histKey: 'shaftPower' },
   ];

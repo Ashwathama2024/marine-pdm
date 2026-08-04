@@ -14,7 +14,6 @@ import { useSensorFocus, alertTextMatchesSensor } from '../context/SensorFocusCo
 const SENSOR_ID_MAP: Record<string, string> = {
   'ME.ExhaustTemp':         'ME.ExhaustTemp',
   'ME.LubeOilPressure':     'ME.LubeOilPressure',
-  'ME.FuelRack':            'ME.FuelRack',
   'ME.ScavengeAirPressure': 'ME.ScavengeAirPressure',
   'ME.TCSpeed':             'ME.TCSpeed',
   'ME.JacketCoolingOutlet': 'ME.JacketCoolingOutlet',
@@ -22,7 +21,7 @@ const SENSOR_ID_MAP: Record<string, string> = {
 };
 
 const PHYS_RANGES: Record<string, number> = {
-  'ME.ExhaustTemp': 360, 'ME.LubeOilPressure': 5.5, 'ME.FuelRack': 115,
+  'ME.ExhaustTemp': 360, 'ME.LubeOilPressure': 5.5,
   'ME.ScavengeAirPressure': 4.5, 'ME.TCSpeed': 22000,
   'ME.JacketCoolingOutlet': 52, 'ME.SFOC': 85,
 };

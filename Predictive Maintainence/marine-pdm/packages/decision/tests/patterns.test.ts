@@ -26,7 +26,7 @@ function makeLibrary(): PatternLibrary {
 
 const FAULTED_FEATURES: FeatureSnapshot = {
   exhaustDev: 5, lubeDev: 0, cylDevs: [25, 0, 0], cylImbalance: 25,
-  exhaustRate: 1, lubeRate: 0, rollingAvg: 0, stdDev: 0, sfocDev: 0, fuelRackDev: 0,
+  exhaustRate: 1, lubeRate: 0, rollingAvg: 0, stdDev: 0, sfocDev: 0,
 };
 const HEALTHY_FEATURES: FeatureSnapshot = {
   ...FAULTED_FEATURES, cylDevs: [0, 0, 0], cylImbalance: 0,

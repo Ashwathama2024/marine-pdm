@@ -12,7 +12,18 @@ export interface EngineSnapshot {
   load: number;                 // 0–100 %
   exhaustTemp: number;          // °C — mean exhaust gas temp
   lubeOilPressure: number;      // bar — main LO pressure
-  fuelRack: number;             // mm — fuel rack / index
+  // RETIRED TAG — always 0 on this engine, and deliberately so.
+  //
+  // A fuel rack is the linkage of a MECHANICAL governor. The MTU 20V 8000 M71/M71L is common-rail:
+  // fuel is metered by rail pressure and injection timing, and there is no rack to measure. The field
+  // survives only because EngineSnapshot is the wire format an OPC-UA source fills in, and a real
+  // plant's tag list may still carry the point (the 52-tag map in `ingestion` does not).
+  //
+  // Nothing derives from it: no baseline curve, no deviation feature, no alarm band, no gauge, no
+  // trend card. If a future engine variant genuinely has a rack — or a fuel-index/injection-quantity
+  // signal is added for THIS one — model it as its own tag with its own physics rather than reviving
+  // this one, which carried a mechanical model that never applied here.
+  fuelRack: number;             // mm — legacy mechanical-governor tag; see above. Always 0.
   scavengeAir: number;          // bar — charge air pressure
   tcRPM: number;                // RPM — turbocharger speed
   jacketOutlet: number;         // °C — jacket cooling water outlet
@@ -35,7 +46,6 @@ export interface BaselineSnapshot {
   expectedLube: number;
   expectedCyls: number[];
   expectedJacket: number;
-  expectedFuelRack: number;
   expectedScavenge: number;
   expectedTcRPM: number;
   expectedSfoc: number;
@@ -66,7 +76,6 @@ export interface FeatureSnapshot {
   rollingAvg: number;     // 30-tick exhaust rolling mean
   stdDev: number;         // 30-tick exhaust std dev
   sfocDev: number;        // actual − expected SFOC (g/kWh)
-  fuelRackDev: number;    // actual − expected fuel rack (mm)
   [key: string]: number | number[];
 }
 

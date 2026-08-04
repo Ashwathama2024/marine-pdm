@@ -22,7 +22,9 @@ export const MTU8000_ALARM_BANDS: Record<string, { dev: number; rate: number }> 
   tcRPM:      { dev: 2000, rate: 200  }, // rated ~25 k RPM → 2000 RPM drop = action
   sfoc:       { dev: 15,   rate: 1    }, // rated ~170 g/kWh → +15 = efficiency warning
   shaftPower: { dev: 500,  rate: 50   }, // rated 9100 kW   → 500 kW drop = warning
-  fuelRack:   { dev: 8,    rate: 1    }, // rated ~100 mm   → 8 mm swing = notable
+  // fuelRack removed — the band claimed "rated ~100 mm" for a tag hardcoded to 0 (common rail has no
+  // mechanical rack). Nothing scored it, but /help renders this whole record as the calibrated-band
+  // table, so it advertised a live threshold that could never be crossed.
 };
 
 interface RiskWeights {

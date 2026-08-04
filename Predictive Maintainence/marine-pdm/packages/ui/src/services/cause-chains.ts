@@ -27,7 +27,7 @@ export const CAUSE_CHAINS: CauseChain[] = [
         'Combustion chamber deposits — carbon buildup on piston crown or liner',
         'Turbocharger fouling limiting air supply — rich mixture burns late',
       ],
-      correlates: ['ME.SFOC rises', 'ME.FuelRack may rise', 'Cylinder temperature imbalance if single unit affected'],
+      correlates: ['ME.SFOC rises', 'ME.FuelRailPressure may dip (−15 bar per faulted injector)', 'Cylinder temperature imbalance if single unit affected'],
       actionWindow: '4–8 hours if gradual rise. Immediate if above L2 (455°C). Check individual cylinder temps for isolated injector fault.',
     },
     lowDeviation: {
@@ -38,7 +38,7 @@ export const CAUSE_CHAINS: CauseChain[] = [
         'Early injection timing — combustion ends before full expansion',
         'Fuel supply pressure low — booster pump fault or supply valve partially closed',
       ],
-      correlates: ['ME.FuelRack drops', 'ME.SFOC rises (poor efficiency)', 'Power output drops'],
+      correlates: ['ME.FuelRailPressure drops — the rail cannot hold pressure on low supply', 'ME.SFOC rises (poor efficiency)', 'Power output drops'],
       actionWindow: 'Investigate within 2 hours. If progressive and load cannot be maintained, reduce speed and investigate fuel system.',
     },
   },
@@ -69,32 +69,9 @@ export const CAUSE_CHAINS: CauseChain[] = [
       actionWindow: 'IMMEDIATE below L2 (3.2 bar). Below L4 (2.5 bar) — AUTO SHUTDOWN. Do not override shutdown unless alternative lubrication confirmed.',
     },
   },
-  {
-    sensorId: 'ME.FuelRack',
-    displayName: 'Fuel Rack Position',
-    highDeviation: {
-      principle: 'Governor demanding more fuel than expected for this load point. Either external resistance is higher than normal (hull/propeller) or the engine is less efficient.',
-      causes: [
-        'Hull or propeller fouling — increased hydrodynamic resistance requires more power',
-        'Unfavorable sea state — pitching and heaving increase propulsive demand',
-        'Governor hunting — unstable fuel demand oscillations',
-        'Engine overloaded — too many auxiliaries drawing shaft power',
-        'Fuel injector wear — less energy per unit rack movement, governor compensates',
-      ],
-      correlates: ['ME.ExhaustTemp rises', 'ME.SFOC rises', 'Load at or above target despite high rack'],
-      actionWindow: 'Plan hull and propeller inspection at next port. If rack approaches L2 limit (100mm), reduce speed.',
-    },
-    lowDeviation: {
-      principle: 'Less fuel demanded than expected — engine running lean at this operating point.',
-      causes: [
-        'Governor limiting fuel due to overspeed protection trip pending',
-        'Fuel supply issue — pressure low upstream',
-        'Rack actuator fault — mechanical restriction on high side',
-      ],
-      correlates: ['ME.ExhaustTemp drops', 'Engine unable to reach demanded load'],
-      actionWindow: 'Investigate governor settings and fuel supply pressure. Check rack linkage for mechanical binding.',
-    },
-  },
+  // ME.FuelRack chain removed — it described a mechanical governor ('rack approaches L2 limit
+  // (100mm)', 'check rack linkage for binding') on a common-rail engine that has neither. The
+  // equivalent common-rail signal is rail pressure; see the ME.FuelRailPressure entries.
   {
     sensorId: 'ME.ScavengeAirPressure',
     displayName: 'Scavenge Air Pressure',
@@ -186,7 +163,7 @@ export const CAUSE_CHAINS: CauseChain[] = [
         'Propeller pitch deviation — propeller not at design angle',
         'Engine timing drift — suboptimal combustion phasing',
       ],
-      correlates: ['ME.FuelRack rises', 'ME.ExhaustTemp may rise', 'Multiple sensors elevated'],
+      correlates: ['Fuel burn up for the same shaft power', 'ME.ExhaustTemp may rise', 'Multiple sensors elevated'],
       actionWindow: 'SFOC is a lagging indicator. Investigate primary causes (injectors, TC, cooling) before next voyage. Hull cleaning at next dry dock.',
     },
     lowDeviation: {

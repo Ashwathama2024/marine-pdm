@@ -28,7 +28,7 @@ function deviationColor(dev: number, physRange: number): string {
 }
 
 const PHYS_RANGES: Record<string, number> = {
-  exhaustTemp: 400, lubeOilPressure: 6.5, fuelRack: 115,
+  exhaustTemp: 400, lubeOilPressure: 6.5,
   scavengeAir: 4.5, tcRPM: 30000, jacketOutlet: 55, sfoc: 85,
   chargeAirTemp: 75, fuelOilPressure: 9.0, fuelOilTemp: 35,
   loFilterDP: 2.0, pistonCoolingPress: 8.0, shaftPower: 6000,
@@ -168,7 +168,6 @@ export function DeviationDashboard() {
     { sensorId: 'ME.FuelOilTemp',         label: 'Fuel Oil Temperature',     unit: '°C',    decimals: 1, actual: snapshot.fuelOilTemp,         expected: baseline.expectedFuelOilTemp,       histKey: 'fuelOilTemp',        baseKey: 'baseFuelOilTemp' },
     { sensorId: 'ME.LOFilterDP',          label: 'LO Filter Diff. Pressure', unit: 'bar',   decimals: 3, actual: snapshot.loFilterDP,          expected: baseline.expectedLoFilterDP,        histKey: 'loFilterDP',         baseKey: 'baseLoFilterDP' },
     { sensorId: 'ME.PistonCoolingPress',  label: 'Piston Cooling Oil Press', unit: 'bar',   decimals: 2, actual: snapshot.pistonCoolingPress,  expected: baseline.expectedPistonCoolingPress,histKey: 'pistonCoolingPress', baseKey: 'basePistonCoolingPress' },
-    { sensorId: 'ME.FuelRack',            label: 'Fuel Rack Position',       unit: 'mm',    decimals: 1, actual: snapshot.fuelRack,            expected: baseline.expectedFuelRack,          histKey: 'fuelRack',           baseKey: 'baseFuelRack' },
     { sensorId: 'ME.SFOC',               label: 'SFOC',                      unit: 'g/kWh', decimals: 1, actual: snapshot.sfoc,                expected: baseline.expectedSfoc,              histKey: 'sfoc',               baseKey: 'baseSfoc' },
   ];
 

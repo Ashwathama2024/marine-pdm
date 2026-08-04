@@ -498,7 +498,7 @@ export class SimulatorEngine implements IDataSource {
       // Core (EngineSnapshot-compatible)
       exhaustTemp:       phys.exhaustTemp,
       lubeOilPressure:   phys.lubeOilPressure,
-      fuelRack:          0,
+      fuelRack:          0,   // retired tag — common rail has no mechanical rack (see EngineSnapshot)
       scavengeAir:       phys.chargeAirPressure,
       tcRPM:             phys.tcSpeeds[0] ?? 0,
       jacketOutlet:      phys.coolantTempAfterEngine,

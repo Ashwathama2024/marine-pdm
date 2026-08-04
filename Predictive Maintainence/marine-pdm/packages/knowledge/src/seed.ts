@@ -38,13 +38,9 @@ const PRIMARY_SENSORS: SensorDefinition[] = [
     status: 'ACTIVE', observationDaysRequired: 0,
     addedBy: 'system', addedDate: new Date().toISOString(),
   },
-  {
-    id: 'ME.FuelRack', displayName: 'Fuel Rack Position', unit: 'mm',
-    minPhysical: 0, maxPhysical: 115,
-    alarmHigh: 100,    // L2 fuel rack max alarm
-    status: 'ACTIVE', observationDaysRequired: 0,
-    addedBy: 'system', addedDate: new Date().toISOString(),
-  },
+  // ME.FuelRack removed — a fuel rack is mechanical-governor hardware and this is a common-rail
+  // engine, so the tag could only ever read 0. It was registered as an ACTIVE sensor with an
+  // alarmHigh of 100 mm that nothing could reach. See EngineSnapshot.fuelRack in shared/interfaces.ts.
   {
     id: 'ME.ScavengeAirPressure', displayName: 'Scavenge Air Pressure', unit: 'bar',
     minPhysical: 0, maxPhysical: 4.5,
@@ -165,15 +161,6 @@ const PRIMARY_BASELINES: BaselineCurve[] = [
     dependsOn: ['load', 'rpm'],
     validLoadMin: 0, validLoadMax: 100,
     source: 'MTU 8000 M71L Physics Model v3 (physics.ts targetLubeLastB = gallery × 0.55)',
-    addedDate: new Date().toISOString(), isActive: true,
-  },
-  {
-    sensorId: 'ME.FuelRack',
-    equation: '0',
-    coefficients: {},
-    dependsOn: [],
-    validLoadMin: 0, validLoadMax: 100,
-    source: 'MTU 8000 M71L — common-rail engine, no mechanical fuel rack',
     addedDate: new Date().toISOString(), isActive: true,
   },
   {

@@ -16,7 +16,6 @@ function baseline(over: Partial<BaselineSnapshot> = {}): BaselineSnapshot {
     // The crossing branch — the one whose trustworthiness this module judges — only exists near the
     // band. Same convention as rul.test.ts.
     expectedJacket: 92.5,
-    expectedFuelRack: 85,
     expectedScavenge: 3.2,
     expectedTcRPM: 24000,
     expectedSfoc: 185,

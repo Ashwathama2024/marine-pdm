@@ -28,7 +28,6 @@ const BLAG = {
   loFilterDP:         0.05,
   pistonCoolingPress: 0.06,
   shaftPower:         0.10,
-  fuelRack:           0.08,
   // physics LAG.bearingTemps — large thermal mass. Every other entry here mirrors the physics alpha
   // for the same sensor (lube 0.06, jacket ↔ coolantTemp 0.02, sfoc 0.03); an initial guess of 0.03
   // broke that rule, so the expected value settled at a different rate from the sensor it is measured
@@ -46,7 +45,6 @@ function actualAsBaseline(snap: EngineSnapshot): BaselineSnapshot {
     expectedLube:               snap.lubeOilPressure,
     expectedCyls:               snap.cylTemps.map(t => t),
     expectedJacket:             snap.jacketOutlet,
-    expectedFuelRack:           snap.fuelRack,
     expectedScavenge:           snap.scavengeAir,
     expectedTcRPM:              snap.tcRPM,
     expectedSfoc:               snap.sfoc,
@@ -127,7 +125,6 @@ export class FeatureEngine {
       lb.expectedLoFilterDP         = applyLag(lb.expectedLoFilterDP,         instant.expectedLoFilterDP,         BLAG.loFilterDP);
       lb.expectedPistonCoolingPress = applyLag(lb.expectedPistonCoolingPress, instant.expectedPistonCoolingPress, BLAG.pistonCoolingPress);
       lb.expectedShaftPower         = applyLag(lb.expectedShaftPower,         instant.expectedShaftPower,         BLAG.shaftPower);
-      lb.expectedFuelRack           = applyLag(lb.expectedFuelRack,           instant.expectedFuelRack,           BLAG.fuelRack);
       lb.expectedBearingTemp        = applyLag(lb.expectedBearingTemp,        instant.expectedBearingTemp,        BLAG.bearingTemp);
       // Per-cylinder expected mirrors the lagged mean exhaust (computeBaselineSnapshot sets all = mean).
       lb.expectedCyls = instant.expectedCyls.map(() => lb.expectedExhaust);
@@ -145,7 +142,6 @@ export class FeatureEngine {
     const { imbalance } = computeImbalance(snap.cylTemps);
 
     const sfocDev     = snap.sfoc     - baseline.expectedSfoc;
-    const fuelRackDev = snap.fuelRack - baseline.expectedFuelRack;
 
     const features: FeatureSnapshot = {
       exhaustDev,
@@ -157,7 +153,6 @@ export class FeatureEngine {
       rollingAvg: this.exhaustWindow.getMean(),
       stdDev: this.exhaustWindow.getStdDev(),
       sfocDev,
-      fuelRackDev,
     };
 
     return { features, baseline, instantBaseline: instant };

@@ -452,7 +452,6 @@ export const TREND_SENSORS: TrendSensor[] = [
   { sensorId: 'ME.FuelOilTemp',                  label: 'FO Temp',        color: 'var(--accent-steel)',  risk: 'lube' },
   { sensorId: 'ME.LOFilterDP',                   label: 'LO Filter ΔP',   color: 'var(--accent-blue)',   risk: 'lube' },
   { sensorId: 'ME.PistonCoolingPress',           label: 'Piston Cool P',  color: 'var(--accent-purple)', risk: 'cooling' },
-  { sensorId: 'ME.FuelRack',                     label: 'Fuel Rack',      color: 'var(--accent-steel)',  risk: 'exhaust' },
   { sensorId: 'ME.ShaftPower',                   label: 'Shaft Power',    color: 'var(--risk-normal)',   risk: 'system' },
 ];
 

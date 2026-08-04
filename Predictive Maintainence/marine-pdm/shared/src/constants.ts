@@ -94,11 +94,7 @@ export const ALARM_LIMITS = {
     alarmHigh:    1200,
     shutdownHigh: 1210,
   },
-  fuelRack: {
-    physMin: 0,
-    physMax: 115,
-    alarmHigh:    100,
-  },
+  // fuelRack removed — common-rail engine, no mechanical rack. See EngineSnapshot.fuelRack.
   // New sensors
   chargeAirTemp: {
     physMin: 15,
@@ -223,14 +219,8 @@ export const PHYSICS_COEFFICIENTS = {
     lagAlpha: 0.05,
     noiseAmplitude: 0.05,
   },
-  fuelRack: {
-    base: 18,
-    loadFactor: 0.62,
-    rpmOffset: 600,
-    rpmFactor: 0.02,
-    lagAlpha: 0.12,
-    noiseAmplitude: 0.3,
-  },
+  // fuelRack removed — this was the pre-MTU8000 generic engine's mechanical-rack model
+  // (~80 mm at rated) and had no consumers left. See EngineSnapshot.fuelRack.
   scavengeAir: {
     base: 1.0,
     loadFactor: 2.0,
@@ -305,7 +295,6 @@ export const TAG = {
   LOAD:               'ME.Load',
   EXHAUST_TEMP:       'ME.ExhaustTemp',
   LUBE_OIL_PRESSURE:  'ME.LubeOilPressure',
-  FUEL_RACK:          'ME.FuelRack',
   SCAVENGE_AIR:       'ME.ScavengeAirPressure',
   TC_SPEED:           'ME.TCSpeed',
   JACKET_OUTLET:      'ME.JacketCoolingOutlet',

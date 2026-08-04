@@ -94,12 +94,6 @@ const DEFAULT_CURVES: Omit<LoadRPMCurve, 'lastModified' | 'version'>[] = [
     points: pts(_lube),
   },
   {
-    sensorId: 'ME.FuelRack', displayName: 'Fuel Rack Position', unit: 'mm',
-    idleRPM: 400, maxRPM: 1150,
-    source: 'MTU 8000 M71L — common-rail engine, no mechanical fuel rack',
-    points: pts(() => 0),
-  },
-  {
     sensorId: 'ME.ScavengeAirPressure', displayName: 'Charge Air Pressure', unit: 'bar',
     idleRPM: 400, maxRPM: 1150,
     source: 'MTU 8000 M71L Physics Model v3 (rated → 3.04 bar)',

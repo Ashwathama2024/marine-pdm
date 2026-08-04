@@ -79,7 +79,6 @@ export function BaselineEditorPage() {
   // Scatter plot data: last 60 actuals + current curve interpolated at same load/rpm
   const histKey = selected === 'ME.ExhaustTemp' ? 'exhaustTemp'
     : selected === 'ME.LubeOilPressure' ? 'lubeOilPressure'
-    : selected === 'ME.FuelRack' ? 'fuelRack'
     : selected === 'ME.ScavengeAirPressure' ? 'scavengeAir'
     : selected === 'ME.TCSpeed' ? 'tcRPM'
     : selected === 'ME.JacketCoolingOutlet' ? 'jacketOutlet'

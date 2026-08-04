@@ -14,7 +14,6 @@ const OVERRIDE_SENSORS: Array<{
   { field: 'pistonCoolingPress', label: 'Piston Cool P',    unit: 'bar', min: ALARM_LIMITS.pistonCoolingPress.physMin, max: ALARM_LIMITS.pistonCoolingPress.physMax, step: 0.1,  group: 'LO' },
   { field: 'scavengeAir',        label: 'Charge Air Press', unit: 'bar', min: ALARM_LIMITS.scavengeAir.physMin,        max: ALARM_LIMITS.scavengeAir.physMax,        step: 0.05, group: 'Air' },
   { field: 'fuelOilPressure',    label: 'FO Pressure',      unit: 'bar', min: ALARM_LIMITS.fuelOilPressure.physMin,    max: ALARM_LIMITS.fuelOilPressure.physMax,    step: 0.1,  group: 'Fuel' },
-  { field: 'fuelRack',           label: 'Fuel Rack',        unit: 'mm',  min: ALARM_LIMITS.fuelRack.physMin,           max: ALARM_LIMITS.fuelRack.physMax,           step: 0.5,  group: 'Fuel' },
   { field: 'tcRPM',              label: 'TC Speed (A1)',    unit: 'RPM', min: ALARM_LIMITS.tcRPM.physMin,              max: ALARM_LIMITS.tcRPM.physMax,              step: 100,  group: 'TC' },
 ];
 

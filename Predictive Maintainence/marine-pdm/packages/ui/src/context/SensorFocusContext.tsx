@@ -31,7 +31,6 @@ export const FOCUS_SENSORS: { id: string; label: string }[] = [
   { id: 'ME.FuelOilTemp',         label: 'Fuel Temp'   },
   { id: 'ME.LOFilterDP',          label: 'LO Filter'   },
   { id: 'ME.PistonCoolingPress',  label: 'Piston Cool' },
-  { id: 'ME.FuelRack',            label: 'Fuel Rack'   },
   { id: 'ME.SFOC',                label: 'SFOC'        },
 ];
 
@@ -49,7 +48,6 @@ const SENSOR_KEYWORDS: Record<string, RegExp> = {
   'ME.FuelOilTemp':         /fuel/i,
   'ME.LOFilterDP':          /filter|oil|lube/i,
   'ME.PistonCoolingPress':  /piston|oil/i,
-  'ME.FuelRack':            /fuel|rack/i,
   'ME.SFOC':                /sfoc|efficiency|combustion/i,
 };
 
@@ -83,7 +81,6 @@ export const SENSOR_TO_HISTKEY: Record<string, string> = {
   'ME.FuelOilTemp':         'fuelOilTemp',
   'ME.LOFilterDP':          'loFilterDP',
   'ME.PistonCoolingPress':  'pistonCoolingPress',
-  'ME.FuelRack':            'fuelRack',
   'ME.SFOC':                'sfoc',
 };
 

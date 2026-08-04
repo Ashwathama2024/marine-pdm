@@ -131,7 +131,6 @@ function applyRegistryToSnapshot(raw: EngineSnapshot): EngineSnapshot {
 const BASELINE_LAG = {
   exhaust:          0.08,
   lube:             0.06,   // physics LAG.lube (was 0.05 — went stale when physics moved 0.05→0.06)
-  fuelRack:         0.08,
   scavenge:         0.08,   // physics LAG.chargeAirPress (was 0.10 — went stale when physics moved 0.10→0.08)
   tcRPM:            0.08,
   jacket:           0.02,   // physics LAG.coolantTemp (was 0.05 — went stale when physics moved 0.05→0.02)
@@ -148,7 +147,7 @@ const BASELINE_LAG = {
 };
 
 interface LaggedBaseline {
-  exhaust: number; lube: number; fuelRack: number; scavenge: number;
+  exhaust: number; lube: number; scavenge: number;
   tcRPM: number; jacket: number; sfoc: number; chargeAirTemp: number;
   fuelOilPressure: number; fuelOilTemp: number; loFilterDP: number;
   pistonCoolingPress: number; shaftPower: number; bearingTemp: number;
@@ -165,7 +164,6 @@ const MAX_HISTORY = 120;
 export interface SensorHistory {
   exhaustTemp:        number[];
   lubeOilPressure:    number[];
-  fuelRack:           number[];
   scavengeAir:        number[];
   tcRPM:              number[];
   jacketOutlet:       number[];
@@ -188,7 +186,6 @@ export interface SensorHistory {
   // Baseline traces
   baseExhaust:             number[];
   baseLube:                number[];
-  baseFuelRack:            number[];
   baseScavenge:            number[];
   baseTcRPM:               number[];
   baseJacket:              number[];
@@ -250,14 +247,14 @@ const Ctx = createContext<EngineCtx | null>(null);
 
 function emptyHistory(): SensorHistory {
   return {
-    exhaustTemp: [], lubeOilPressure: [], fuelRack: [], scavengeAir: [],
+    exhaustTemp: [], lubeOilPressure: [], scavengeAir: [],
     tcRPM: [], jacketOutlet: [], sfoc: [], systemRisk: [],
     chargeAirTemp: [], fuelOilPressure: [], fuelOilTemp: [],
     loFilterDP: [], pistonCoolingPress: [], shaftPower: [], bearingTemp: [],
     lubeLastBearing: [], fuelRailPressure: [],
     cylTemps: Array.from({ length: 20 }, () => []),
     baseCylTemps: Array.from({ length: 20 }, () => []),
-    baseExhaust: [], baseLube: [], baseFuelRack: [], baseScavenge: [],
+    baseExhaust: [], baseLube: [], baseScavenge: [],
     baseTcRPM: [], baseJacket: [], baseSfoc: [],
     baseChargeAirTemp: [], baseFuelOilPressure: [], baseFuelOilTemp: [],
     baseLoFilterDP: [], basePistonCoolingPress: [], baseShaftPower: [], baseBearingTemp: [],
@@ -323,7 +320,6 @@ export function EngineProvider({ children }: { children: React.ReactNode }) {
 
     push(h.exhaustTemp,        snapshot.exhaustTemp);
     push(h.lubeOilPressure,    snapshot.lubeOilPressure);
-    push(h.fuelRack,           snapshot.fuelRack);
     push(h.scavengeAir,        snapshot.scavengeAir);
     push(h.tcRPM,              snapshot.tcRPM);
     push(h.jacketOutlet,       snapshot.jacketOutlet);
@@ -369,7 +365,7 @@ export function EngineProvider({ children }: { children: React.ReactNode }) {
     if (!laggedBaselineRef.current || (_isRunning && !_wasRunning)) {
       laggedBaselineRef.current = {
         exhaust: baseline.expectedExhaust, lube: baseline.expectedLube,
-        fuelRack: baseline.expectedFuelRack, scavenge: baseline.expectedScavenge,
+        scavenge: baseline.expectedScavenge,
         tcRPM: baseline.expectedTcRPM, jacket: baseline.expectedJacket,
         sfoc: baseline.expectedSfoc, chargeAirTemp: baseline.expectedChargeAirTemp,
         fuelOilPressure: baseline.expectedFuelOilPressure, fuelOilTemp: baseline.expectedFuelOilTemp,
@@ -385,7 +381,6 @@ export function EngineProvider({ children }: { children: React.ReactNode }) {
     const lb = laggedBaselineRef.current;
     lb.exhaust           = applyLag(lb.exhaust,           baseline.expectedExhaust,           BASELINE_LAG.exhaust);
     lb.lube              = applyLag(lb.lube,              baseline.expectedLube,              BASELINE_LAG.lube);
-    lb.fuelRack          = applyLag(lb.fuelRack,          baseline.expectedFuelRack,          BASELINE_LAG.fuelRack);
     lb.scavenge          = applyLag(lb.scavenge,          baseline.expectedScavenge,          BASELINE_LAG.scavenge);
     lb.tcRPM             = applyLag(lb.tcRPM,             baseline.expectedTcRPM,             BASELINE_LAG.tcRPM);
     lb.jacket            = applyLag(lb.jacket,            baseline.expectedJacket,            BASELINE_LAG.jacket);
@@ -402,7 +397,6 @@ export function EngineProvider({ children }: { children: React.ReactNode }) {
 
     push(h.baseExhaust,            lb.exhaust);
     push(h.baseLube,               lb.lube);
-    push(h.baseFuelRack,           lb.fuelRack);
     push(h.baseScavenge,           lb.scavenge);
     push(h.baseTcRPM,              lb.tcRPM);
     push(h.baseJacket,             lb.jacket);
@@ -429,13 +423,13 @@ export function EngineProvider({ children }: { children: React.ReactNode }) {
       processSnapshot(
         snapshot,
         {
-          exhaustTemp: lb.exhaust, lubeOilPressure: lb.lube, fuelRack: lb.fuelRack,
+          exhaustTemp: lb.exhaust, lubeOilPressure: lb.lube,
           scavengeAir: lb.scavenge, tcRPM: lb.tcRPM, jacketOutlet: lb.jacket,
           sfoc: lb.sfoc, chargeAirTemp: lb.chargeAirTemp, fuelOilPressure: lb.fuelOilPressure,
           fuelOilTemp: lb.fuelOilTemp, loFilterDP: lb.loFilterDP,
           pistonCoolingPress: lb.pistonCoolingPress, shaftPower: lb.shaftPower,
         },
-        { exhaustTemp: 0, lubeOilPressure: 0, fuelRack: 0, scavengeAir: 0, tcRPM: 0, jacketOutlet: 0, sfoc: 0,
+        { exhaustTemp: 0, lubeOilPressure: 0, scavengeAir: 0, tcRPM: 0, jacketOutlet: 0, sfoc: 0,
           chargeAirTemp: 0, fuelOilPressure: 0, fuelOilTemp: 0, loFilterDP: 0, pistonCoolingPress: 0, shaftPower: 0 },
         Math.max(...snapshot.cylTemps) - Math.min(...snapshot.cylTemps),
       );

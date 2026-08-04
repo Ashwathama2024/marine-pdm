@@ -61,12 +61,12 @@ const TO_PHYSICS: Record<string, string> = {
 
 /**
  * Baseline entries with no physics counterpart: derived or UI-only quantities the simulator does not
- * lag under the same name (loFilterDP is a difference of two pressures, fuelOilPressure and fuelRack
- * are driven directly, shaftPower and pistonCoolingPress are algebraic off other lagged values).
+ * lag under the same name (loFilterDP is a difference of two pressures, fuelOilPressure is driven
+ * directly, shaftPower and pistonCoolingPress are algebraic off other lagged values).
  * Listed so a NEW unmapped key fails rather than silently skipping the check.
  */
 const NO_PHYSICS_COUNTERPART = [
-  'fuelOilPressure', 'fuelRack', 'loFilterDP', 'pistonCoolingPress', 'shaftPower',
+  'fuelOilPressure', 'loFilterDP', 'pistonCoolingPress', 'shaftPower',
 ];
 
 describe('baseline lag alphas mirror the physics lag alphas', () => {

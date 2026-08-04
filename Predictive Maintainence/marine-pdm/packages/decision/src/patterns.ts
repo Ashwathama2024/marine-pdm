@@ -112,11 +112,9 @@ function buildEvidence(
         `SFOC +${features.sfocDev.toFixed(1)} g/kWh above expected — consistent with incomplete combustion from degraded injector`,
       );
     }
-    if (features.fuelRackDev > 0.3) {
-      evidence.push(
-        `Fuel rack +${features.fuelRackDev.toFixed(2)} mm above nominal — governor compensating for injector power loss`,
-      );
-    }
+    // (A fuel-rack evidence line lived here — unreachable, and it described a mechanical governor
+    //  this common-rail engine does not have. Rail pressure is the equivalent signal: see the
+    //  fuelRailPressure effect on the injector modes in degradation-matrix.ts.)
     if (features.exhaustRate > 0) {
       evidence.push(`Rising exhaust rate: ${features.exhaustRate.toFixed(2)}°C/min`);
     }

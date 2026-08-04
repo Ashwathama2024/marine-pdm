@@ -30,7 +30,7 @@ function snap(over: Partial<EngineSnapshot> = {}): EngineSnapshot {
     load: 85,
     exhaustTemp: 440,
     lubeOilPressure: 6.4,
-    fuelRack: 85,
+    fuelRack: 0,
     scavengeAir: 3.2,
     tcRPM: 24000,
     jacketOutlet: 77,

@@ -45,11 +45,10 @@ export const SENSOR_META: Record<string, SensorMeta> = {
     forecastKey: 'lube',
     matrixSensorIds: ['lubeOilPressure', 'lubeOilPressureAfterFilter', 'lubeLastBearingPressure'],
   },
-  'ME.FuelRack': {
-    unit: 'mm', decimals: 1, histKey: 'fuelRack', baseKey: 'baseFuelRack',
-    snapKey: 'fuelRack', baselineKey: 'expectedFuelRack',
-    matrixSensorIds: ['fuelRailPressure'],
-  },
+  // 'ME.FuelRack' removed. Besides being a dead tag on a common-rail engine, its
+  // matrixSensorIds pointed at 'fuelRailPressure' — a mm-unit rack joined to a bar-unit rail-pressure
+  // effect — so candidateFaults() in sensor-evidence.ts handed the diagnosis model "F01 drives this
+  // sensor, ∂/∂root = −15 bar" for a reading that was structurally 0.
   'ME.ScavengeAirPressure': {
     unit: 'bar', decimals: 2, histKey: 'scavengeAir', baseKey: 'baseScavenge',
     snapKey: 'scavengeAir', baselineKey: 'expectedScavenge',
