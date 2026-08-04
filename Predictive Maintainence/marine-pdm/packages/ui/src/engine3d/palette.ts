@@ -6,6 +6,9 @@
 // so a hot cylinder is the same orange here as on the dashboard.
 
 import { Color } from 'three';
+import { clamp01 } from './part-risk';
+
+export { clamp01 };
 
 export const GREEN = '#39FF9E';
 export const FILL = '#050D0A';
@@ -15,10 +18,6 @@ const NORMAL = new Color(GREEN);
 const WARNING = new Color('#F59E0B');
 const HIGH = new Color('#F97316');
 const CRITICAL = new Color('#EF4444');
-
-export function clamp01(n: number): number {
-  return n < 0 ? 0 : n > 1 ? 1 : n;
-}
 
 /**
  * Writes the colour for a 0-1 risk into `target` (mutating, so the frame loop allocates nothing).

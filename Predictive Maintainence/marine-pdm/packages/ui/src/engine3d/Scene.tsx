@@ -16,11 +16,18 @@ import type { LiveRef } from './useLiveBridge';
 interface SceneProps {
   live: LiveRef;
   selectedRef: React.MutableRefObject<string | null>;
+  showFiringRef: React.MutableRefObject<boolean>;
   onSelect: (id: string) => void;
   onMiss: () => void;
 }
 
-export const Scene = React.memo(function Scene({ live, selectedRef, onSelect, onMiss }: SceneProps) {
+export const Scene = React.memo(function Scene({
+  live,
+  selectedRef,
+  showFiringRef,
+  onSelect,
+  onMiss,
+}: SceneProps) {
   return (
     <Canvas
       camera={{
@@ -36,7 +43,12 @@ export const Scene = React.memo(function Scene({ live, selectedRef, onSelect, on
       <color attach="background" args={[BACKDROP]} />
 
       {/* Everything is basic/line material, so the scene needs no lights — only bloom. */}
-      <PartsLayer live={live} selectedRef={selectedRef} onSelect={onSelect} />
+      <PartsLayer
+        live={live}
+        selectedRef={selectedRef}
+        showFiringRef={showFiringRef}
+        onSelect={onSelect}
+      />
 
       {/* A floor grid is the cheapest way to make rotation legible; kept far below bloom threshold. */}
       <Grid

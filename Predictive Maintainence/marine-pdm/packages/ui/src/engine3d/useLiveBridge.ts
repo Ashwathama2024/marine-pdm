@@ -11,6 +11,14 @@
 
 import { useEffect, useRef } from 'react';
 import { engine, useEngine } from '../context/EngineContext';
+import { SENSOR_META, readSensorValue } from '../services/sensor-map';
+
+/**
+ * Deviation at which a part is drawn fully critical. The dashboard's sensor popup calls 15% of
+ * physical range critical; SENSOR_META carries no range, so this uses 15% of the expected value,
+ * which is the same order and is defensible for every tag in the table.
+ */
+const CRITICAL_REL_DEV = 0.15;
 
 export interface RootFactors {
   injFaultMax: number;
@@ -33,6 +41,8 @@ export interface LiveValues {
   systemRisk: number;
   isOperational: boolean;
   rootFactors: RootFactors;
+  /** 0-1 severity per SENSOR_META key, so any instrumented part can colour itself. */
+  devByTag: Record<string, number>;
 }
 
 const ZERO_FACTORS: RootFactors = {
@@ -47,7 +57,7 @@ const ZERO_FACTORS: RootFactors = {
 export type LiveRef = React.MutableRefObject<LiveValues>;
 
 export function useLiveBridge(): LiveRef {
-  const { snapshot, decision, isOperational } = useEngine();
+  const { snapshot, decision, baseline, isOperational } = useEngine();
 
   const ref = useRef<LiveValues>({
     t: 0,
@@ -60,6 +70,7 @@ export function useLiveBridge(): LiveRef {
     systemRisk: 0,
     isOperational: false,
     rootFactors: ZERO_FACTORS,
+    devByTag: {},
   });
 
   useEffect(() => {
@@ -77,7 +88,20 @@ export function useLiveBridge(): LiveRef {
     v.systemRisk = decision?.systemRisk ?? 0;
     v.isOperational = isOperational;
     v.rootFactors = engine.getRootFactors();
-  }, [snapshot, decision, isOperational]);
+
+    // Per-tag severity, computed ONCE per tick rather than 60x/s inside useFrame.
+    for (const tag of Object.keys(SENSOR_META)) {
+      const meta = SENSOR_META[tag];
+      const expected = baseline ? (baseline[meta.baselineKey] as number) : NaN;
+      if (!isOperational || !Number.isFinite(expected) || Math.abs(expected) < 1e-6) {
+        v.devByTag[tag] = 0;
+        continue;
+      }
+      const actual = readSensorValue(snapshot, meta);
+      const rel = Math.abs(actual - expected) / Math.abs(expected);
+      v.devByTag[tag] = Math.min(1, rel / CRITICAL_REL_DEV);
+    }
+  }, [snapshot, decision, baseline, isOperational]);
 
   return ref;
 }

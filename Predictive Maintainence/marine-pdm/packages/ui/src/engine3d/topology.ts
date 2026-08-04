@@ -40,6 +40,19 @@ import {
 
 export type GeometryKind = 'cylinder' | 'box' | 'sphere' | 'torus' | 'capsule';
 
+/**
+ * Rotation driven by a live signal. `axis` is the part's LOCAL axis after its own rotation is
+ * applied — a CylinderGeometry spins about local Y, a TorusGeometry about local Z.
+ *
+ * Rate is proportional to the real reading but scaled down for visibility: 1150 rpm is 19 rev/s and
+ * a turbocharger at 28 000 rpm is 467 rev/s, both of which are a strobing blur at 60 fps. The HUD
+ * says so rather than implying the rotation is real-time.
+ */
+export interface PartMotion {
+  axis: 'x' | 'y' | 'z';
+  source: 'rpm' | 'tcSpeed';
+}
+
 export interface PartDef {
   id: string;
   label: string;
@@ -62,6 +75,7 @@ export interface PartDef {
   componentId?: string;
   dossierId?: string;
   instanceIndex?: number;
+  motion?: PartMotion;
 }
 
 export interface CableDef {
@@ -196,6 +210,7 @@ const turbos: PartDef[] = TC_SPEC.map((tc, i) => {
     componentId: 'turbocharger',
     dossierId: 'dossier-turbo',
     instanceIndex: i,
+    motion: { axis: 'y', source: 'tcSpeed' }, // CylinderGeometry spins about its local Y
   };
 });
 
@@ -269,6 +284,7 @@ const drivingEnd: PartDef[] = [
     rotation: [0, Math.PI / 2, 0],
     size: [0.55, 0.11, 0],
     sensorTags: [],
+    motion: { axis: 'z', source: 'rpm' }, // TorusGeometry spins about its local Z
   },
   {
     id: 'exhaust.outlet',
@@ -331,6 +347,7 @@ const freeEnd: PartDef[] = [
     size: [0.45, 0.3, 0.45],
     sensorTags: [],
     mtuDesignation: 'B1',
+    motion: { axis: 'y', source: 'rpm' },
   },
   {
     id: 'pump.hp.A',
