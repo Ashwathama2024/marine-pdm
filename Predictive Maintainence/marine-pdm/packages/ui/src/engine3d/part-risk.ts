@@ -59,6 +59,14 @@ export function partRisk(part: PartDef, v: LiveValues): number {
     }
   }
 
+  if (part.componentId === 'turbocharger' && i !== undefined) {
+    // Mirror the dashboard's own verdict: a cut-out turbo is standby, not a fault, and its ALARM
+    // (overspeed or speed deviation) is a real one regardless of what the root factors say.
+    const tc = v.tcInfos[i];
+    if (tc?.status === 'STANDBY') return 0;
+    if (tc?.status === 'ALARM') return 1;
+  }
+
   const factor = factorRisk(part.componentId, v.rootFactors);
   if (factor > 0) return factor;
 

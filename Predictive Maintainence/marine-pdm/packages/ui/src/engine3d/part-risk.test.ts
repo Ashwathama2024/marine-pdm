@@ -29,6 +29,13 @@ function live(over: Partial<LiveValues> = {}): LiveValues {
       pistonBlowby: 0,
     },
     devByTag: {},
+    tcInfos: ['A1', 'A2', 'B1', 'B2'].map(name => ({
+      name,
+      status: 'ACTIVE' as const,
+      displaySpeed: 28000,
+      rawSpeed: 28000,
+      deviation: 0,
+    })),
     ...over,
   };
 }
@@ -69,6 +76,24 @@ describe('instance-addressable parts read their own element', () => {
     // tcEff drop is engine-wide, so all four report it — but they report it through their own part.
     expect(partRisk(getPart('tc.A1')!, v)).toBeGreaterThan(0);
     expect(partRisk(getPart('tc.B2')!, v)).toBeGreaterThan(0);
+  });
+
+  it('treats a cut-out turbocharger as standby, not as a fault', () => {
+    // B1 cuts out below 950 engine rpm. That is normal sequential operation and the dashboard shows
+    // it grey, so the 3D part must not glow red just because a root factor is elevated.
+    const tcInfos = live().tcInfos.map((t, i) =>
+      i === 2 ? { ...t, status: 'STANDBY' as const, displaySpeed: 4200 } : t,
+    );
+    const v = live({ tcInfos, rootFactors: { ...live().rootFactors, tcEffDrop: 0.4 } });
+    expect(partRisk(getPart('tc.B1')!, v)).toBe(0);
+    expect(partRisk(getPart('tc.A1')!, v)).toBeGreaterThan(0); // still cut in, still reports
+  });
+
+  it('escalates a turbocharger the dashboard has flagged ALARM', () => {
+    const tcInfos = live().tcInfos.map((t, i) =>
+      i === 0 ? { ...t, status: 'ALARM' as const, deviation: 4000 } : t,
+    );
+    expect(partRisk(getPart('tc.A1')!, live({ tcInfos }))).toBe(1);
   });
 });
 

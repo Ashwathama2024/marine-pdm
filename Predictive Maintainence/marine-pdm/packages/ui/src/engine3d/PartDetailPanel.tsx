@@ -13,6 +13,8 @@ import { getDossierEntry } from '../about/dossier-data';
 import { SensorPopup } from '../dashboard/SensorPopup';
 import { useEngine } from '../context/EngineContext';
 import { cablesTouching, getPart, partsInside, SUBASSEMBLIES } from './topology';
+import type { LiveRef } from './useLiveBridge';
+import type { TCInfo } from '../services/turbo-state';
 import { GREEN } from './palette';
 
 const LABEL: React.CSSProperties = {
@@ -48,6 +50,7 @@ function reading(
   partId: string,
   snapshot: EngineSnapshot | null,
   baseline: BaselineSnapshot | null,
+  tcInfos: TCInfo[],
 ): Reading | null {
   const part = getPart(partId);
   if (!part || !snapshot) return null;
@@ -89,20 +92,22 @@ function reading(
   }
 
   if (part.componentId === 'turbocharger' && i !== undefined) {
-    const tc = snapshot.tcSpeeds as number[];
-    const v = tc?.[i];
-    if (typeof v !== 'number') return null;
-    const tcName = ['A1', 'A2', 'B1', 'B2'][i] ?? String(i);
+    // Read the same derived state the dashboard's Turbocharger panel shows, NOT snapshot.tcSpeeds[i]
+    // — the displayed speed is tcRPM scaled by how many units are cut in. See services/turbo-state.
+    const tc = tcInfos[i];
+    if (!tc) return null;
     return {
-      label: `TC speed · ${tcName}`,
-      value: v,
+      label: `TC speed · ${tc.name}`,
+      value: tc.displaySpeed,
       unit: 'rpm',
       decimals: 0,
-      context: v < 100 ? 'Not cut in at this engine speed' : undefined,
-      compare:
-        i === 0
-          ? undefined
-          : `Dashboard "TC Speed" gauge tracks A1, ${(tc[0] ?? 0).toFixed(0)} rpm`,
+      context:
+        tc.status === 'STANDBY'
+          ? 'CUT-OFF — windmilling, bypass valve closed'
+          : tc.status === 'ALARM'
+            ? `⚠ ALARM — Δ ${tc.deviation >= 0 ? '+' : ''}${Math.round(tc.deviation)} rpm from expected`
+            : 'CUT-IN — active',
+      compare: `Dashboard "TC Speed" gauge shows the 4-TC base speed, ${snapshot.tcRPM.toFixed(0)} rpm`,
     };
   }
 
@@ -133,10 +138,12 @@ function faultsFor(componentId: string | undefined) {
 
 export function PartDetailPanel({
   partId,
+  live,
   onClose,
   onSelect,
 }: {
   partId: string;
+  live: LiveRef;
   onClose: () => void;
   onSelect?: (id: string) => void;
 }) {
@@ -147,7 +154,8 @@ export function PartDetailPanel({
   const part = getPart(partId);
   if (!part) return null;
 
-  const r = reading(partId, snapshot, baseline);
+  // The panel re-renders every tick with useEngine, so reading the bridge ref here stays in step.
+  const r = reading(partId, snapshot, baseline, live.current.tcInfos);
   const contained = partsInside(partId);
   const faults = faultsFor(part.componentId);
   const cables = cablesTouching(partId);

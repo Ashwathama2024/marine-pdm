@@ -13,6 +13,12 @@ import { useEffect, useRef } from 'react';
 import { engine, useEngine } from '../context/EngineContext';
 import { SENSOR_META, readSensorValue } from '../services/sensor-map';
 import { sensorSeverity } from '../services/sensor-severity';
+import {
+  INITIAL_CUTIN,
+  deriveTCInfos,
+  nextCutInState,
+  type TCInfo,
+} from '../services/turbo-state';
 
 export interface RootFactors {
   injFaultMax: number;
@@ -37,6 +43,11 @@ export interface LiveValues {
   rootFactors: RootFactors;
   /** 0-1 severity per SENSOR_META key, so any instrumented part can colour itself. */
   devByTag: Record<string, number>;
+  /**
+   * The four turbochargers exactly as the dashboard derives them — cut-in state, display speed and
+   * status. NOT snapshot.tcSpeeds[], which is a different number; see services/turbo-state.ts.
+   */
+  tcInfos: TCInfo[];
 }
 
 const ZERO_FACTORS: RootFactors = {
@@ -65,7 +76,12 @@ export function useLiveBridge(): LiveRef {
     isOperational: false,
     rootFactors: ZERO_FACTORS,
     devByTag: {},
+    tcInfos: [],
   });
+
+  // Cut-in is hysteretic, so it has to be advanced tick by tick rather than derived. Kept in a ref
+  // for the same reason everything else here is: the 3D tree must not re-render on a tick.
+  const cutIn = useRef<boolean[]>(INITIAL_CUTIN);
 
   useEffect(() => {
     if (!snapshot) return;
@@ -82,6 +98,11 @@ export function useLiveBridge(): LiveRef {
     v.systemRisk = decision?.systemRisk ?? 0;
     v.isOperational = isOperational;
     v.rootFactors = engine.getRootFactors();
+
+    // Same derivation the dashboard's TurbochargerPanel runs, from the same snapshot. Advancing the
+    // hysteresis twice with identical inputs is a no-op, so StrictMode's double invoke is harmless.
+    cutIn.current = nextCutInState(cutIn.current, snapshot.rpm, snapshot.tcRPM);
+    v.tcInfos = deriveTCInfos(snapshot, baseline?.expectedTcRPM ?? snapshot.tcRPM, cutIn.current);
 
     // Per-tag severity, computed ONCE per tick rather than 60x/s inside useFrame. Uses the same
     // judgement the dashboard gauges make (services/sensor-severity.ts) so a part cannot read

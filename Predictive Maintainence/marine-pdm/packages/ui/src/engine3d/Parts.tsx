@@ -12,20 +12,21 @@
 import React, { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { MTU8000, MTU8000_LIMITS } from '@marine-pdm/shared';
+import { MTU8000 } from '@marine-pdm/shared';
+import { turboWheelPeriodS } from '../services/turbo-state';
 import { PARTS, resolvePick, type PartDef } from './topology';
 import { riskColor, FILL, GREEN } from './palette';
 import { partRisk } from './part-risk';
 import type { LiveRef } from './useLiveBridge';
 
-// ── Rotation scaling ─────────────────────────────────────────────────────────
-// True speeds are unwatchable: 1150 rpm is 19 rev/s and a turbocharger at its 28 000 rpm nominal is
-// 467 rev/s, both a strobing blur at 60 fps. Rate stays PROPORTIONAL to the live reading — a
-// turbocharger that has not cut in visibly does not turn — but is scaled to a readable band. The HUD
-// states this.
+// ── Rotation ─────────────────────────────────────────────────────────────────
+// Turbochargers use the DASHBOARD's own wheel period (turboWheelPeriodS), so a turbo in the 3D view
+// and the same turbo on the dashboard's wheel turn at visibly the same rate, from the same derived
+// display speed — including windmilling when cut out.
+//
+// The crankshaft has no dashboard animation to match, so it keeps a scaled rate: 1150 rpm is 19
+// rev/s, a strobing blur at 60 fps. Proportional to the live reading, and the HUD says it is scaled.
 const CRANK_REV_PER_S_AT_RATED = 1.2;
-const TC_REV_PER_S_AT_NOMINAL = 2.0;
-const TC_NOMINAL_RPM = MTU8000_LIMITS.turbocharger.speed_nominal_at_85pct;
 const TWO_PI = Math.PI * 2;
 
 // ── Firing order ─────────────────────────────────────────────────────────────
@@ -175,8 +176,8 @@ export function PartsLayer({ live, selectedRef, showFiringRef, onSelect }: Parts
         if (part.motion!.source === 'rpm') {
           revPerS = (v.rpm / MTU8000.RATED_RPM) * CRANK_REV_PER_S_AT_RATED;
         } else {
-          const s = v.tcSpeeds[part.instanceIndex ?? 0] ?? 0;
-          revPerS = (s / TC_NOMINAL_RPM) * TC_REV_PER_S_AT_NOMINAL;
+          const tc = v.tcInfos[part.instanceIndex ?? 0];
+          revPerS = tc ? 1 / turboWheelPeriodS(tc.displaySpeed, tc.status) : 0;
         }
       }
       g.rotation[part.motion!.axis] += revPerS * TWO_PI * delta;
