@@ -5,7 +5,8 @@
 
 import { describe, expect, it } from 'vitest';
 import { BUSES, BUS_X0, BUS_X1, ECS_NODES, KNOWN_NODE_NUMBERS, nodeFor } from './ecs-network';
-import { PARTS, getPart } from './topology';
+import { PARTS, getPart, isNetworkPart } from './topology';
+import { ECS_UNITS, getEcsUnit } from './ecs-units';
 
 describe('node list', () => {
   it('matches the documented node numbers', () => {
@@ -60,6 +61,46 @@ describe('field buses', () => {
     const xs = ECS_NODES.map(n => getPart(n.partId)!.position[0]);
     expect(BUS_X0).toBeLessThanOrEqual(Math.min(...xs));
     expect(BUS_X1).toBeGreaterThanOrEqual(Math.max(...xs));
+  });
+});
+
+describe('every control unit is documented', () => {
+  it('gives each ECS part a reference card, so clicking one is never a dead end', () => {
+    // The sensors have DOSSIER_ENTRIES; this is the control side's equivalent. A network part with
+    // no card shows a name and nothing else.
+    for (const p of PARTS.filter(isNetworkPart)) {
+      expect(getEcsUnit(p.id), `${p.id} has no ECS_UNITS entry`).toBeDefined();
+    }
+  });
+
+  it('states a role and a source for every unit', () => {
+    for (const u of ECS_UNITS) {
+      expect(u.role.length, u.partId).toBeGreaterThan(0);
+      expect(u.source.length, u.partId).toBeGreaterThan(0);
+      expect(u.fullName, u.partId).toBeTruthy();
+    }
+  });
+
+  it('agrees with the network on node numbers', () => {
+    // Two hand-maintained lists of the same fact; this is what keeps them from drifting.
+    for (const u of ECS_UNITS) {
+      const net = nodeFor(u.partId);
+      const numbers = u.nodes.map(n => n.no).sort();
+      const netNumbers = [net?.nodeNo, net?.nodeNo2].filter((n): n is number => n !== undefined).sort();
+      expect(numbers, u.partId).toEqual(netNumbers);
+    }
+  });
+
+  it('documents both EMU connectors that actually differ between the units', () => {
+    // EMU 2-I takes the exhaust loom on X5.1; EMU 2-II is spray oil on X5.3 only.
+    const first = getEcsUnit('emu2.1')!;
+    const second = getEcsUnit('emu2.2')!;
+    expect(first.connectors?.map(c => c.id)).toContain('X5.1');
+    expect(second.connectors?.map(c => c.id)).not.toContain('X5.1');
+    expect(second.connectors?.map(c => c.id)).toContain('X5.3');
+    // Both take power and CAN from the terminal box on X5.4.
+    expect(first.connectors?.map(c => c.id)).toContain('X5.4');
+    expect(second.connectors?.map(c => c.id)).toContain('X5.4');
   });
 });
 

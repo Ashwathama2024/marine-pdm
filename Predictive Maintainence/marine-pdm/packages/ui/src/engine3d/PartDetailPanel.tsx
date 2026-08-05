@@ -14,6 +14,8 @@ import { SensorPopup } from '../dashboard/SensorPopup';
 import { useEngine } from '../context/EngineContext';
 import { cablesTouching, getPart, partsInside, SUBASSEMBLIES } from './topology';
 import { MagButton } from './MagButton';
+import { getEcsUnit, type EcsUnitInfo } from './ecs-units';
+import { YELLOW } from './palette';
 import type { LiveRef } from './useLiveBridge';
 import type { TCInfo } from '../services/turbo-state';
 import { GREEN } from './palette';
@@ -137,6 +139,125 @@ function faultsFor(componentId: string | undefined) {
   return DEGRADATION_MODES.filter(m => comp.modeIds.includes(m.id));
 }
 
+/** Reference card for an ECS 8000 control unit — the control-side equivalent of a sensor dossier. */
+function EcsUnitCard({ unit }: { unit: EcsUnitInfo }) {
+  const row: React.CSSProperties = { fontSize: 10, lineHeight: 1.55, color: 'var(--text-secondary)' };
+  const term: React.CSSProperties = { color: YELLOW, fontWeight: 700 };
+
+  return (
+    <div style={{ marginTop: 14 }}>
+      {/* Identity strip */}
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 6,
+          alignItems: 'center',
+          paddingBottom: 10,
+          borderBottom: '1px solid var(--border-dim)',
+        }}
+      >
+        <span
+          style={{
+            fontSize: 9,
+            padding: '2px 7px',
+            borderRadius: 3,
+            background: 'rgba(255,214,10,0.10)',
+            border: '1px solid rgba(255,214,10,0.35)',
+            color: YELLOW,
+            letterSpacing: '0.06em',
+          }}
+        >
+          {unit.location.toUpperCase()}
+        </span>
+        {unit.family && (
+          <span style={{ fontSize: 9, color: 'var(--text-dim)' }}>{unit.family}</span>
+        )}
+        {unit.nodes.map(n => (
+          <span
+            key={n.no}
+            style={{
+              fontSize: 9,
+              padding: '2px 7px',
+              borderRadius: 3,
+              background: 'rgba(56,189,248,0.10)',
+              border: '1px solid rgba(56,189,248,0.30)',
+              color: 'var(--accent-blue)',
+            }}
+            title={`${n.label} is CAN node ${n.no}`}
+          >
+            NODE {n.no} · {n.label}
+          </span>
+        ))}
+        {unit.nodes.length === 0 && (
+          <span style={{ fontSize: 9, color: 'var(--text-dim)' }}>Not an addressed CAN node</span>
+        )}
+      </div>
+
+      <div style={{ ...LABEL, marginTop: 12 }}>ROLE</div>
+      <ul style={{ margin: '6px 0 0', paddingLeft: 15 }}>
+        {unit.role.map((r, i) => (
+          <li key={i} style={{ ...row, marginBottom: 4 }}>
+            {r}
+          </li>
+        ))}
+      </ul>
+
+      {unit.connectors && (
+        <>
+          <div style={{ ...LABEL, marginTop: 14 }}>CONNECTORS</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 6 }}>
+            {unit.connectors.map(c => (
+              <div key={c.id} style={row}>
+                <span style={term}>{c.id}</span> — {c.purpose}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {unit.interfaces && (
+        <>
+          <div style={{ ...LABEL, marginTop: 14 }}>INTERFACES</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 6 }}>
+            {unit.interfaces.map(c => (
+              <div key={c.id} style={row}>
+                <span style={term}>{c.id}</span> — {c.purpose}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {unit.connects && (
+        <>
+          <div style={{ ...LABEL, marginTop: 14 }}>CONNECTED EQUIPMENT</div>
+          <ul style={{ margin: '6px 0 0', paddingLeft: 15 }}>
+            {unit.connects.map((c, i) => (
+              <li key={i} style={{ ...row, marginBottom: 3 }}>
+                {c}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      <div
+        style={{
+          fontSize: 9,
+          color: 'var(--text-dim)',
+          marginTop: 12,
+          paddingTop: 8,
+          borderTop: '1px solid var(--border-dim)',
+          lineHeight: 1.5,
+        }}
+      >
+        Source: {unit.source}
+      </div>
+    </div>
+  );
+}
+
 export function PartDetailPanel({
   partId,
   live,
@@ -160,6 +281,7 @@ export function PartDetailPanel({
   // The panel re-renders every tick with useEngine, so reading the bridge ref here stays in step.
   const r = reading(partId, snapshot, baseline, live.current.tcInfos);
   const contained = partsInside(partId);
+  const ecsUnit = getEcsUnit(partId);
   const faults = faultsFor(part.componentId);
   const cables = cablesTouching(partId);
   const dossier = part.dossierId ? getDossierEntry(part.dossierId) : undefined;
@@ -216,6 +338,8 @@ export function PartDetailPanel({
           </div>
         )}
 
+        {ecsUnit && <EcsUnitCard unit={ecsUnit} />}
+
         {r ? (
           <div
             style={{
@@ -257,7 +381,9 @@ export function PartDetailPanel({
               </div>
             )}
           </div>
-        ) : (
+        ) : ecsUnit ? null : (
+          // Suppressed for ECS units — the reference card above already explains what they do, and
+          // "not measured" would read as a gap rather than as the nature of a control box.
           <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 14, lineHeight: 1.5 }}>
             No instrumented sensor on this part — it carries signal but is not itself measured.
           </div>
