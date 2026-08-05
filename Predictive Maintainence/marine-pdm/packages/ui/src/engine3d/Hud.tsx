@@ -187,17 +187,17 @@ export function SubassemblyDock({ selected, onSelect }: DockProps) {
 
   return (
     <div
-      className="e3d-pill"
+      className="e3d-pill e3d-dock"
       style={{
         position: 'absolute',
-        bottom: 12,
+        bottom: 0, // flush to the bottom edge of the canvas
         left: '50%',
         transform: 'translateX(-50%)',
         zIndex: Z.dock,
-        padding: '10px 12px',
+        padding: '7px 10px 8px',
         display: 'flex',
         flexDirection: 'column',
-        gap: 8,
+        gap: 6,
         // Wide enough that no label ellipsises at the longest ("Charge Air"), and still inside the
         // viewport on narrow screens.
         width: 'min(920px, calc(100% - 24px))',

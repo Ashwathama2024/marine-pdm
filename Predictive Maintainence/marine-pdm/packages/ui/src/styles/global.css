@@ -527,12 +527,20 @@ input::placeholder { color: var(--text-muted); }
 .e3d-dock-row {
   display: flex;
   justify-content: center;
-  gap: 8px; /* >= the 8px minimum spacing between adjacent touch targets */
+  gap: 6px;
 }
 .e3d-dock-row > .e3d-btn {
   flex: 1 1 0;
   min-width: 0;
-  max-width: 132px;
+  max-width: 118px;
+}
+
+/* Docked flush to the bottom edge of the canvas: square the bottom corners and
+   drop the bottom border so it reads as attached rather than floating. */
+.e3d-dock {
+  border-bottom: none;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
 }
 
 /* Below ~900px there is no width left to share seven ways without crushing every
@@ -556,9 +564,9 @@ input::placeholder { color: var(--text-muted); }
 }
 
 .e3d-btn {
-  min-height: 34px;
-  padding: 6px 10px;
-  font-size: 10px;
+  min-height: 26px;
+  padding: 4px 9px;
+  font-size: 9px;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--border-dim);
   color: var(--text-muted);
@@ -590,6 +598,7 @@ input::placeholder { color: var(--text-muted); }
    HUD stays denser without it. */
 @media (pointer: coarse) {
   .e3d-btn { min-height: 44px; font-size: 11px; }
+  .e3d-dock-row { gap: 8px; } /* restore the 8px minimum between touch targets */
 }
 
 /* The magnetic offset is a transform set from JS; kill it, and the springy

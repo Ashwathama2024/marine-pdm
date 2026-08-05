@@ -185,7 +185,7 @@ describe('subassembly list drives the dock, so nothing may be orphaned', () => {
   });
 
   it('gives every entry a dock label short enough not to ellipsise', () => {
-    // The dock caps buttons at 132px; at 10px uppercase mono that is about 14 characters. An
+    // The dock caps buttons at 118px; at 9px uppercase mono that is about 14 characters. An
     // earlier revision showed "Crankshaft & Bear…" in a 69px button.
     for (const s of SUBASSEMBLIES) {
       expect(s.short.length, `${s.id} short label "${s.short}"`).toBeLessThanOrEqual(14);

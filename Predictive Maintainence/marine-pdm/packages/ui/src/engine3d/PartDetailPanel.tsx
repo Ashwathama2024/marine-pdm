@@ -174,12 +174,12 @@ export function PartDetailPanel({
         className="e3d-pill"
         style={{
           position: 'absolute',
-          // Clears the controls pill above (bottom edge 66) and the dock below (98 tall + 12 inset),
-          // so all three can be open at once without overlapping.
+          // Clears the controls pill above (bottom edge 66) and the dock below (~73 tall, flush to
+          // the bottom edge), so all three can be open at once without overlapping.
           top: 78,
           right: 12,
           width: 320,
-          maxHeight: 'calc(100% - 200px)',
+          maxHeight: 'calc(100% - 165px)',
           overflowY: 'auto',
           padding: '14px 16px',
           zIndex,
