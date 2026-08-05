@@ -34,7 +34,9 @@ export function Engine3D() {
 
   const [selected, setSelected] = useState<string | null>(null);
   const [showFiring, setShowFiring] = useState(false);
-  const [showNetwork, setShowNetwork] = useState(false);
+  // On by default. The ECS units are ordinary parts and render either way, so with the layer off
+  // they float around the engine disconnected — reading as debris rather than as a network.
+  const [showNetwork, setShowNetwork] = useState(true);
   const [showHelp, setShowHelp] = useState(false);
   const selectedRef = useRef<string | null>(null);
   const showFiringRef = useRef(false);
