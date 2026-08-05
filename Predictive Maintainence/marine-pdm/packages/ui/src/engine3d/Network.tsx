@@ -12,21 +12,32 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { BUSES, BUS_X0, BUS_X1, BUS_Z, ECS_NODES } from './ecs-network';
 import { CABLES, getPart } from './topology';
+import { YELLOW } from './palette';
 import { useReducedMotion } from './useReducedMotion';
 
-const HARNESS_COLOR = '#38BDF8';
-const DROP_OPACITY = 0.5;
+const DROP_OPACITY = 0.55;
+
+/**
+ * Height of the harness spine above the crank axis. Looms leave a sensor, rise to this height, run
+ * along the engine to their unit and drop in — which is how a real harness is routed and, more
+ * practically, keeps the tubes outside the block instead of buried in it. The first cut ran every
+ * cable straight from centre to centre through the casting, which is why nothing was visible.
+ */
+const SPINE_Y = 1.78;
 
 /** Travelling-pulse material — one uniform, shared by every run of a given colour. */
-function makeFlowMaterial(color: string, repeat: number) {
+function makeFlowMaterial(color: string, repeat: number, base = 0.5) {
   return new THREE.ShaderMaterial({
     transparent: true,
     depthWrite: false,
+    // Unlit and untone-mapped so the yellow stays saturated and the bloom pass picks it up.
+    toneMapped: false,
     uniforms: {
       uTime: { value: 0 },
       uColor: { value: new THREE.Color(color) },
       uRepeat: { value: repeat },
       uSpeed: { value: 0.35 },
+      uBase: { value: base },
     },
     vertexShader: `
       varying vec2 vUv;
@@ -37,12 +48,13 @@ function makeFlowMaterial(color: string, repeat: number) {
     `,
     fragmentShader: `
       uniform float uTime; uniform vec3 uColor; uniform float uRepeat; uniform float uSpeed;
+      uniform float uBase;
       varying vec2 vUv;
       void main() {
         float p = fract(vUv.x * uRepeat - uTime * uSpeed);
         // Sharp head, soft tail — reads as motion rather than as a dashed line.
         float pulse = pow(p, 6.0);
-        gl_FragColor = vec4(uColor, 0.22 + pulse * 0.78);
+        gl_FragColor = vec4(uColor, uBase + pulse * (1.0 - uBase));
       }
     `,
   });
@@ -90,24 +102,26 @@ export function NetworkLayer({ live }: { live?: unknown }) {
       }
     }
 
-    // Physical harness runs from the cable registry, merged into one geometry.
+    // Physical harness runs from the cable registry, routed up over the engine rather than through
+    // it: sensor -> rise to the spine -> run along the engine -> drop into the unit.
     const harnessParts: THREE.TubeGeometry[] = [];
     for (const c of CABLES) {
       const a = getPart(c.from.partId);
       const b = getPart(c.to.partId);
       if (!a || !b) continue;
-      const pts = [
-        new THREE.Vector3(...a.position),
-        ...(c.waypoints ?? []).map(w => new THREE.Vector3(...w)),
-        new THREE.Vector3(...b.position),
-      ];
-      // Lift the midpoint so a loom arcs over the block instead of cutting through it.
-      if (!c.waypoints) {
-        const mid = pts[0].clone().add(pts[1]).multiplyScalar(0.5);
-        mid.y += 0.22;
-        pts.splice(1, 0, mid);
-      }
-      harnessParts.push(tube(pts, c.kind === 'can' ? 0.014 : 0.008));
+      const from = new THREE.Vector3(...a.position);
+      const to = new THREE.Vector3(...b.position);
+      const pts = c.waypoints
+        ? [from, ...c.waypoints.map(w => new THREE.Vector3(...w)), to]
+        : [
+            from,
+            // Rise clear of the part, pulled slightly inboard so the two banks' looms converge.
+            new THREE.Vector3(from.x, SPINE_Y, from.z * 0.45),
+            // Run along the spine to above the destination.
+            new THREE.Vector3(to.x, SPINE_Y, to.z * 0.9),
+            to,
+          ];
+      harnessParts.push(tube(pts, c.kind === 'can' ? 0.024 : 0.015));
     }
 
     return { railGeos: rails, dropGeos: drops, harnessGeo: harnessParts };
@@ -155,7 +169,7 @@ export function NetworkLayer({ live }: { live?: unknown }) {
         return (
           <mesh key={`harness-${i}`} geometry={geo} raycast={() => null}>
             <primitive
-              object={makeFlowMaterial(HARNESS_COLOR, 10)}
+              object={makeFlowMaterial(YELLOW, 10, 0.62)}
               attach="material"
               ref={register(idx)}
             />

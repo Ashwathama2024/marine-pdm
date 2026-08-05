@@ -418,7 +418,8 @@ const freeEnd: PartDef[] = [
     subassembly: 'fuel',
     note: 'B34.1 pressure before filter, B34.2 after — the pair gives filter ΔP',
     kind: 'box',
-    position: [6.3, 1.25, 0],
+    // Dropped inside the free-end housing to clear the ECU/EMU row now sat on its top edge.
+    position: [6.34, 0.72, 0],
     size: [0.35, 0.42, 0.5],
     sensorTags: [],
     mtuDesignation: 'B34.1 / B34.2',
@@ -548,10 +549,12 @@ const ancillaries: PartDef[] = [
     id: 'ecu4',
     label: 'ECU 4 — Engine Control Unit',
     subassembly: 'control',
-    note: 'Node 2. Governs injection, cylinder cutout and the turbocharger cut-in solenoids',
+    note: 'Node 2. Mounted on the free-end housing. Governs injection, cylinder cutout and the turbocharger cut-in solenoids',
     kind: 'box',
-    position: [3.5, 1.78, 0],
-    size: [0.78, 0.24, 0.56],
+    // Sat on the top edge of the free-end housing (top face y=1.25, x 6.08-6.60), long axis across
+    // the engine so the three units sit in a row without overhanging the published 6622 mm length.
+    position: [6.34, 1.37, 0],
+    size: [0.46, 0.24, 0.62],
     sensorTags: [],
     nodeNo: 2,
   },
@@ -559,10 +562,10 @@ const ancillaries: PartDef[] = [
     id: 'emu2.1',
     label: 'EMU 2-I — Engine Monitoring Unit',
     subassembly: 'control',
-    note: 'Node 3. X5.1 carries the 20 exhaust-temperature probes; X5.2/X5.3 the rest; X5.4 to X11',
+    note: 'Node 3. On the free-end housing, A-side. X5.1 carries the 20 exhaust-temperature probes; X5.2/X5.3 the rest; X5.4 to X11',
     kind: 'box',
-    position: [2.6, 1.62, -0.32],
-    size: [0.5, 0.2, 0.34],
+    position: [6.34, 1.35, -0.52],
+    size: [0.42, 0.2, 0.34],
     sensorTags: ['ME.ExhaustTemp'],
     nodeNo: 3,
   },
@@ -570,10 +573,10 @@ const ancillaries: PartDef[] = [
     id: 'emu2.2',
     label: 'EMU 2-II — Engine Monitoring Unit',
     subassembly: 'control',
-    note: 'Node 10. X5.3 carries the spray-oil temperature sensors; X5.4 to X11',
+    note: 'Node 10. On the free-end housing, B-side. X5.3 carries the spray-oil temperature sensors; X5.4 to X11',
     kind: 'box',
-    position: [2.6, 1.62, 0.32],
-    size: [0.5, 0.2, 0.34],
+    position: [6.34, 1.35, 0.52],
+    size: [0.42, 0.2, 0.34],
     sensorTags: [],
     nodeNo: 10,
   },
@@ -594,7 +597,9 @@ const ancillaries: PartDef[] = [
     subassembly: 'harness',
     note: 'Nodes 4 (Display 13) and 5 (MPU-29). Engine-room local monitoring and control',
     kind: 'box',
-    position: [1.4, 0.85, -2.05],
+    // Above the ECU/EMU row and stood off past the free end, so the panel reads as engine-room
+    // equipment rather than something bolted to the engine.
+    position: [7.6, 2.3, -1.2],
     size: [0.5, 0.6, 0.34],
     sensorTags: [],
     nodeNo: 4,
@@ -716,6 +721,14 @@ const BY_ID = new Map(PARTS.map(p => [p.id, p]));
 
 export function getPart(id: string): PartDef | null {
   return BY_ID.get(id) ?? null;
+}
+
+/**
+ * Part of the ECS 8000 layer — a control unit or a harness/terminal item rather than machinery.
+ * These render in the network's yellow and carry no thermal severity.
+ */
+export function isNetworkPart(part: PartDef): boolean {
+  return part.subassembly === 'control' || part.subassembly === 'harness';
 }
 
 export function partsIn(subassemblyId: string): PartDef[] {

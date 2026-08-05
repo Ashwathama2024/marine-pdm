@@ -25,7 +25,8 @@ export interface Bus {
 /** The rails run down the A-side of the engine, above the engine-room cabinets. */
 export const BUS_Z = -2.05;
 export const BUS_X0 = -0.9;
-export const BUS_X1 = 6.3;
+/** Runs past the free end far enough to reach the LOP, which stands off beyond the engine. */
+export const BUS_X1 = 7.9;
 
 export const BUSES: Bus[] = [
   { id: 'fb1', label: 'Field-BUS 1', color: '#EF4444', y: 2.62 },

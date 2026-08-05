@@ -14,8 +14,8 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { MTU8000 } from '@marine-pdm/shared';
 import { turboWheelPeriodS } from '../services/turbo-state';
-import { PARTS, resolvePick, type PartDef } from './topology';
-import { riskColor, FILL, GREEN } from './palette';
+import { PARTS, isNetworkPart, resolvePick, type PartDef } from './topology';
+import { riskColor, FILL, GREEN, YELLOW } from './palette';
 import { partRisk } from './part-risk';
 import { useReducedMotion } from './useReducedMotion';
 import type { LiveRef } from './useLiveBridge';
@@ -199,7 +199,10 @@ export function PartsLayer({ live, selectedRef, showFiringRef, onSelect }: Parts
       const mat = mats.current.get(part.id);
       if (!mat) continue;
 
-      riskColor(scratch.current, partRisk(part, v));
+      // ECS units and harness items are electronics, not machinery — they hold the network's
+      // yellow rather than taking a thermal severity they do not have.
+      if (isNetworkPart(part)) scratch.current.set(YELLOW);
+      else riskColor(scratch.current, partRisk(part, v));
 
       // A stopped engine reads as a cold drawing rather than as "all healthy".
       if (!v.isOperational) scratch.current.multiplyScalar(0.5);

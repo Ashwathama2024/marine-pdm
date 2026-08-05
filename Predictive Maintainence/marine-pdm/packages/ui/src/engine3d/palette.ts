@@ -11,6 +11,12 @@ import { clamp01 } from './part-risk';
 export { clamp01 };
 
 export const GREEN = '#39FF9E';
+/**
+ * Neon yellow for the ECS 8000 layer — the control units and the harness that links them. Held
+ * apart from the green engine on purpose: these are electronics and cabling, not machinery, and
+ * they carry no thermal severity of their own.
+ */
+export const YELLOW = '#FFD60A';
 export const FILL = '#050D0A';
 export const BACKDROP = '#02070C';
 
