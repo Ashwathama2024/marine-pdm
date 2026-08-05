@@ -100,24 +100,26 @@ export interface CableDef {
 export interface Subassembly {
   id: string;
   label: string;
+  /** Dock label. The full `label` still shows in the tooltip and the detail panel. */
+  short: string;
   /** Order the fly-through walks them in. */
   order: number;
 }
 
 export const SUBASSEMBLIES: Subassembly[] = [
-  { id: 'bank.A', label: 'A-Bank', order: 1 },
-  { id: 'bank.B', label: 'B-Bank', order: 2 },
-  { id: 'crankshaft', label: 'Crankshaft & Bearings', order: 3 },
-  { id: 'turbo', label: 'Turbochargers', order: 4 },
-  { id: 'exhaust', label: 'Exhaust', order: 5 },
-  { id: 'chargeair', label: 'Charge Air', order: 6 },
-  { id: 'cooling', label: 'Cooling', order: 7 },
-  { id: 'lube', label: 'Lube Oil', order: 8 },
-  { id: 'fuel', label: 'Fuel', order: 9 },
-  { id: 'geartrain', label: 'Free-End Gear Train', order: 10 },
-  { id: 'structure', label: 'Block & Structure', order: 11 },
-  { id: 'control', label: 'ECU / EMU', order: 12 },
-  { id: 'harness', label: 'Sensor Harness', order: 13 },
+  { id: 'bank.A', label: 'A-Bank', short: 'A-Bank', order: 1 },
+  { id: 'bank.B', label: 'B-Bank', short: 'B-Bank', order: 2 },
+  { id: 'crankshaft', label: 'Crankshaft & Bearings', short: 'Crankshaft', order: 3 },
+  { id: 'turbo', label: 'Turbochargers', short: 'Turbos', order: 4 },
+  { id: 'exhaust', label: 'Exhaust', short: 'Exhaust', order: 5 },
+  { id: 'chargeair', label: 'Charge Air', short: 'Charge Air', order: 6 },
+  { id: 'cooling', label: 'Cooling', short: 'Cooling', order: 7 },
+  { id: 'lube', label: 'Lube Oil', short: 'Lube Oil', order: 8 },
+  { id: 'fuel', label: 'Fuel', short: 'Fuel', order: 9 },
+  { id: 'geartrain', label: 'Free-End Gear Train', short: 'Gear Train', order: 10 },
+  { id: 'structure', label: 'Block & Structure', short: 'Structure', order: 11 },
+  { id: 'control', label: 'ECU / EMU', short: 'ECU / EMU', order: 12 },
+  { id: 'harness', label: 'Sensor Harness', short: 'Harness', order: 13 },
 ];
 
 /** OEM exhaust-probe designation for a cylinder: B4 + bank + number, e.g. B4A4, B4B10. */

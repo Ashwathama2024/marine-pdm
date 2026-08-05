@@ -17,6 +17,7 @@ import { turboWheelPeriodS } from '../services/turbo-state';
 import { PARTS, resolvePick, type PartDef } from './topology';
 import { riskColor, FILL, GREEN } from './palette';
 import { partRisk } from './part-risk';
+import { useReducedMotion } from './useReducedMotion';
 import type { LiveRef } from './useLiveBridge';
 
 // ── Rotation ─────────────────────────────────────────────────────────────────
@@ -152,6 +153,9 @@ export function PartsLayer({ live, selectedRef, showFiringRef, onSelect }: Parts
   const hoveredRef = useRef<string | null>(null);
   const scratch = useRef(new THREE.Color());
   const firingPhase = useRef(0);
+  // Four turbochargers, a crankshaft, a breathing highlight and a firing wave is a lot of motion.
+  // When the user has asked for less, the model still colours from live data but stops moving.
+  const reduced = useReducedMotion();
 
   const register = React.useCallback((id: string, mat: THREE.LineBasicMaterial) => {
     mats.current.set(id, mat);
@@ -165,7 +169,7 @@ export function PartsLayer({ live, selectedRef, showFiringRef, onSelect }: Parts
     const delta = Math.min(rawDelta, 0.1); // a backgrounded tab can hand back a huge delta
     const sel = selectedRef.current;
     const hov = hoveredRef.current;
-    const running = v.isOperational && v.rpm > 1;
+    const running = v.isOperational && v.rpm > 1 && !reduced;
 
     // ── Rotation, proportional to the live readings ──
     for (const part of MOTION_PARTS) {
@@ -187,8 +191,9 @@ export function PartsLayer({ live, selectedRef, showFiringRef, onSelect }: Parts
     const firing = running && showFiringRef.current;
     if (firing) firingPhase.current += (v.rpm / 6) * FIRING_SLOWDOWN * delta;
 
-    // Selected part breathes so it stays findable after the camera moves.
-    const pulse = 1.35 + Math.sin(clock.elapsedTime * 3) * 0.35;
+    // Selected part breathes so it stays findable after the camera moves — steady when motion is
+    // reduced, since the dimming of everything else already identifies it.
+    const pulse = reduced ? 1.6 : 1.35 + Math.sin(clock.elapsedTime * 3) * 0.35;
 
     for (const part of PARTS) {
       const mat = mats.current.get(part.id);

@@ -13,6 +13,7 @@ import { getDossierEntry } from '../about/dossier-data';
 import { SensorPopup } from '../dashboard/SensorPopup';
 import { useEngine } from '../context/EngineContext';
 import { cablesTouching, getPart, partsInside, SUBASSEMBLIES } from './topology';
+import { MagButton } from './MagButton';
 import type { LiveRef } from './useLiveBridge';
 import type { TCInfo } from '../services/turbo-state';
 import { GREEN } from './palette';
@@ -139,11 +140,13 @@ function faultsFor(componentId: string | undefined) {
 export function PartDetailPanel({
   partId,
   live,
+  zIndex = 30,
   onClose,
   onSelect,
 }: {
   partId: string;
   live: LiveRef;
+  zIndex?: number;
   onClose: () => void;
   onSelect?: (id: string) => void;
 }) {
@@ -168,17 +171,21 @@ export function PartDetailPanel({
   return (
     <>
       <div
-        className="glass-card-hi"
+        className="e3d-pill"
         style={{
           position: 'absolute',
-          top: 16,
-          right: 16,
-          width: 340,
-          maxHeight: 'calc(100% - 32px)',
+          // Clears the controls pill above (bottom edge 66) and the dock below (98 tall + 12 inset),
+          // so all three can be open at once without overlapping.
+          top: 78,
+          right: 12,
+          width: 320,
+          maxHeight: 'calc(100% - 200px)',
           overflowY: 'auto',
-          padding: '16px 18px',
-          zIndex: 40,
+          padding: '14px 16px',
+          zIndex,
         }}
+        role="dialog"
+        aria-label={`${part.label} detail`}
       >
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
           <div style={{ flex: 1 }}>
@@ -193,9 +200,14 @@ export function PartDetailPanel({
               </div>
             )}
           </div>
-          <button className="mag-btn" onClick={onClose} style={{ padding: '2px 8px', fontSize: 14 }}>
+          <MagButton
+            onClick={onClose}
+            ariaLabel="Close part detail"
+            title="Close"
+            style={{ padding: '4px 10px', fontSize: 13, minHeight: 28 }}
+          >
             ×
-          </button>
+          </MagButton>
         </div>
 
         {part.note && (
@@ -260,14 +272,13 @@ export function PartDetailPanel({
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 7 }}>
               {contained.map(c => (
-                <button
+                <MagButton
                   key={c.id}
-                  className="mag-btn"
                   onClick={() => onSelect?.(c.id)}
-                  style={{ fontSize: 9, padding: '4px 8px' }}
+                  style={{ fontSize: 9, padding: '5px 9px', minHeight: 28 }}
                 >
                   {c.label}
-                </button>
+                </MagButton>
               ))}
             </div>
           </div>
@@ -325,13 +336,13 @@ export function PartDetailPanel({
 
         {dossier && (
           <div style={{ marginTop: 16 }}>
-            <button
-              className="mag-btn"
+            <MagButton
+              pressed={showProse}
               onClick={() => setShowProse(p => !p)}
               style={{ width: '100%', fontSize: 9 }}
             >
-              {showProse ? 'HIDE' : 'WHAT THIS READING MEANS'}
-            </button>
+              {showProse ? 'Hide' : 'What this reading means'}
+            </MagButton>
             {showProse && (
               <div
                 style={{
@@ -351,13 +362,12 @@ export function PartDetailPanel({
         )}
 
         {meta && (
-          <button
-            className="mag-btn"
+          <MagButton
             onClick={() => setShowFull(true)}
             style={{ width: '100%', marginTop: 10, fontSize: 9 }}
           >
-            FULL SENSOR ANALYSIS
-          </button>
+            Full sensor analysis
+          </MagButton>
         )}
       </div>
 

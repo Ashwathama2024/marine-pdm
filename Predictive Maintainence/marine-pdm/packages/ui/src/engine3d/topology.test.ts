@@ -13,6 +13,7 @@ import {
   CABLES,
   PARTS,
   enclosureContains,
+  SUBASSEMBLIES,
   getPart,
   partsIn,
   partsInside,
@@ -165,6 +166,39 @@ describe('click resolution past a housing', () => {
   it('skips several stacked enclosures to reach a real part', () => {
     expect(resolvePick(['tc.module', 'crankcase', 'gear.housing', 'bearing.3'], 'tc.module')).toBe(
       'bearing.3',
+    );
+  });
+});
+
+describe('subassembly list drives the dock, so nothing may be orphaned', () => {
+  it('declares every subassembly the parts actually use', () => {
+    const declared = new Set(SUBASSEMBLIES.map(s => s.id));
+    for (const p of PARTS) {
+      expect(declared.has(p.subassembly), `${p.id} is in "${p.subassembly}", which the dock has no button for`).toBe(true);
+    }
+  });
+
+  it('has no subassembly with nothing in it', () => {
+    for (const s of SUBASSEMBLIES) {
+      expect(partsIn(s.id).length, s.id).toBeGreaterThan(0);
+    }
+  });
+
+  it('gives every entry a dock label short enough not to ellipsise', () => {
+    // The dock caps buttons at 132px; at 10px uppercase mono that is about 14 characters. An
+    // earlier revision showed "Crankshaft & Bear…" in a 69px button.
+    for (const s of SUBASSEMBLIES) {
+      expect(s.short.length, `${s.id} short label "${s.short}"`).toBeLessThanOrEqual(14);
+    }
+  });
+
+  it('splits evenly enough to stay two rows', () => {
+    // The dock derives its split from the count; if this ever needs three rows the layout has to
+    // change deliberately rather than silently wrapping.
+    const half = Math.ceil(SUBASSEMBLIES.length / 2);
+    expect(half).toBeLessThanOrEqual(8);
+    expect(SUBASSEMBLIES.slice(0, half).length + SUBASSEMBLIES.slice(half).length).toBe(
+      SUBASSEMBLIES.length,
     );
   });
 });

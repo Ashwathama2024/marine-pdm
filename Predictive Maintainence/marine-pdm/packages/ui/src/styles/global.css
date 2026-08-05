@@ -507,6 +507,98 @@ input::placeholder { color: var(--text-muted); }
 .mag-btn:active {
   transform: translateY(1px) scale(0.97) !important;
 }
+/* ── 3D engine view chrome ─────────────────────────────────────────────────
+   The canvas is the content, so every overlay here is deliberately thin: a pill
+   top-left, a legend top-right, and one dock along the bottom. Z-index stays on
+   the 10/20/30 scale so the app's own .overlay-backdrop (200) and the sensor
+   popup (1000) still sit above it. */
+.e3d-pill {
+  background: rgba(4, 12, 24, 0.72);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(57, 255, 158, 0.16);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
+}
+
+/* Bottom dock — exactly two centred rows, never wrapping. Flex rather than
+   flex-wrap so the strip cannot grow a third row under the cursor, and rather
+   than a fixed grid so an odd count (13 subassemblies: 7 + 6) still centres. */
+.e3d-dock-row {
+  display: flex;
+  justify-content: center;
+  gap: 8px; /* >= the 8px minimum spacing between adjacent touch targets */
+}
+.e3d-dock-row > .e3d-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 132px;
+}
+
+/* Below ~900px there is no width left to share seven ways without crushing every
+   label to an ellipsis, so give the buttons a readable fixed width and let each
+   row scroll instead. Two rows either way — the page itself never scrolls
+   sideways, only the dock. */
+@media (max-width: 900px) {
+  .e3d-dock-row {
+    justify-content: flex-start;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    scroll-snap-type: x proximity;
+  }
+  .e3d-dock-row::-webkit-scrollbar { display: none; }
+  .e3d-dock-row > .e3d-btn {
+    flex: 0 0 106px;
+    max-width: none;
+    scroll-snap-align: start;
+  }
+}
+
+.e3d-btn {
+  min-height: 34px;
+  padding: 6px 10px;
+  font-size: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-dim);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.e3d-btn:hover {
+  background: rgba(57, 255, 158, 0.07);
+  border-color: rgba(57, 255, 158, 0.45);
+  color: var(--accent-green);
+}
+.e3d-btn:focus-visible {
+  outline: 2px solid var(--accent-green);
+  outline-offset: 2px;
+}
+.e3d-btn[aria-pressed='true'] {
+  background: rgba(57, 255, 158, 0.12);
+  border-color: var(--accent-green);
+  color: var(--accent-green);
+  box-shadow: 0 0 14px rgba(57, 255, 158, 0.22);
+}
+.e3d-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Coarse pointers get the full 44px target; a mouse does not need it and the
+   HUD stays denser without it. */
+@media (pointer: coarse) {
+  .e3d-btn { min-height: 44px; font-size: 11px; }
+}
+
+/* The magnetic offset is a transform set from JS; kill it, and the springy
+   .mag-btn easing, when the user has asked for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  .mag-btn, .e3d-btn { transition: background 0.15s ease, border-color 0.15s ease; }
+  .e3d-btn { transform: none !important; }
+}
+
 .mag-btn-ghost {
   background: transparent;
   border: 1px solid var(--border-hi);
