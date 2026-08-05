@@ -37,6 +37,7 @@ import {
   tcTransform,
   type Vec3,
 } from './engine-layout';
+import type { UnitDetail } from './unit-models';
 
 export type GeometryKind = 'cylinder' | 'box' | 'sphere' | 'torus' | 'capsule';
 
@@ -68,6 +69,11 @@ export interface PartDef {
   size: Vec3;
   /** Reserved: the mesh name to bind to if a real .glb is dropped in later. */
   glbNodeName?: string;
+  /**
+   * Surface detail for a control unit — connectors, lid, keypad. Adds geometry inside the part; it
+   * stays one clickable thing. See unit-models.ts.
+   */
+  detail?: UnitDetail;
 
   // ── Domain bindings ──
   sensorTags: string[];
@@ -557,6 +563,7 @@ const ancillaries: PartDef[] = [
     size: [0.46, 0.24, 0.62],
     sensorTags: [],
     nodeNo: 2,
+    detail: 'mdec-ecu',
   },
   {
     id: 'emu2.1',
@@ -568,6 +575,7 @@ const ancillaries: PartDef[] = [
     size: [0.42, 0.2, 0.34],
     sensorTags: ['ME.ExhaustTemp'],
     nodeNo: 3,
+    detail: 'mdec-emu',
   },
   {
     id: 'emu2.2',
@@ -579,6 +587,7 @@ const ancillaries: PartDef[] = [
     size: [0.42, 0.2, 0.34],
     sensorTags: [],
     nodeNo: 10,
+    detail: 'mdec-emu',
   },
   {
     id: 'cb.x11',
@@ -589,6 +598,7 @@ const ancillaries: PartDef[] = [
     position: [3.6, 0.55, -2.05],
     size: [0.62, 0.3, 0.4],
     sensorTags: [],
+    detail: 'terminal',
     offEngine: true,
   },
   {
@@ -603,6 +613,7 @@ const ancillaries: PartDef[] = [
     size: [0.5, 0.6, 0.34],
     sensorTags: [],
     nodeNo: 4,
+    detail: 'lop',
     offEngine: true,
   },
   {
@@ -615,6 +626,7 @@ const ancillaries: PartDef[] = [
     size: [0.5, 0.42, 0.34],
     sensorTags: [],
     nodeNo: 6,
+    detail: 'meu',
     offEngine: true,
   },
   {
@@ -627,6 +639,7 @@ const ancillaries: PartDef[] = [
     size: [0.5, 0.55, 0.36],
     sensorTags: [],
     nodeNo: 7,
+    detail: 'gcu',
     offEngine: true,
   },
   {
@@ -638,6 +651,7 @@ const ancillaries: PartDef[] = [
     position: [3.3, 3.5, -2.05],
     size: [0.5, 0.72, 0.36],
     sensorTags: [],
+    detail: 'cabinet',
     offEngine: true,
   },
 ];

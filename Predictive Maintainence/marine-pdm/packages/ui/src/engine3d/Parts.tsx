@@ -17,6 +17,7 @@ import { turboWheelPeriodS } from '../services/turbo-state';
 import { PARTS, isNetworkPart, resolvePick, type PartDef } from './topology';
 import { riskColor, FILL, GREEN, YELLOW } from './palette';
 import { partRisk } from './part-risk';
+import { unitPrimitives } from './unit-models';
 import { useReducedMotion } from './useReducedMotion';
 import type { LiveRef } from './useLiveBridge';
 
@@ -89,6 +90,27 @@ function PartMesh({ part, register, registerSpin, onSelect, hoveredRef }: PartMe
   // co-planar noise on boxes — that ratio is what makes the outline read as a drawing, not a mesh.
   const edges = useMemo(() => new THREE.EdgesGeometry(geom, 20), [geom]);
 
+  // Surface detail for a control unit. Built once and drawn with the SAME line material as the body,
+  // so a unit made of twenty primitives still costs the frame loop exactly one colour write.
+  const detail = useMemo(() => {
+    if (!part.detail) return [];
+    return unitPrimitives(part.detail, part.size).map(p => {
+      const g: THREE.BufferGeometry =
+        p.kind === 'cylinder'
+          ? new THREE.CylinderGeometry(p.size[0], p.size[0], p.size[1], 10, 1)
+          : new THREE.BoxGeometry(p.size[0], p.size[1], p.size[2]);
+      return { g, e: new THREE.EdgesGeometry(g, 20), pos: p.pos, rot: p.rot ?? ([0, 0, 0] as const) };
+    });
+  }, [part]);
+
+  const lineMat = useMemo(
+    () => new THREE.LineBasicMaterial({ color: GREEN, toneMapped: false }),
+    [],
+  );
+  React.useEffect(() => {
+    register(part.id, lineMat);
+  }, [register, part.id, lineMat]);
+
   return (
     <group position={part.position} rotation={part.rotation ?? [0, 0, 0]}>
       {/* Inner group carries live rotation, so it composes with the part's fixed orientation. */}
@@ -126,15 +148,16 @@ function PartMesh({ part, register, registerSpin, onSelect, hoveredRef }: PartMe
           />
         </mesh>
 
-        <lineSegments geometry={edges} raycast={() => null}>
-          <lineBasicMaterial
-            color={GREEN}
-            toneMapped={false}
-            ref={(m: THREE.LineBasicMaterial | null) => {
-              if (m) register(part.id, m);
-            }}
-          />
-        </lineSegments>
+        <lineSegments geometry={edges} material={lineMat} raycast={() => null} />
+
+        {detail.map((d, i) => (
+          <group key={i} position={d.pos} rotation={d.rot as [number, number, number]}>
+            <mesh geometry={d.g} raycast={() => null}>
+              <meshBasicMaterial color={FILL} transparent opacity={0.72} />
+            </mesh>
+            <lineSegments geometry={d.e} material={lineMat} raycast={() => null} />
+          </group>
+        ))}
       </group>
     </group>
   );
