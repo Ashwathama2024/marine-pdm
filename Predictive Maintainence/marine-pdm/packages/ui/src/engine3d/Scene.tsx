@@ -9,6 +9,7 @@ import { Canvas } from '@react-three/fiber';
 import { Grid, OrbitControls } from '@react-three/drei';
 import { Bloom, EffectComposer } from '@react-three/postprocessing';
 import { PartsLayer } from './Parts';
+import { NetworkLayer } from './Network';
 import { ENGINE_CENTRE, ORBIT_RADIUS } from './engine-layout';
 import { BACKDROP } from './palette';
 import type { LiveRef } from './useLiveBridge';
@@ -17,6 +18,8 @@ interface SceneProps {
   live: LiveRef;
   selectedRef: React.MutableRefObject<string | null>;
   showFiringRef: React.MutableRefObject<boolean>;
+  /** Prop rather than a ref: mounting the layer is a structural change, not a per-frame one. */
+  showNetwork: boolean;
   onSelect: (id: string) => void;
   onMiss: () => void;
 }
@@ -25,6 +28,7 @@ export const Scene = React.memo(function Scene({
   live,
   selectedRef,
   showFiringRef,
+  showNetwork,
   onSelect,
   onMiss,
 }: SceneProps) {
@@ -49,6 +53,8 @@ export const Scene = React.memo(function Scene({
         showFiringRef={showFiringRef}
         onSelect={onSelect}
       />
+
+      {showNetwork && <NetworkLayer />}
 
       {/* A floor grid is the cheapest way to make rotation legible; kept far below bloom threshold. */}
       <Grid

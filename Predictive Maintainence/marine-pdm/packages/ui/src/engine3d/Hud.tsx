@@ -110,12 +110,21 @@ export function StatusPill({ engineState, isOperational, rpm, load, risk, riskCo
 interface ControlsProps {
   showFiring: boolean;
   onToggleFiring: () => void;
+  showNetwork: boolean;
+  onToggleNetwork: () => void;
   showHelp: boolean;
   onToggleHelp: () => void;
 }
 
-/** Top-right: legend and the two view toggles. */
-export function ControlsPill({ showFiring, onToggleFiring, showHelp, onToggleHelp }: ControlsProps) {
+/** Top-right: legend and the view toggles. */
+export function ControlsPill({
+  showFiring,
+  onToggleFiring,
+  showNetwork,
+  onToggleNetwork,
+  showHelp,
+  onToggleHelp,
+}: ControlsProps) {
   return (
     <div
       className="e3d-pill"
@@ -143,6 +152,15 @@ export function ControlsPill({ showFiring, onToggleFiring, showHelp, onToggleHel
       </div>
 
       <div style={{ width: 1, alignSelf: 'stretch', background: 'var(--border-dim)' }} />
+
+      <MagButton
+        pressed={showNetwork}
+        onClick={onToggleNetwork}
+        title="ECS 8000 control network — Field-BUS 1 and 2 with a drop to every node, plus the physical harness"
+        style={{ minWidth: 84 }}
+      >
+        Network
+      </MagButton>
 
       <MagButton
         pressed={showFiring}

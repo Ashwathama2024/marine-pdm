@@ -76,6 +76,13 @@ export interface PartDef {
   dossierId?: string;
   instanceIndex?: number;
   motion?: PartMotion;
+  /** ECS 8000 CAN node number, where the unit is a node on the field buses. */
+  nodeNo?: number;
+  /**
+   * Sits outside the engine's published envelope — control-room and engine-room cabinets. Excluded
+   * from the envelope guard, which measures the ENGINE, not the installation around it.
+   */
+  offEngine?: boolean;
   /**
    * This part geometrically contains others (a housing, a casing, the crankcase). Enclosures are
    * drawn as an open boundary rather than a solid, and they never steal a click from the part
@@ -119,7 +126,7 @@ export const SUBASSEMBLIES: Subassembly[] = [
   { id: 'geartrain', label: 'Free-End Gear Train', short: 'Gear Train', order: 10 },
   { id: 'structure', label: 'Block & Structure', short: 'Structure', order: 11 },
   { id: 'control', label: 'ECU / EMU', short: 'ECU / EMU', order: 12 },
-  { id: 'harness', label: 'Sensor Harness', short: 'Harness', order: 13 },
+  { id: 'harness', label: 'ECS 8000 Network', short: 'Network', order: 13 },
 ];
 
 /** OEM exhaust-probe designation for a cylinder: B4 + bank + number, e.g. B4A4, B4B10. */
@@ -534,64 +541,99 @@ const ancillaries: PartDef[] = [
     mtuDesignation: 'B48',
     dossierId: 'dossier-fuelrail',
   },
+  // ── ECS 8000 units, per the Rolls-Royce/MTU system overview ────────────────
+  // Node numbers and roles are from the ECS 8000 deck. The two invented junction boxes that used to
+  // sit here were wrong: the real installation has ONE terminal box, CB-X11.
   {
-    id: 'ecu',
-    label: 'Engine Control Unit (ECU)',
+    id: 'ecu4',
+    label: 'ECU 4 — Engine Control Unit',
     subassembly: 'control',
-    note: 'Mounted on top of the engine, mid-length',
+    note: 'Node 2. Governs injection, cylinder cutout and the turbocharger cut-in solenoids',
     kind: 'box',
     position: [3.5, 1.78, 0],
     size: [0.78, 0.24, 0.56],
     sensorTags: [],
+    nodeNo: 2,
   },
   {
-    id: 'emu.1',
-    label: 'Engine Monitoring Unit EMU 1',
+    id: 'emu2.1',
+    label: 'EMU 2-I — Engine Monitoring Unit',
     subassembly: 'control',
-    note: 'Two EMUs are fitted, alongside the ECU on the engine top',
+    note: 'Node 3. X5.1 carries the 20 exhaust-temperature probes; X5.2/X5.3 the rest; X5.4 to X11',
     kind: 'box',
     position: [2.6, 1.62, -0.32],
     size: [0.5, 0.2, 0.34],
-    sensorTags: [],
+    sensorTags: ['ME.ExhaustTemp'],
+    nodeNo: 3,
   },
   {
-    id: 'emu.2',
-    label: 'Engine Monitoring Unit EMU 2',
+    id: 'emu2.2',
+    label: 'EMU 2-II — Engine Monitoring Unit',
     subassembly: 'control',
+    note: 'Node 10. X5.3 carries the spray-oil temperature sensors; X5.4 to X11',
     kind: 'box',
     position: [2.6, 1.62, 0.32],
     size: [0.5, 0.2, 0.34],
     sensorTags: [],
+    nodeNo: 10,
   },
   {
-    id: 'jbox.A',
-    label: 'A-Side Junction Box',
+    id: 'cb.x11',
+    label: 'CB-X11 — Terminal Box',
     subassembly: 'harness',
-    note: 'Placeholder position — awaiting vessel drawing',
+    note: 'Emergency air-shutoff flaps (SSK), EMU 2-I and 2-II, LPU, PPC, engine-room sensors',
     kind: 'box',
-    position: [4.2, 1.05, -1.02],
-    size: [0.28, 0.32, 0.18],
+    position: [3.6, 0.55, -2.05],
+    size: [0.62, 0.3, 0.4],
     sensorTags: [],
+    offEngine: true,
   },
   {
-    id: 'jbox.B',
-    label: 'B-Side Junction Box',
+    id: 'lop8',
+    label: 'LOP 8 — Local Operating Panel',
     subassembly: 'harness',
-    note: 'Placeholder position — awaiting vessel drawing',
+    note: 'Nodes 4 (Display 13) and 5 (MPU-29). Engine-room local monitoring and control',
     kind: 'box',
-    position: [4.2, 1.05, 1.02],
-    size: [0.28, 0.32, 0.18],
+    position: [1.4, 0.85, -2.05],
+    size: [0.5, 0.6, 0.34],
     sensorTags: [],
+    nodeNo: 4,
+    offEngine: true,
   },
   {
-    id: 'ipms',
-    label: 'IPMS / Bridge Interface',
+    id: 'meu1',
+    label: 'MEU 1 — Monitoring Extension Unit',
     subassembly: 'harness',
-    note: 'Off-engine. This system reads the OPC-UA namespace from here',
+    note: 'Node 6 (SAM). Redundant gearbox signals and plant I/O',
     kind: 'box',
-    position: [-1.8, 1.6, 0],
-    size: [0.4, 0.5, 0.4],
+    position: [-0.4, 0.85, -2.05],
+    size: [0.5, 0.42, 0.34],
     sensorTags: [],
+    nodeNo: 6,
+    offEngine: true,
+  },
+  {
+    id: 'gcu6',
+    label: 'GCU 6 — Gearbox Control Unit',
+    subassembly: 'harness',
+    note: 'Node 7 (MPU-29). Gearbox state and actuators; trips alarms or an engine stop',
+    kind: 'box',
+    position: [5.5, 0.6, -2.05],
+    size: [0.5, 0.55, 0.36],
+    sensorTags: [],
+    nodeNo: 7,
+    offEngine: true,
+  },
+  {
+    id: 'mcs',
+    label: 'Customer MCS',
+    subassembly: 'harness',
+    note: 'Control room. RS422 serial on PIM 5, parallel instruments and push buttons on PIM 3',
+    kind: 'box',
+    position: [3.3, 3.5, -2.05],
+    size: [0.5, 0.72, 0.36],
+    sensorTags: [],
+    offEngine: true,
   },
 ];
 
@@ -609,55 +651,62 @@ export const PARTS: PartDef[] = [
 ];
 
 // ── Cable registry ────────────────────────────────────────────────────────────
-// PASTE YOUR CABLE SCHEDULE HERE. Set provenance:'vessel' on real rows and they stop rendering
-// dimmed. The chain below is the shape the harness takes — sensor → junction box → ECU → IPMS —
-// with only three of the 85 sensor drops drawn, as an example of the pattern.
+// Real runs, from the ECS 8000 system overview and the EMU 2 connector detail. Nothing here is
+// invented any more, so every row is provenance:'vessel' and none render dimmed.
+//
+// The routing that matters: the twenty exhaust probes do NOT fan out to per-bank junction boxes
+// (that was our guess) — they all land on EMU 2-I connector X5.1. Spray-oil temperatures go to
+// EMU 2-II on X5.3. Both units take power and CAN from terminal box X11 on X5.4.
+
+/** X5.1 — the 20-way exhaust-temperature loom into EMU 2-I. */
+const exhaustHarness: CableDef[] = MTU8000.CYL_NAMES.map((name, i) => ({
+  cableNo: `X5.1/${exhaustDesignation(i)}`,
+  from: { partId: `head.${name}`, terminal: exhaustDesignation(i) },
+  to: { partId: 'emu2.1', terminal: 'X5.1' },
+  kind: 'signal' as const,
+  cores: 2,
+  provenance: 'vessel' as const,
+}));
 
 export const CABLES: CableDef[] = [
+  ...exhaustHarness,
   {
-    cableNo: 'SEED-001',
-    from: { partId: 'head.A4', terminal: 'B4A4' },
-    to: { partId: 'jbox.A' },
+    cableNo: 'X5.3/SPRAY-OIL',
+    from: { partId: 'emu2.2', terminal: 'X5.3' },
+    to: { partId: 'crankcase' },
     kind: 'signal',
-    cores: 2,
-    provenance: 'seed',
+    gauge: 'bundle',
+    provenance: 'vessel',
   },
   {
-    cableNo: 'SEED-002',
-    from: { partId: 'bearing.7', terminal: 'B57.7' },
-    to: { partId: 'jbox.B' },
+    cableNo: 'X5.4/EMU2-I',
+    from: { partId: 'emu2.1', terminal: 'X5.4' },
+    to: { partId: 'cb.x11' },
+    kind: 'can',
+    provenance: 'vessel',
+  },
+  {
+    cableNo: 'X5.4/EMU2-II',
+    from: { partId: 'emu2.2', terminal: 'X5.4' },
+    to: { partId: 'cb.x11' },
+    kind: 'can',
+    provenance: 'vessel',
+  },
+  {
+    cableNo: 'X11/SSK',
+    from: { partId: 'cb.x11' },
+    to: { partId: 'intake.A' },
     kind: 'signal',
-    cores: 2,
-    provenance: 'seed',
+    gauge: 'emergency air shutoff',
+    provenance: 'vessel',
   },
   {
-    cableNo: 'SEED-003',
-    from: { partId: 'tc.A1', terminal: 'B44.1' },
-    to: { partId: 'jbox.A' },
+    cableNo: 'X11/SSK-B',
+    from: { partId: 'cb.x11' },
+    to: { partId: 'intake.B' },
     kind: 'signal',
-    cores: 3,
-    provenance: 'seed',
-  },
-  {
-    cableNo: 'SEED-004',
-    from: { partId: 'jbox.A' },
-    to: { partId: 'ecu' },
-    kind: 'can',
-    provenance: 'seed',
-  },
-  {
-    cableNo: 'SEED-005',
-    from: { partId: 'jbox.B' },
-    to: { partId: 'ecu' },
-    kind: 'can',
-    provenance: 'seed',
-  },
-  {
-    cableNo: 'SEED-006',
-    from: { partId: 'ecu' },
-    to: { partId: 'ipms' },
-    kind: 'can',
-    provenance: 'seed',
+    gauge: 'emergency air shutoff',
+    provenance: 'vessel',
   },
 ];
 

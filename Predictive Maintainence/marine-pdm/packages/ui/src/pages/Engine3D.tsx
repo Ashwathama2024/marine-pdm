@@ -34,6 +34,7 @@ export function Engine3D() {
 
   const [selected, setSelected] = useState<string | null>(null);
   const [showFiring, setShowFiring] = useState(false);
+  const [showNetwork, setShowNetwork] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const selectedRef = useRef<string | null>(null);
   const showFiringRef = useRef(false);
@@ -56,6 +57,7 @@ export function Engine3D() {
     });
   }, []);
 
+  const toggleNetwork = useCallback(() => setShowNetwork(n => !n), []);
   const toggleHelp = useCallback(() => setShowHelp(h => !h), []);
 
   if (!webgl) {
@@ -90,6 +92,7 @@ export function Engine3D() {
         live={live}
         selectedRef={selectedRef}
         showFiringRef={showFiringRef}
+        showNetwork={showNetwork}
         onSelect={handleSelect}
         onMiss={handleMiss}
       />
@@ -106,6 +109,8 @@ export function Engine3D() {
       <ControlsPill
         showFiring={showFiring}
         onToggleFiring={toggleFiring}
+        showNetwork={showNetwork}
+        onToggleNetwork={toggleNetwork}
         showHelp={showHelp}
         onToggleHelp={toggleHelp}
       />

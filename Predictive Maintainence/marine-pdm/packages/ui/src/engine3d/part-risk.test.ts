@@ -110,7 +110,7 @@ describe('parts without an array index', () => {
 
   it('stays neutral for uninstrumented structure', () => {
     const v = live({ devByTag: { 'ME.ExhaustTemp': 1 }, cylRisks: new Array(20).fill(100) });
-    for (const id of ['jbox.A', 'jbox.B', 'ipms', 'ecu', 'emu.1', 'gear.housing']) {
+    for (const id of ['cb.x11', 'mcs', 'lop8', 'meu1', 'gcu6', 'ecu4', 'gear.housing']) {
       expect(partRisk(getPart(id)!, v), id).toBe(0);
     }
   });

@@ -215,10 +215,32 @@ describe('cable registry', () => {
     for (const c of CABLES) expect(['seed', 'vessel']).toContain(c.provenance);
   });
 
-  it('marks every currently-shipped run as a placeholder', () => {
-    // If this fails, real vessel cabling has landed — update the badge copy in PartDetailPanel and
-    // the caveat in APP_MAP, which both still say the routing is invented.
-    expect(CABLES.every(c => c.provenance === 'seed')).toBe(true);
+  it('carries no invented routing any more', () => {
+    // Every run now comes from the ECS 8000 overview and the EMU 2 connector detail, so nothing
+    // should render dimmed or badged PLACEHOLDER.
+    const seeded = CABLES.filter(c => c.provenance === 'seed').map(c => c.cableNo);
+    expect(seeded).toEqual([]);
+  });
+
+  it('routes all 20 exhaust probes to EMU 2-I on X5.1, not to per-bank boxes', () => {
+    // This is the correction the manual forced: we had guessed A-side and B-side junction boxes,
+    // and the real loom lands every probe on one connector.
+    const x51 = CABLES.filter(c => c.cableNo.startsWith('X5.1/'));
+    expect(x51).toHaveLength(MTU8000.CYLINDERS);
+    expect(x51.every(c => c.to.partId === 'emu2.1' && c.to.terminal === 'X5.1')).toBe(true);
+    MTU8000.CYL_NAMES.forEach((name, i) => {
+      const run = x51.find(c => c.from.partId === `head.${name}`);
+      expect(run?.from.terminal, name).toBe(getPart(`cyl.${name}`)?.mtuDesignation);
+    });
+  });
+
+  it('no longer references the junction boxes that never existed', () => {
+    for (const c of CABLES) {
+      expect(c.from.partId).not.toMatch(/^jbox\./);
+      expect(c.to.partId).not.toMatch(/^jbox\./);
+    }
+    expect(getPart('jbox.A')).toBeNull();
+    expect(getPart('jbox.B')).toBeNull();
   });
 });
 
@@ -277,12 +299,12 @@ describe('assembled model fits the published envelope', () => {
     return [x, y, z];
   }
 
-  /** World-space AABB of every part except the explicitly off-engine IPMS cabinet. */
+  /** World-space AABB of the ENGINE — cabinets around it are excluded by their offEngine flag. */
   function bbox() {
     const lo = [Infinity, Infinity, Infinity];
     const hi = [-Infinity, -Infinity, -Infinity];
     for (const p of PARTS) {
-      if (p.id === 'ipms') continue;
+      if (p.offEngine) continue;
       const h = halfExtents(p);
       const r = p.rotation ?? [0, 0, 0];
       for (const sx of [-1, 1])
