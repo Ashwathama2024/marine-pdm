@@ -3,7 +3,7 @@
 // Mirrors ECS 8000 SS logic exactly — these supersede AI risk scores.
 // PDF upgrade spec §8.2.
 
-import { MTU8000_LIMITS } from '@marine-pdm/shared';
+import { MTU8000_LIMITS, sprayOilDeviation } from '@marine-pdm/shared';
 import type { EngineSnapshot } from '@marine-pdm/shared';
 
 export interface SafetyOverrideResult {
@@ -23,6 +23,7 @@ function getBearingTemps(snap: EngineSnapshot): number[] {
   return Array.isArray(bt) ? bt as number[] : [];
 }
 
+
 export function applyMTU8000SafetyOverride(
   risk: number,
   snap: EngineSnapshot,
@@ -32,6 +33,7 @@ export function applyMTU8000SafetyOverride(
   const exhaustMean      = getField(snap, 'exhaustMeanTemp', snap.exhaustTemp);
   const fuelRailPressure = getField(snap, 'fuelRailPressure', 1800);
   const bearingTemps     = getBearingTemps(snap);
+  const sprayOil         = sprayOilDeviation(snap);
 
   // ── SS (Safety System) triggers — risk = 100 immediately ─────────────────
   // SS P-Oil Last Bearing (B5.3/B5.4)
@@ -60,7 +62,26 @@ export function applyMTU8000SafetyOverride(
     };
   }
 
+  // SS T-Splash Oil Difference (B77.11–B77.20) — Lim2, shutdown.
+  // The ECS names the offending channel by its B1–B10 number, so we do too.
+  if (sprayOil.dev > MTU8000_LIMITS.sprayOil.diff_shutdown) {
+    return {
+      risk: 100,
+      triggered: `SS T-Splash Oil B${sprayOil.channel + 1} — ${sprayOil.dev.toFixed(1)}°C above mean > ${MTU8000_LIMITS.sprayOil.diff_shutdown}°C — Emergency Stop`,
+    };
+  }
+
   // ── HI triggers — risk floor raised, not 100 ─────────────────────────────
+  // HI T-Splash Oil (B77.11–B77.20) — Lim1, warning. This is the earliest bearing-distress signal
+  // the engine has: the oil coming off a big end warms before the bearing casting does, so this
+  // fires ahead of HI T-Bearing on the same fault.
+  if (sprayOil.dev > MTU8000_LIMITS.sprayOil.diff_warn) {
+    return {
+      risk: Math.max(risk, 75),
+      triggered: `HI T-Splash Oil B${sprayOil.channel + 1} — ${sprayOil.dev.toFixed(1)}°C above mean > ${MTU8000_LIMITS.sprayOil.diff_warn}°C`,
+    };
+  }
+
   // HI T-Exhaust Mean (B4.30)
   if (exhaustMean > MTU8000_LIMITS.exhaust.mean_hi) {
     return {
@@ -128,6 +149,13 @@ export function getMTU8000HardLimitViolations(snap: EngineSnapshot): string[] {
     } else if (bearingTemps[i] > MTU8000_LIMITS.lubeOil.bearing_temp_hi) {
       violations.push(`[HI] T-Bearing ${i + 1}: ${bearingTemps[i].toFixed(1)}°C > ${MTU8000_LIMITS.lubeOil.bearing_temp_hi}°C`);
     }
+  }
+
+  const sprayOil = sprayOilDeviation(snap);
+  if (sprayOil.dev > MTU8000_LIMITS.sprayOil.diff_shutdown) {
+    violations.push(`[SS] T-Splash Oil B${sprayOil.channel + 1}: ${sprayOil.dev.toFixed(1)}°C above mean > ${MTU8000_LIMITS.sprayOil.diff_shutdown}°C`);
+  } else if (sprayOil.dev > MTU8000_LIMITS.sprayOil.diff_warn) {
+    violations.push(`[HI] T-Splash Oil B${sprayOil.channel + 1}: ${sprayOil.dev.toFixed(1)}°C above mean > ${MTU8000_LIMITS.sprayOil.diff_warn}°C`);
   }
 
   return violations;

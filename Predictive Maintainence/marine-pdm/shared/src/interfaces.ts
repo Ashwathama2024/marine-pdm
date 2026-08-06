@@ -238,6 +238,9 @@ export interface MTU8000Snapshot {
   lubeLastBearingPressure: number;       // B5.3/B5.4 bar — SS trigger
   lubeOilTemp: number;                   // B7 °C
   bearingTemps: number[];                // [11] — B57.1–B57.11
+  sprayOilTemps: number[];               // [10] — B77.11–B77.20, one per crank throw. The ECS
+                                         //   alarms on the SPREAD, not the value: see
+                                         //   MTU8000_LIMITS.sprayOil
 
   // Cooling
   coolantTempAfterEngine: number;  // B6.1 °C

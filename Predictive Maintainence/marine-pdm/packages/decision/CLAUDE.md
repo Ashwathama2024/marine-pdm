@@ -26,6 +26,7 @@
 | `lubeLastBearingPressure < 2.0 bar` | SS P-Oil Last Bearing |
 | `bearingTemps[i] > 120°C` | SS T-Bearing N |
 | `coolantTempAfterEngine > 97°C` | SS T-Coolant |
+| `sprayOilDeviation(snap).dev > 6°C` | SS T-Splash Oil Bn |
 
 ### High-priority floors
 | Condition | Risk floor | ECS Code |
@@ -33,6 +34,15 @@
 | `exhaustMeanTemp > 460°C` | ≥80 | HI T-Exhaust Mean |
 | `fuelRailPressure < 1200 bar` | ≥85 | SD P-Fuel Rail |
 | `bearingTemps[i] > 115°C` | ≥75 | HI T-Bearing N |
+| `sprayOilDeviation(snap).dev > 4°C` | ≥75 | HI T-Splash Oil Bn |
+
+**Spray oil is a DIFFERENCE, not a value.** `sprayOilDeviation` (in `shared/utils.ts`, not here) returns
+how far the hottest of the ten B77 channels sits above their mean. MTU codes no absolute band for it
+anywhere in ZNG00028788 — only Lim1 4 °C / Lim2 6 °C on the spread — so there is nothing to compare a
+single channel against. Two consequences worth keeping in mind: a common-mode shift (hot oil, high
+load, a cold start) cancels and cannot alarm, which is what insulates this trip from the calibration
+defect in `OEM-CALIBRATION-GAP.md`; and the trip fires BEFORE `HI T-Bearing` on the same fault,
+because oil in transit responds faster than the bearing casting it came off.
 
 **Why 120°C SS / 115°C HI (not 120/100, and no longer 130/115)?**
 Hot lube oil at rated (105°C oil temp, 85% load) naturally drives bearing temps to ~107°C via

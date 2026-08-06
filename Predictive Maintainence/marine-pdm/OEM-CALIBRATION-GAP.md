@@ -356,8 +356,13 @@ Order matters — bearing temperature depends on LO pressure and oil temperature
    *mean* at 700 °C. If the app models after-turbine, the OEM mean curve does not apply to it and a
    before-turbine series is missing entirely. This decides whether §3.2 row 1 is a limit error or a
    missing sensor.
-4. **B77 count.** The limit list says `B77.11–B77.20` (ten). `4a` p2 shows `B77.11`–`B77.20`, p6 shows
-   `B77.B1`–`B77.B8`. The handover's claim of twenty (`B77.1–B77.20`) is unverified.
+4. ~~**B77 count.**~~ **RESOLVED 2026-08-06 — ten, and they are now modelled.** MS15082/00E p38
+   (drawing `TD0000012616_096`) lists items 5–16 on the right engine side as `B77.11`–`B77.20`,
+   "Spray oil temperature B1"–"B10", and the LOP fault messages map `SD T-Splash Oil B1` → `B77.11`
+   through `B10` → `B77.20`. One per crank throw, not per cylinder — a 20V shares each throw between
+   two opposing con-rods. The handover's "twenty per-cylinder" was wrong. The `B77.B1`–`B77.B8` on
+   p6 is the 16V arrangement (eight throws). Implemented as a differential alarm; the absolute scale
+   inherits the §3.1 lube-oil error but cannot reach the alarm, since a common offset cancels.
 5. **The drawing is stamped ONLY FOR TRAINING PURPOSE.** Adequate for this model; if the system ever
    goes near a real vessel, re-verify against the released limit list for that hull.
 
@@ -372,7 +377,9 @@ Order matters — bearing temperature depends on LO pressure and oil temperature
 | 2026-08-06 | `fuel.temp_max` 70 → **50 °C** | T-Fuel Lim2 |
 | 2026-08-06 | `chargeAirTemp.alarmLow` 25 → **20 °C** | T-Charge Air LL |
 | 2026-08-06 | TC speed tags `alarmHi`/`ssLimit` — / 8000 → **40 500 / 41 000** | Turbo Overspeed. `ssLimit: 8000` sat below the 17 800 rpm idle — a plain bug |
-| 2026-08-06 | Exhaust probe `mtuDesignation` flat → `B4A1`–`B4B10` | Location deck; both forms are OEM (§7.4). Label only, no consumer |
+| 2026-08-06 | Exhaust probe `mtuDesignation` flat → `B4A1`–`B4B10` | Location deck; both forms are OEM. Label only, no consumer |
+| 2026-08-06 | Bearing tag `alarmHi` 100 → 115, `ssLimit` 120, both sourced from `MTU8000_LIMITS` | Same stale-hardcode class as the TC tags; 100 was the pre-correction HI that fired false |
+| 2026-08-06 | **Added B77 spray-oil temperature** — 10 channels, physics, tag map, SS/HI trips, dashboard panel | T-Splash Oil Difference Lim1 4 °C / Lim2 6 °C. Differential, so unaffected by §3.1 |
 
 Everything in §3.1 and §3.2 remains **untouched** — it needs the phased plan, not an edit.
 

@@ -25,6 +25,51 @@ export function bearingTempMax(snap: EngineSnapshot, fallback = 0): number {
 }
 
 /**
+ * The ten spray-oil channels (B77.11–B77.20), widened off the index signature like bearingTemps.
+ *
+ * Tolerates a missing snapshot on purpose. The dashboard mounts before the first tick arrives, and
+ * a real IPMS feed can drop the array entirely if the EMU is offline — neither is an error worth
+ * taking the page down for, and an empty set reads as "nothing to alarm on", which is correct.
+ */
+export function sprayOilTemps(snap: EngineSnapshot | null | undefined): number[] {
+  const st = snap?.['sprayOilTemps'];
+  return Array.isArray(st) ? (st as number[]) : [];
+}
+
+export interface SprayOilDeviation {
+  /** °C the hottest channel sits ABOVE the mean of all ten. 0 when there is no data. */
+  dev: number;
+  /** 0-based index of that channel, or -1. Add 1 for the ECS name: index 6 → "B7". */
+  channel: number;
+  /** Mean of the ten, for display. */
+  mean: number;
+}
+
+/**
+ * The quantity the ECS alarms on for spray oil — NOT the raw temperature.
+ *
+ * MTU codes no absolute band for B77 anywhere in ZNG00028788; it codes T-Splash Oil Difference
+ * Lim1 = 4 °C warning and Lim2 = 6 °C shutdown, and the LOP messages name a single channel
+ * ("HI T-Splash Oil B7"). A max-minus-min spread could not name the offender, so the quantity is a
+ * per-channel deviation from the mean of the set.
+ *
+ * Lives in shared because three packages need the identical number and none of them may import
+ * another: `decision` must work against a real IPMS with no simulator present, `simulator` produces
+ * the values, and the display must not be able to disagree with the alarm — the same reasoning that
+ * put bearingTempMax here.
+ */
+export function sprayOilDeviation(
+  snapOrTemps: EngineSnapshot | number[] | null | undefined,
+): SprayOilDeviation {
+  const temps = Array.isArray(snapOrTemps) ? snapOrTemps : sprayOilTemps(snapOrTemps);
+  if (temps.length === 0) return { dev: 0, channel: -1, mean: 0 };
+  const mean = temps.reduce((s, v) => s + v, 0) / temps.length;
+  let channel = 0;
+  for (let i = 1; i < temps.length; i++) if (temps[i]! > temps[channel]!) channel = i;
+  return { dev: Math.max(0, temps[channel]! - mean), channel, mean };
+}
+
+/**
  * Exponential lag filter — smooths signal transitions.
  * alpha=0.08 → slow response (exhaust temp); alpha=0.5 → fast response
  */

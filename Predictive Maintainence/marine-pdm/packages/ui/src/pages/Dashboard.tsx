@@ -4,6 +4,7 @@ import { StateBadge } from '../dashboard/StateBadge';
 import { PhaseTimeline } from '../dashboard/PhaseTimeline';
 import { GaugeGrid, ShaftPowerStrip } from '../dashboard/GaugeGrid';
 import { TurbochargerPanel } from '../dashboard/TurbochargerPanel';
+import { SprayOilPanel } from '../dashboard/SprayOilPanel';
 import { AIDecisionPanel } from '../dashboard/AIDecisionPanel';
 import { TrendChart } from '../dashboard/TrendChart';
 import { AlertBar } from '../dashboard/AlertBar';
@@ -209,6 +210,11 @@ export function Dashboard() {
         isOperational={isOperational}
         onGaugeClick={isOperational ? setSelectedSensor : undefined}
       />
+
+      {/* 4b ── Spray-oil spread across the 10 crank throws. Always mounted, like the TC panel: it
+              carries an SS trip, so it must not be one of the things that only appears once
+              something is already wrong. */}
+      <SprayOilPanel snap={snapshot} isOperational={isOperational} />
 
       {/* 5+6 ── Sensor trends + cylinder section — operational only */}
       {isOperational && (

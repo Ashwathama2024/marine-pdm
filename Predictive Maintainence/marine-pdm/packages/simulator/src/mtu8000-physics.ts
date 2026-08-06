@@ -88,6 +88,46 @@ export function bearingTemp_MTU8000(
   return base + loadHeat + rpmHeat + oilHeat + pressureDef + positionBias + faultHeat;
 }
 
+// ── 3.5b Spray-Oil Temperature Model ─────────────────────────────────────────
+// B77.11–B77.20 (ECS channels B1–B10) — one per crank throw, reading the oil thrown off the con-rod
+// big end. See MTU8000_LIMITS.sprayOil for what the ECS does with them.
+//
+// The whole diagnostic value is in the SPREAD, so the model is built that way: a term common to all
+// ten channels (oil supply temperature, load, speed) plus a per-throw term. Only the per-throw term
+// can ever raise the difference, which means the absolute-scale errors in OEM-CALIBRATION-GAP.md —
+// lubeOilTemp runs 13 °C hot — shift all ten equally and cancel out of the alarm.
+//
+// THROW_SCATTER is the fixed manufacturing spread the real ECS removes with its static calibration.
+// It is kept deliberately small: T-Splash Oil Difference Lim1 is only 4 °C, so a healthy engine has
+// to sit well inside that or the warning is meaningless. Max healthy deviation from the mean is
+// 1.1 °C, about a quarter of the warning limit.
+const THROW_SCATTER = [0.4, -0.7, 0.9, -0.3, 1.1, -1.0, 0.6, -0.5, 0.8, -1.1];
+
+/**
+ * Spray-oil temperature at one crank throw.
+ *
+ * `throwFault` is the local distress at THIS throw, 0–1 — a hot bearing beside it or blow-by past
+ * its pistons. At full severity it adds 25 °C, four times the shutdown difference, so a single bad
+ * throw is unmistakable against the ±1.1 °C healthy scatter.
+ */
+export function sprayOilTemp_MTU8000(
+  load: number,
+  rpm: number,
+  lubeOilTemp: number,
+  throwIndex: number,       // 0–9 (throw 1 = driving end, between bearings 1 and 2)
+  throwFault: number = 0,   // 0–1 local distress at this throw
+): number {
+  const base     = lubeOilTemp + 6;          // oil leaving the bearing is hotter than the supply
+  const loadHeat = loadN(load) * 14;         // piston-cooling and big-end friction heat
+  const rpmHeat  = rpmN(rpm) * 5;
+  const scatter  = THROW_SCATTER[throwIndex] ?? 0;
+  return base + loadHeat + rpmHeat + scatter + throwFault * 25;
+}
+
+// The quantity the ECS alarms on is `sprayOilDeviation` in @marine-pdm/shared, not defined here:
+// the display and the safety override both need the identical number, and shared is the only place
+// all three packages can reach. See the note on it for why it is a per-channel deviation.
+
 // ── 3.6 Charge Air Pressure & Temperature ─────────────────────────────────────
 // Sequential turbocharging: 2 TCs per side, cut in/out by Y27.1/.2
 // Idle (400 RPM, 0% load): 1.35 + 0.348×1.46 ≈ 1.86 bar abs (~0.85 bar gauge)

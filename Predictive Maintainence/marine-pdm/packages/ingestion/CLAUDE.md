@@ -10,7 +10,7 @@
 
 ## Tag Map Overview — `src/tag-map.ts`
 
-52 tags covering all monitored parameters. Each `TagMapping` has:
+62 tags covering all monitored parameters. Each `TagMapping` has:
 - `nodeId` — OPC-UA NodeId string
 - `field` — target field on `EngineSnapshot` / `MTU8000Snapshot`
 - `scale` / `offset` — unit conversion for IPMS that return ×10 values
@@ -24,6 +24,7 @@
 | B5.1, B5.2, B5.5, B5.3/4 | LO pressures (main gallery, after filter, piston cooling, last bearing) | `lubeOilPressure`, `lubeFilterOutletPressure`, `lubePistonCoolingPressure`, `lubeLastBearingPressure` |
 | B7 | LO temperature | `lubeOilTemp` |
 | B57.1–B57.11 | 11 bearing temps (#11 = free end, runs +5°C) | `bearingTemps[0–10]` |
+| B77.11–B77.20 | 10 spray-oil temps, one per crank throw (ECS channels B1–B10, EMU II X5.3). **The only tags with no `alarmHi`/`ssLimit`** — MTU codes a difference limit, not an absolute band | `sprayOilTemps[0–9]` |
 | B6.1, B16.1 | Coolant temp after engine, coolant pressure | `coolantTempAfterEngine`, `coolantPressure` |
 | B9, B10 | Charge air temp, charge air pressure | `chargeAirTemp`, `chargeAirPressure` |
 | B44.1/2/11/12 | 4 TC speeds (A1, A2, B1, B2 — B-bank turbos are .11/.12) | `tcSpeeds[0–3]` |

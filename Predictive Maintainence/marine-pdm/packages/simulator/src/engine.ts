@@ -1,7 +1,7 @@
 // packages/simulator/src/engine.ts
 // SimulatorEngine — MTU 8000 M71/M71L physics engine with 11-state lifecycle.
 
-import { TICK_MS, addNoise, applyLag } from '@marine-pdm/shared';
+import { MTU8000, TICK_MS, addNoise, applyLag } from '@marine-pdm/shared';
 import type { EngineSnapshot, IDataSource } from '@marine-pdm/shared';
 import { makeInitialPhysicsState, tickPhysics, snapshotFromState } from './physics';
 import { createFault, tickFaults, removeFault } from './faults';
@@ -21,7 +21,7 @@ import {
   clutchRpmDip,
 } from './mtu8000-start-physics';
 import type { StartPhysicsState } from './mtu8000-start-physics';
-import { cylExhaustTemp_MTU8000, sfoc_MTU8000 } from './mtu8000-physics';
+import { cylExhaustTemp_MTU8000, sfoc_MTU8000, sprayOilTemp_MTU8000 } from './mtu8000-physics';
 import { CYLINDER_COUNT } from '@marine-pdm/shared';
 
 export type SimMode = 'NORMAL' | 'STRESS' | 'FAULT';
@@ -368,6 +368,12 @@ export class SimulatorEngine implements IDataSource {
       lagCyls:                noLoadCylTemps(GOV_RPM_IDLE),
       lagTcSpeeds:            [...s.tcSpeeds],
       lagBearingTemps:        [...s.bearingTemps],
+      // Seeded from the same cold oil temperature the line below sets, so all ten channels start
+      // together and the only spread at handover is THROW_SCATTER. A stale absolute value would not
+      // actually false-alarm — the difference cancels a common offset — but it would show a wrong
+      // temperature on the panel for the first minute.
+      lagSprayOilTemps:       Array.from({ length: MTU8000.CRANK_THROWS }, (_, i) =>
+                                sprayOilTemp_MTU8000(0, GOV_RPM_IDLE, s.coolantTemp + 2, i)),
       lagCoolantTemp:         s.coolantTemp,
       lagLubeOilTemp:         s.coolantTemp + 2,
       lagLubeAfterFilter:     Math.max(0, s.lubePress - 0.1),
@@ -521,6 +527,7 @@ export class SimulatorEngine implements IDataSource {
       lubeLastBearingPressure:      phys.lubeLastBearingPressure,
       lubeOilTemp:                  phys.lubeOilTemp,
       bearingTemps:                 phys.bearingTemps,
+      sprayOilTemps:                phys.sprayOilTemps,
       coolantTempAfterEngine:       phys.coolantTempAfterEngine,
       coolantPressure:              phys.coolantPressure,
       chargeAirPressure:            phys.chargeAirPressure,

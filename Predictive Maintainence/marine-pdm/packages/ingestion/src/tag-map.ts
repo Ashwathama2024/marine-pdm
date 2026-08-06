@@ -128,8 +128,27 @@ const bearingTempTags: TagMapping[] = Array.from({ length: 11 }, (_, i) => ({
   description:    `Crankshaft bearing ${i + 1} temperature${i === 10 ? ' (free end — runs 5°C hotter)' : ''}`,
   mtuDesignation: `B57.${i + 1}`,
   unit:           '°C',
-  alarmHi:        100,
-  ssLimit:        120,
+  // Was a hardcoded 100/120. The 100 is the pre-correction HI that fired false on a healthy engine —
+  // the hottest bearing reaches ~112 °C at rated. ZNG00028788 codes T-Bearing Lim1 115 / Lim2 120.
+  alarmHi:        MTU8000_LIMITS.lubeOil.bearing_temp_hi,
+  ssLimit:        MTU8000_LIMITS.lubeOil.bearing_temp_max,
+}));
+
+// ── 4.4b SPRAY-OIL TEMPERATURES (B77.11–B77.20) ──────────────────────────────
+// Ten sensors, one per crank throw, on the B-side crankcase wall — MS15082/00E p38. The ECS knows
+// them as channels B1–B10 and its messages use that name ("HI T-Splash Oil B7"), so the description
+// carries both: an engineer reads B7 on the panel and has to find B77.17 on the engine.
+//
+// NO alarmHi/ssLimit here, deliberately. These are the only tags in the map with no absolute band,
+// because MTU codes none — the alarm is on the difference between channels, which is a derived
+// quantity and lives with the decision layer, not on a single tag.
+const sprayOilTempTags: TagMapping[] = Array.from({ length: MTU8000.CRANK_THROWS }, (_, i) => ({
+  nodeId:         `ns=2;s=ME.SprayOilTemp.${i + 1}`,
+  // Real IPMS: `ns=4;s=MainEngine.T_SPRAYOIL_B${i + 1}`
+  field:          `sprayOilTemps.${i}`,
+  description:    `Spray oil temperature B${i + 1} (crank throw ${i + 1})`,
+  mtuDesignation: `B77.${i + 11}`,
+  unit:           '°C',
 }));
 
 // ── 4.5 COOLING SYSTEM ────────────────────────────────────────────────────────
@@ -282,12 +301,14 @@ const fuelAndMiscTags: TagMapping[] = [
   },
 ];
 
-// ── COMBINED 52-TAG MAP ───────────────────────────────────────────────────────
+// ── COMBINED TAG MAP ──────────────────────────────────────────────────────────
+// Was 52 tags; the ten B77 spray-oil channels take it to 62.
 export const TAG_MAP: TagMapping[] = [
   ...exhaustTempTags,
   ...exhaustOtherTags,
   ...lubeOilPressureTags,
   ...bearingTempTags,
+  ...sprayOilTempTags,
   ...coolingTags,
   ...chargeAirTags,
   ...tcSpeedTags,

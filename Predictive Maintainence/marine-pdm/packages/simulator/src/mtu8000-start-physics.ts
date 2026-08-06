@@ -4,7 +4,7 @@
 // sensor values directly. Op-phase helpers return RPM/load setpoints that
 // feed the existing tickPhysics() lag system.
 
-import { addNoise } from '@marine-pdm/shared';
+import { MTU8000, addNoise } from '@marine-pdm/shared';
 import type { EngineSnapshot } from '@marine-pdm/shared';
 
 const AMBIENT = 25;   // °C ambient
@@ -185,6 +185,13 @@ export function startStateToSnapshot(s: StartPhysicsState, timestamp: number): E
     cylTemps,
     coolingEff: 1.0,
     bearingTemps: s.bearingTemps.map(v => addNoise(v, 0.3)),
+    // Spray oil sits at the standing oil temperature before the engine fires — nothing is being
+    // thrown off a big end yet. Emitted here rather than left undefined so the field is present at
+    // every engine state, as EngineSnapshot declares: the panel and the SS T-Splash Oil check both
+    // read it unconditionally, and an absent array made the panel vanish during PRE-START.
+    sprayOilTemps: Array.from({ length: MTU8000.CRANK_THROWS }, () =>
+      addNoise(s.coolantTemp + 2, 0.25),
+    ),
     crankcasePressure: addNoise(-0.5, 0.1),
     fuelRailPressure: rail,
     fuelOilPressure: addNoise(rail > 0 ? 3.5 : 0, 0.05),
