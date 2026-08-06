@@ -60,14 +60,19 @@ export const MTU8000_LIMITS = {
     temp_max:                   115,   // °C — B7 HI T-Oil
     // Bearings at rated (85%/1150) with hot oil (~105°C) naturally reach ~107°C.
     // Thresholds raised to match real MTU 8000 operational data.
-    bearing_temp_max:           130,   // °C — B57.x SS T-Bearing (was 120)
+    // MTU ZNG00028788 (ALARM/GRENZWERTLISTE) codes T-Bearing Lim2 = 120 °C shutdown, Lim1 = 115 °C
+    // warning. This was 130 because an earlier 120/100 pair fired false — but that was the HI at 100,
+    // which sat BELOW the ~112 °C a healthy hottest bearing reaches at rated (107 mean + the +5
+    // positionBias). With HI already corrected to 115, the OEM 120 leaves 8 °C of headroom above
+    // healthy and is the number the ECS actually trips on.
+    bearing_temp_max:           120,   // °C — B57.x SS T-Bearing (OEM T-Bearing Lim2)
     bearing_temp_hi:            115,   // °C — B57.x HI T-Bearing (was 100, too low for hot oil at rated)
   },
 
   // Cooling system (B6.x, B16.x)
   cooling: {
     coolant_temp_after_engine_max: 95,   // °C — B6.1 HI T-Coolant
-    coolant_temp_ss:               100,  // °C — SS T-Coolant
+    coolant_temp_ss:               97,   // °C — SS T-Coolant (OEM T-Coolant Lim2, ZNG00028788)
     coolant_pressure_min:          1.5,  // bar — B16.1 LO P-Coolant
     raw_water_pressure_min:        1.0,  // bar — B21
   },
@@ -87,7 +92,7 @@ export const MTU8000_LIMITS = {
     rail_pressure_nominal:  1800,  // bar — common rail
     rail_pressure_min:      1200,  // bar — SD P-Fuel (Rail) → Emergency Op
     filter_dp_warn:         0.8,   // bar — B34.1 minus B34.2
-    temp_max:               70,    // °C — B33
+    temp_max:               50,    // °C — B33 (OEM T-Fuel Lim2, ZNG00028788; Lim1 warning is 45)
   },
 
   // Turbocharger (B44.x) — MTU 20V 8000 M71/M91 sequential ETCs

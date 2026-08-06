@@ -12,14 +12,20 @@
 
 ---
 
+> ⚠ These thresholds are Phase 5 of an open calibration defect —
+> [`../../OEM-CALIBRATION-GAP.md`](../../OEM-CALIBRATION-GAP.md). They cannot be moved onto their OEM
+> values until the physics is back inside the OEM envelope (Phase 2), because several healthy rated
+> readings currently violate OEM shutdown limits. Phase 5 also re-audits that every fault F01–F09 can
+> still *reach* its alarm: F08 blow-by peaks at 7.28 mbar against a 27 mbar OEM crankcase limit.
+
 ## Safety Override Triggers — `src/override-mtu8000.ts`
 
 ### Shutdown (SS) — `systemRisk = 100` immediately
 | Condition | ECS Code |
 |-----------|---------|
 | `lubeLastBearingPressure < 2.0 bar` | SS P-Oil Last Bearing |
-| `bearingTemps[i] > 130°C` | SS T-Bearing N |
-| `coolantTempAfterEngine > 100°C` | SS T-Coolant |
+| `bearingTemps[i] > 120°C` | SS T-Bearing N |
+| `coolantTempAfterEngine > 97°C` | SS T-Coolant |
 
 ### High-priority floors
 | Condition | Risk floor | ECS Code |
@@ -28,8 +34,14 @@
 | `fuelRailPressure < 1200 bar` | ≥85 | SD P-Fuel Rail |
 | `bearingTemps[i] > 115°C` | ≥75 | HI T-Bearing N |
 
-**Why 130°C SS / 115°C HI (not 120/100)?**
-Hot lube oil at rated (105°C oil temp, 85% load) naturally drives bearing temps to ~107°C via `bearingTemp_MTU8000()`. Old thresholds fired false overrides during normal operation. Raised to match real MTU 8000 operational data.
+**Why 120°C SS / 115°C HI (not 120/100, and no longer 130/115)?**
+Hot lube oil at rated (105°C oil temp, 85% load) naturally drives bearing temps to ~107°C via
+`bearingTemp_MTU8000()`, and the hottest of the 11 carries a further +5°C `positionBias` → ~112°C.
+The original 120/100 pair fired false overrides during normal operation, but the culprit was the **HI
+at 100**, which sat below that healthy 112 — not the SS. Raising HI to 115 fixed it; the SS was raised
+to 130 at the same time, past the OEM figure. MTU ZNG00028788 (ALARM/GRENZWERTLISTE) codes T-Bearing
+Lim1 = 115 warning and **Lim2 = 120 shutdown**, so the SS is back on the OEM number with 8°C of
+headroom over healthy. The same drawing codes T-Coolant Lim2 = 97°C, hence the SS T-Coolant change.
 
 ---
 

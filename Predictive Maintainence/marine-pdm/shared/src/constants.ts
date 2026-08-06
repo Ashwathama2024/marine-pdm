@@ -102,7 +102,7 @@ export const ALARM_LIMITS = {
     preAlarmHigh: 72,  // L1 — charge air too hot (fouled cooler)
     alarmHigh:    78,  // L2
     shutdownHigh: 85,  // L4
-    alarmLow:     25,  // L2 — too cold (overcooling, condensation risk)
+    alarmLow:     20,  // L2 — too cold (OEM T-Charge Air LL, ZNG00028788)
   },
   fuelOilPressure: {
     physMin: 3.0,
