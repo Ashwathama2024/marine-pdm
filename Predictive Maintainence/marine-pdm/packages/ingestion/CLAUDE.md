@@ -1,6 +1,11 @@
 # Ingestion Package — CLAUDE.md
 > OPC-UA client + 52-tag MTU 8000 → snapshot field mapping. See root `CLAUDE.md` for monorepo rules.
 
+> ⚠ `alarmHi` / `ssLimit` on a `TagMapping` must come from MTU `ZNG00028788`, not from what the
+> simulator happens to produce — see [`../../OEM-CALIBRATION-GAP.md`](../../OEM-CALIBRATION-GAP.md).
+> The TC speed tags carried `ssLimit: 8000` against a turbo that idles at 17 800 rpm. Source these
+> from `MTU8000_LIMITS` rather than retyping them.
+
 ---
 
 ## Tag Map Overview — `src/tag-map.ts`
@@ -14,14 +19,14 @@
 
 | Group | Tags | Fields |
 |-------|------|--------|
-| B4.1–B4.20 | 20 cylinder exhaust temps | `cylExhaustTemps[0–19]` |
+| B4A1–B4A10, B4B1–B4B10 | 20 cylinder exhaust temps (bank letter is part of the designation — see MS15082/00E) | `cylExhaustTemps[0–19]` |
 | B4.30, B41.1 | Exhaust mean, back pressure | `exhaustMeanTemp`, `exhaustBackPressure` |
 | B5.1, B5.2, B5.5, B5.3/4 | LO pressures (main gallery, after filter, piston cooling, last bearing) | `lubeOilPressure`, `lubeFilterOutletPressure`, `lubePistonCoolingPressure`, `lubeLastBearingPressure` |
 | B7 | LO temperature | `lubeOilTemp` |
 | B57.1–B57.11 | 11 bearing temps (#11 = free end, runs +5°C) | `bearingTemps[0–10]` |
 | B6.1, B16.1 | Coolant temp after engine, coolant pressure | `coolantTempAfterEngine`, `coolantPressure` |
 | B9, B10 | Charge air temp, charge air pressure | `chargeAirTemp`, `chargeAirPressure` |
-| B44.A1/A2/B1/B2 | 4 TC speeds | `tcSpeeds[0–3]` |
+| B44.1/2/11/12 | 4 TC speeds (A1, A2, B1, B2 — B-bank turbos are .11/.12) | `tcSpeeds[0–3]` |
 | B48, B33 | Fuel rail pressure (1800 bar nominal), fuel temp | `fuelRailPressure`, `fuelTemp` |
 | B50, B13.1, B13.2 | Crankcase pressure, RPM primary (ECU), RPM redundant (EMU) | `crankcasePressure`, `rpm`, `rpmRedundant` |
 

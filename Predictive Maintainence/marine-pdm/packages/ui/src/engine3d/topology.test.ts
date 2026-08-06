@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEGRADATION_COMPONENTS } from '@marine-pdm/simulator';
 import { MTU8000 } from '@marine-pdm/shared';
+import { TAG_MAP } from '@marine-pdm/ingestion';
 import { getSensorMeta } from '../services/sensor-map';
 import {
   CABLES,
@@ -76,9 +77,9 @@ describe('parts registry', () => {
   });
 
   it('uses the OEM sensor designations from the MTU sensor-overview manual', () => {
-    // MS15082/00E names the exhaust probes B4 + bank + number (B4A1..B4A10, B4B1..B4B10), NOT the
-    // flat B4.1–B4.20 that packages/ingestion/src/tag-map.ts uses. Bearings are B57.1–B57.11 and
-    // TC speeds the four B44 codes, which both sources agree on.
+    // MS15082/00E names the exhaust probes B4 + bank + number (B4A1..B4A10, B4B1..B4B10), not the
+    // flat B4.1–B4.20 an earlier reading assumed. Bearings are B57.1–B57.11, TC speeds the four
+    // B44 codes. The tag map now agrees on all three — the test below keeps it that way.
     MTU8000.CYL_NAMES.forEach((name, i) => {
       const bank = i < 10 ? 'A' : 'B';
       expect(getPart(`cyl.${name}`)?.mtuDesignation).toBe(`B4${bank}${(i % 10) + 1}`);
@@ -94,6 +95,29 @@ describe('parts registry', () => {
       'B44.11',
       'B44.12',
     ]);
+  });
+
+  it('agrees with the ingestion tag map on every designation both sources name', () => {
+    // The 3D view and the IPMS tag map are two independent readings of the same manual, and they
+    // disagreed once (flat B4.1–B4.20 vs B4A1–B4B10) for long enough to reach a handover note. Join
+    // them on the snapshot field each side declares, so a future edit to one fails against the other.
+    const byField = new Map(TAG_MAP.map(t => [t.field, t.mtuDesignation]));
+    const cases: Array<[string, string]> = [
+      ...MTU8000.CYL_NAMES.map((name, i): [string, string] => [`cyl.${name}`, `cylTemps.${i}`]),
+      ...Array.from({ length: 11 }, (_, i): [string, string] => [
+        `bearing.${i + 1}`,
+        `bearingTemps.${i}`,
+      ]),
+      ['tc.A1', 'tcSpeeds.0'],
+      ['tc.A2', 'tcSpeeds.1'],
+      ['tc.B1', 'tcSpeeds.2'],
+      ['tc.B2', 'tcSpeeds.3'],
+    ];
+    for (const [partId, field] of cases) {
+      const fromTagMap = byField.get(field);
+      expect(fromTagMap, `tag map has no entry for ${field}`).toBeDefined();
+      expect(getPart(partId)?.mtuDesignation, `${partId} vs tag map ${field}`).toBe(fromTagMap);
+    }
   });
 
   it('gives every instance-addressable part the array index it reads from', () => {
