@@ -13,9 +13,10 @@
 //      more than twice the real 120 bar pre-alarm gap; 15% of 7 bar lube is 1.05, well past the
 //      0.8 bar gap. Each sensor has its own band and they are not proportional to magnitude.
 //
-// The tiers, the deadband and the direction logic below mirror sensorValueColor in
-// dashboard/GaugeGrid.tsx. That function still owns the gauge rendering; this owns the numeric
-// judgement. See the note at ALARM_BAND_DEV before changing either.
+// This module is now the ONLY place that judgement lives. dashboard/GaugeGrid.tsx used to carry a
+// second copy — same tiers, same deadband, same dynamic-band rule, with the per-sensor band literals
+// spelled out again at each of its twelve call sites — and it is what this module was extracted from.
+// It now calls sensorSeverity and paints the tier. Do not re-inline any of it.
 
 import { ALARM_LIMITS } from '@marine-pdm/shared';
 
@@ -49,10 +50,9 @@ const LIMIT_KEY: Record<string, string> = {
 };
 
 /**
- * Deviation from expected to the MTU pre-alarm threshold, per sensor. These are the same literals
- * GaugeGrid passes to sensorValueColor — keep the two in step until GaugeGrid is migrated onto this
- * module. `dynamic` marks the pressure sensors whose band is recomputed from the live expected
- * value, because the absolute pre-alarm floor is fixed while expected falls with load.
+ * Deviation from expected to the MTU pre-alarm threshold, per sensor — calibrated at rated load.
+ * `dynamic` marks the pressure sensors whose band is recomputed from the live expected value,
+ * because the absolute pre-alarm floor is fixed while expected falls with load.
  */
 const ALARM_BAND_DEV: Record<string, { rated: number; dynamic?: boolean }> = {
   'ME.ExhaustTemp': { rated: 20 },
@@ -167,4 +167,23 @@ export function sensorSeverity(
 /** Sensors this module can judge. Anything else scores 0 and should stay uncoloured. */
 export function hasCodedBand(sensorId: string): boolean {
   return sensorId in ALARM_BAND_DEV;
+}
+
+/** The four bands a gauge paints. Named here because the boundaries are the SEV_* constants above. */
+export type SeverityTier = 'normal' | 'warning' | 'high' | 'critical';
+
+// Severity is built by piecewise interpolation, so a reading sitting exactly ON a boundary can come
+// back a few ULPs below the constant it should equal. The tolerance is many orders of magnitude
+// finer than any real sensor step, so it only decides these exact-boundary cases.
+const TIER_EPSILON = 1e-9;
+
+/**
+ * Which band a severity falls in. The gauge and the 3D view must agree on where colour changes, so
+ * the boundaries live next to the severities that define them rather than at each render site.
+ */
+export function severityTier(severity: number): SeverityTier {
+  if (severity >= 1 - TIER_EPSILON) return 'critical';
+  if (severity >= SEV_HIGH - TIER_EPSILON) return 'high';
+  if (severity >= SEV_WARNING - TIER_EPSILON) return 'warning';
+  return 'normal';
 }

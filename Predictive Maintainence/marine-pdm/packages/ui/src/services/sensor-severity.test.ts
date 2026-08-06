@@ -5,7 +5,7 @@
 // the same sensor at the same tick.
 
 import { describe, expect, it } from 'vitest';
-import { getAlarmBand, hasCodedBand, sensorSeverity } from './sensor-severity';
+import { getAlarmBand, hasCodedBand, sensorSeverity, severityTier } from './sensor-severity';
 
 const WARNING = 1 / 3;
 const HIGH = 2 / 3;
@@ -64,6 +64,71 @@ describe('tier boundaries line up with the gauge', () => {
       expect(s).toBeGreaterThanOrEqual(prev);
       prev = s;
     }
+  });
+});
+
+describe('severityTier — the colour GaugeGrid paints', () => {
+  // GaugeGrid used to hold its own copy of the whole rule and colour by raw ratio: ≥0.50 yellow,
+  // ≥0.80 orange, ≥1.25 red. It now calls sensorSeverity and paints severityTier, so these pin that
+  // the translation is exact. A reading landing precisely ON a boundary belongs to the HIGHER tier —
+  // piecewise interpolation can leave it a few ULPs short, which is what TIER_EPSILON absorbs.
+  const tierOf = (v: number) => severityTier(sensorSeverity('ME.ExhaustTemp', v, 300));
+
+  it('paints green inside the deadband', () => {
+    expect(tierOf(300)).toBe('normal');
+    expect(tierOf(304)).toBe('normal');
+    expect(tierOf(313)).toBe('normal');
+  });
+
+  it('turns yellow exactly at half the alarm band', () => {
+    expect(tierOf(314)).toBe('warning'); // dev 14, ratio (14-4)/20 = 0.50
+    expect(tierOf(319)).toBe('warning');
+  });
+
+  it('turns orange exactly at 80% of the alarm band', () => {
+    expect(tierOf(320)).toBe('high'); // dev 20, ratio 0.80
+    expect(tierOf(328)).toBe('high');
+  });
+
+  it('turns red exactly at 125% of the alarm band', () => {
+    expect(tierOf(329)).toBe('critical'); // dev 29, ratio 1.25
+    expect(tierOf(600)).toBe('critical');
+  });
+
+  it('never skips a tier as the reading climbs', () => {
+    const order = ['normal', 'warning', 'high', 'critical'];
+    let seen = 0;
+    for (let v = 300; v <= 340; v += 0.25) {
+      const i = order.indexOf(severityTier(sensorSeverity('ME.ExhaustTemp', v, 300)));
+      expect(i, `at ${v}`).toBeGreaterThanOrEqual(seen);
+      expect(i - seen, `jumped a tier at ${v}`).toBeLessThanOrEqual(1);
+      seen = i;
+    }
+    expect(seen).toBe(3);
+  });
+});
+
+describe('the pressure band tracks load', () => {
+  // GaugeGrid's dynamicPressBand computed this at its call sites and is now deleted, so the rule
+  // survives only here: the rated band is calibrated at 100% load, but the pre-alarm floor is
+  // absolute, so at high load the real gap from expected down to it is wider than the rated band.
+  it('widens the band to the true gap when the engine is loaded', () => {
+    // expected 7.0, preAlarmLow 5.5 → gap 1.5, well over the 0.8 rated band. Deadband is 20% of
+    // 1.5 = 0.3, so a 1.0 bar drop scores (1.0-0.3)/1.5 = 0.47 — under the warning tier.
+    expect(severityTier(sensorSeverity('ME.LubeOilPressure', 6.0, 7.0))).toBe('normal');
+    // Against the narrower rated band the same drop would be (1.0-0.16)/0.8 = 1.05 → orange.
+    expect(sensorSeverity('ME.LubeOilPressure', 6.0, 7.0)).toBeLessThan(HIGH);
+  });
+
+  it('falls back to the rated band at low load, where the gap has closed', () => {
+    // FO pressure: rated band 1.5, preAlarmLow 5.5. At expected 5.9 the gap is 0.4 — under 35% of
+    // the rated band — so the rated band applies and a 0.39 bar drop is nothing: (0.39-0.30)/1.5.
+    // Had the collapsed gap been used as the band it would score (0.39-0.08)/0.4 = 0.78, i.e. orange
+    // on a sensor sitting a fifth of a bar off its own baseline. That is the failure mode the 35%
+    // floor exists to prevent, so this asserts the tier, not just the number.
+    const s = sensorSeverity('ME.FuelOilPressure', 5.51, 5.9);
+    expect(s).toBeGreaterThan(0);
+    expect(severityTier(s)).toBe('normal');
   });
 });
 
