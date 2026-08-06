@@ -69,9 +69,12 @@ Each of these was a wrong guess the drawings overturned. Do not re-introduce the
    An earlier guess of 1.40 × bore = 371 mm was 27% short and moved every position.
 2. **The turbochargers are at the DRIVING end**, with cylinder 1 and bearing 1 — not the free end.
    The free end is the gear train: camshaft speed, HP fuel pumps, coolant and raw-water pumps.
-3. **Exhaust probes are `B4A1`–`B4A10` / `B4B1`–`B4B10`**, not flat `B4.1`–`B4.20`.
-   ⚠ `packages/ingestion/src/tag-map.ts` **still generates the flat form.** The two disagree and one
-   is wrong. Left alone deliberately — it may match what the IPMS actually publishes. Unresolved.
+3. **Exhaust probes: both `B4A1`–`B4B10` and flat `B4.1`–`B4.20` appear in the OEM set.** The
+   sensor-location deck labels each physical probe by bank; the alarm/limit list (ZNG00028788) writes
+   the range flat. We follow the location deck everywhere, including `tag-map.ts`, which used to
+   disagree. This is safe regardless of which form a vessel's IPMS uses, because `mtuDesignation` is a
+   **label with no consumer** — subscription goes through `nodeId`. `topology.test.ts` joins the two
+   registries on the snapshot field so they cannot drift apart again.
 4. **There are no per-bank junction boxes.** One terminal box, CB-X11. All 20 exhaust probes land on
    EMU 2-I connector X5.1.
 5. **LO filter ΔP is across B5.1/B5.5**; B5.3/B5.4 are the last-bearing tappings.
@@ -88,8 +91,10 @@ Each of these was a wrong guess the drawings overturned. Do not re-introduce the
 - Turbochargers read `snapshot.tcSpeeds[i]`; the dashboard derives from `tcRPM × (4/activeCount)`.
   Fixed by extracting `services/turbo-state.ts`.
 
-⚠ **`GaugeGrid.tsx` still holds its own copy of the severity function.** The band table is
-single-sourced; the function body is not. This is the remaining drift surface.
+`GaugeGrid.tsx` used to hold its own copy of the severity function *and* repeat every per-sensor band
+width at its twelve call sites. It now passes a `sensorId` and paints `severityTier(sensorSeverity(…))`,
+so the rule exists once. Its `dynamicPressBand` helper is gone — that logic is `bandFor` in
+`sensor-severity.ts`, and `sensor-severity.test.ts` now pins it along with the four tier boundaries.
 
 **Live data must not re-render the R3F tree.** `useLiveBridge` writes into refs; `useFrame` mutates
 materials. `setState` only on selection. R3F v8 does not forward React context into `<Canvas>` —

@@ -213,6 +213,12 @@ It compares the lagged baseline against the instant one, so an error in the curv
 and cancels — the row reports `OK`. When a label contradicts the live sensor, suspect `seed.ts`. This is
 how a 10.8 °C bearing-baseline shortfall stayed invisible until `analyticRul()` divided by it.
 
+⚠ **This is currently masking a whole-envelope error, not just one curve.** The physics is not
+calibrated to the OEM alarm limits (see [`../../OEM-CALIBRATION-GAP.md`](../../OEM-CALIBRATION-GAP.md)),
+so `analyticRul()` divides by wrong baselines against wrong limits and **every training row in
+IndexedDB is mislabelled** — silently, with `rulQuality` reporting OK. Treat `/training` exports as
+untrusted until Phase 7 of that document bumps `SCHEMA_VERSION` and the set is re-recorded.
+
 **8. Effects that alter the docs**
 Root `CLAUDE.md` makes it mandatory: a new fault, a new sensor, a changed physics coefficient, a changed
 alarm threshold or a changed algorithm weight requires updating `/help` AND `/about`. Both pages

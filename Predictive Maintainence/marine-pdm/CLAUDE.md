@@ -3,6 +3,34 @@
 
 ---
 
+## ⚠ READ FIRST — open calibration defect
+
+**[`OEM-CALIBRATION-GAP.md`](./OEM-CALIBRATION-GAP.md) — OPEN, Phases 1–8 not started.**
+
+The simulator's physics is not calibrated to the MTU 8000's own alarm envelope. On five parameters a
+*healthy* engine here sits on the wrong side of an OEM limit — three of them past a **shutdown**
+threshold (piston-cooling pressure, last-bearing pressure, LO temperature; also exhaust back pressure
+and coolant pressure). Two more limits are several times tighter than the OEM codes. Everything
+downstream inherits it: `seed.ts` baselines, the degradation weight matrix, risk scores, the analytic
+RUL labels and **every training row already in IndexedDB**.
+
+Consequences for any work you do here:
+
+- **Do not tune a threshold to make an alarm stop firing.** That is exactly how this happened — the
+  comment trail in `constants.ts` records each local fix, and together they walked the envelope away
+  from the manual. Fix the physics, or log it in that file's Progress Log.
+- **Every limit, threshold, baseline target and model coefficient must trace to a manual page**, cited
+  by drawing number in the code comment. The master limit list is MTU `ZNG00028788`
+  (`D:\ECS 8K MTU I 2024\4e_ Alarm Limit XZ56900100007.pdf`) — it is **image-only**, so text search
+  will not find it; §1.3 of the gap doc explains how to read it. A value with no citation is a guess
+  and must say so.
+- **Treat stored training data as untrusted** until Phase 7 bumps `SCHEMA_VERSION`. `rulQuality`
+  cannot detect the mislabelling — see gotcha 15.
+- Phases are dependency-ordered. Recalibrating physics while the degradation matrix is stale produces
+  finite-difference failures that mask real errors.
+
+---
+
 ## Project Identity
 
 **Marine Predictive Maintenance System** — MTU 8000 20V M71/M71L (9100 kW, 20 cylinders).
@@ -172,7 +200,7 @@ its `Section title=` and every `§n` reference that follows it — `grep -rn "§
 | 5 | `packages/simulator` | `chargeAirTemp_MTU8000` must receive constant `LT_COOLANT=36`, never `lagCoolantTemp` |
 | 6 | `packages/simulator` | `makeInitialPhysicsState()` must use rated steady-state values or false alarms at startup |
 | 7 | `packages/simulator` | Cylinder persistence threshold = 20°C (B5 natural spread is +17°C from mean) |
-| 8 | `packages/decision` | Bearing thresholds: SS=130°C / HI=115°C (hot oil at rated = 107°C — old 120/100 fired false) |
+| 8 | `packages/decision` | Bearing thresholds: SS=120°C / HI=115°C, both from MTU ZNG00028788. Hot oil at rated puts the hottest bearing at ~112°C, so HI has only 3°C of headroom by OEM design. The old 120/**100** pair fired false because of the HI, not the SS |
 | 9 | `packages/decision` | LO pressure HI check uses `lubeOilPressure` (main gallery), not `lubeLastBearingPressure` |
 | 10 | root | Parent-level `vite.config.ts` exists only for preview tool CWD workaround — canonical is `packages/ui/vite.config.ts` |
 | 11 | `packages/simulator` | `degradation-matrix.ts` is the model SPEC — its `weight`s must equal the `mtu8000-physics.ts` partials. `tests/degradation-matrix.test.ts` (finite-difference) fails on drift. See `simulator/CLAUDE.md` → Degradation Model |
@@ -180,6 +208,7 @@ its `Section title=` and every `§n` reference that follows it — `grep -rn "§
 | 13 | `packages/ui` | StrictMode is ON — every per-tick consumer needs a duplicate-timestamp guard, or prev-tick-state features (`*Rate`) zero out. See `ui/CLAUDE.md` gotcha 5 |
 | 14 | `packages/ui` / `packages/knowledge` | Bearing temperature is the MAX of 11, never a mean — and the `ME.BearingTemp.Mean` seed curve excludes `positionBias`, so the consumer adds `bearingMaxPositionBias` (+5°C) back. See `ui/CLAUDE.md` gotcha 6 |
 | 15 | `packages/ui` | `rulQuality` compares the lagged baseline against the instant one, so a bias in the seed CURVE cancels and reports `OK`. A label that contradicts the live sensor indicts `seed.ts`, not the flag |
+| 17 | **everywhere** | **The physics is not calibrated to the OEM alarm envelope** — healthy rated values violate five MTU limits, three of them shutdowns. Baselines, degradation weights, risk and every stored ML label inherit it. Read [`OEM-CALIBRATION-GAP.md`](./OEM-CALIBRATION-GAP.md) before changing any threshold, baseline or coefficient |
 | 16 | `packages/ui` | Importing `services/training-recorder.ts` has side effects (pagehide listeners + IndexedDB reconciliation). Read constants from `training-store.ts` / `forecast.ts` instead — both are pure |
 
 ---

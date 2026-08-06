@@ -41,7 +41,7 @@ Tests in `tests/physics.test.ts` — run with `pnpm test` from this directory.
 | F01 | Injector Degradation (Single Cyl) | One cyl +65°C max | HI T-Exhaust Cyl N | None |
 | F02 | Multi-Cyl Injector (A-Side) | All A1–A10 +55°C | HI T-Exhaust Mean | If >3 cyls |
 | F03 | Lube Oil Pressure Loss | Last bearing −3.8 bar | SS P-Oil Last Bearing | <3.2 bar |
-| F04 | Bearing Overtemperature | Bearing N +45°C | SS T-Bearing N | >130°C |
+| F04 | Bearing Overtemperature | Bearing N +45°C | SS T-Bearing N | >120°C |
 | F05 | HT Cooler Fouling | ALL 20 cyls hotter | HI T-Coolant | >100°C |
 | F06 | TC Fouling (One TC) | TC speed drops, back P rises | SD TC Speed | None |
 | F07 | Injector Spray Erratic | F01 + oscillation ±30°C (+ sub-alarm crankcase ≈+2.4 mbar) | HI T-Exhaust Cyl N (osc) | >530°C |
@@ -146,10 +146,18 @@ Natural `CYL_SPREAD + BSIDE_TEMP_BIAS` gives B5 a permanent +17°C deviation fro
 **`sfoc_MTU8000` coefficients**
 `base=180, coef=0.333` → `180 + 15×0.333 = 185 g/kWh`. These are calibrated. Do not adjust without re-running physics tests.
 
+**⚠ The rated operating point is wrong — see [`../../OEM-CALIBRATION-GAP.md`](../../OEM-CALIBRATION-GAP.md)**
+`lubeOilTemp_MTU8000` returns 98.2 °C at rated against an OEM power-reduction limit of 85; piston
+cooling and last-bearing pressures sit *below* their OEM shutdown thresholds; exhaust back pressure
+is 99.5 mbar against a 70 mbar fuel-limitation point. Phase 2 of that document recalibrates these in
+dependency order. Do not adjust one in isolation — `degradation-matrix.ts` weights are the partials of
+these functions and its finite-difference test will fail until both move together.
+
 **`bearingTemp_MTU8000` faultHeat = `bearingFault·45` (was 20)**
 The 6th param only ever receives `bearingFaults[i]` (F04) — F03 lube loss reaches bearings via
 `pressureDef`, F05 cooler fouling via `oilHeat`, never through this term. It was `·20`, so F04 at full
-severity only added +20 °C and the **SS T-Bearing >130 °C trip never fired**. Now `·45` (matches
+severity only added +20 °C and the **SS T-Bearing trip never fired** (then >130 °C, now >120 °C — the
+`·20` term missed either). Now `·45` (matches
 `FAULT_MAX_EFFECTS.F04_bearing_temp_rise` and the matrix weight). Zero at healthy (`fault=0`) so rated
 bearing temps and the physics validation targets are unchanged.
 

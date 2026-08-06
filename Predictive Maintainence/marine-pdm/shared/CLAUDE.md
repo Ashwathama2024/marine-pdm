@@ -1,6 +1,12 @@
 # Shared Package — CLAUDE.md
 > Shared types, constants, utils. No framework dependencies. See root `CLAUDE.md` for monorepo rules.
 
+> ⚠ **`constants.ts` and `mtu8000.constants.ts` are the front line of an open calibration defect** —
+> see [`../OEM-CALIBRATION-GAP.md`](../OEM-CALIBRATION-GAP.md). Several limits here were tuned to fit
+> the simulator rather than the manual, and several the simulator now violates at healthy load. Before
+> editing any threshold: cite the MTU drawing it comes from (master list is `ZNG00028788`), and never
+> loosen or tighten one merely to stop an alarm firing.
+
 ---
 
 ## Source Files
