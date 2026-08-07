@@ -180,6 +180,18 @@ increasing order of fidelity:
 Also outstanding: **off-engine cabinet positions are mine, not surveyed.** MEU 1, GCU 6, CB-X11 and
 the MCS are placed for legibility. An engine-room GA would make them real.
 
+### D. Full-screen immersive mode — **BUILT**
+`useFullscreen.ts` takes the real Fullscreen API on the page's own shell element, not a `position:
+fixed` overlay, so the sidebar and header genuinely leave the screen and Escape works without us
+binding a key. The ⤢ button is in the controls pill; it hides itself entirely when the browser cannot
+do fullscreen rather than dead-ending. **Clicking a part flies to it while immersive**, and only
+selects when windowed — an unrequested camera move is disorienting in a 40%-of-a-laptop viewport.
+
+Both spellings of the API are handled (Safari is still webkit-prefixed) and the state is driven by the
+`fullscreenchange` event rather than by the outcome of our own call, because Escape and F11 bypass us.
+`requestFullscreen` **rejects** rather than throws when refused, so it is caught — verified in the app
+by clicking the button programmatically, which has no user gesture: refused, no unhandled rejection.
+
 ### C. Stage 3 — cable fly-through — **BUILT**
 `fly-through.ts` plans the flight (pure, 17 tests), `FlyCamera.tsx` flies it, the subassembly dock and
 a ▶ FLY button on the detail panel trigger it. Routing was extracted to `cable-route.ts` so the camera

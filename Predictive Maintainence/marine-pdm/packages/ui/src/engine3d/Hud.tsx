@@ -114,6 +114,9 @@ interface ControlsProps {
   onToggleNetwork: () => void;
   showHelp: boolean;
   onToggleHelp: () => void;
+  /** Omitted when the browser will not do fullscreen — the control is hidden rather than dead. */
+  immersive?: boolean;
+  onToggleImmersive?: () => void;
 }
 
 /** Top-right: legend and the view toggles. */
@@ -124,6 +127,8 @@ export function ControlsPill({
   onToggleNetwork,
   showHelp,
   onToggleHelp,
+  immersive = false,
+  onToggleImmersive,
 }: ControlsProps) {
   return (
     <div
@@ -180,6 +185,22 @@ export function ControlsPill({
       >
         ?
       </MagButton>
+
+      {onToggleImmersive && (
+        <MagButton
+          pressed={immersive}
+          onClick={onToggleImmersive}
+          ariaLabel={immersive ? 'Exit full screen' : 'Expand to full screen'}
+          title={
+            immersive
+              ? 'Exit full screen (Esc)'
+              : 'Full screen — engine and control network only. Clicking a part flies to it.'
+          }
+          style={{ minWidth: 34, padding: '6px 10px' }}
+        >
+          {immersive ? '⤡' : '⤢'}
+        </MagButton>
+      )}
     </div>
   );
 }

@@ -17,7 +17,8 @@ import { PartDetailPanel } from '../engine3d/PartDetailPanel';
 import { ControlsPill, HelpCard, StatusPill, SubassemblyDock, Z } from '../engine3d/Hud';
 import { useLiveBridge } from '../engine3d/useLiveBridge';
 import type { FlightPlan } from '../engine3d/fly-through';
-import { GREEN } from '../engine3d/palette';
+import { BACKDROP, GREEN } from '../engine3d/palette';
+import { useFullscreen } from '../engine3d/useFullscreen';
 import { useEngine } from '../context/EngineContext';
 
 function hasWebGL(): boolean {
@@ -42,7 +43,13 @@ export function Engine3D() {
   const selectedRef = useRef<string | null>(null);
   const showFiringRef = useRef(false);
   const flyRequestRef = useRef<string | null>(null);
+  const shellRef = useRef<HTMLDivElement>(null);
   const webgl = useMemo(hasWebGL, []);
+
+  // Full screen is taken on THIS element rather than the document, so the app shell — sidebar,
+  // header, alert ticker — genuinely leaves the screen instead of being painted over.
+  const { active: immersive, supported: canGoFullscreen, toggle: toggleImmersive } =
+    useFullscreen(shellRef);
 
   // What the camera is currently flying to, for the HUD. Held as state rather than a ref because it
   // is chrome outside the canvas — the R3F tree never reads it.
@@ -63,6 +70,16 @@ export function Engine3D() {
     setSelected(id);
     flyRequestRef.current = id;
   }, []);
+
+  /**
+   * Picking a part in the scene. Full screen is the "walk the engine" mode, so a click there travels
+   * to what you picked and opens its detail; windowed it only selects, because at 40% of a laptop
+   * screen an unrequested camera move is disorienting rather than helpful.
+   */
+  const handleCanvasSelect = useCallback(
+    (id: string) => (immersive ? handleFlyTo(id) : handleSelect(id)),
+    [immersive, handleFlyTo, handleSelect],
+  );
 
   const handleMiss = useCallback(() => {
     selectedRef.current = null;
@@ -106,7 +123,18 @@ export function Engine3D() {
     : GREEN;
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
+    <div
+      ref={shellRef}
+      style={{
+        position: 'relative',
+        width: '100%',
+        height: '100%',
+        overflow: 'hidden',
+        // Fullscreen puts this element on a black backdrop of the browser's choosing; matching the
+        // scene backdrop stops a letterboxed strip appearing on non-16:9 displays.
+        background: immersive ? BACKDROP : undefined,
+      }}
+    >
       <Scene
         live={live}
         selectedRef={selectedRef}
@@ -114,7 +142,7 @@ export function Engine3D() {
         showNetwork={showNetwork}
         flyRequestRef={flyRequestRef}
         onFlyingChange={handleFlyingChange}
-        onSelect={handleSelect}
+        onSelect={handleCanvasSelect}
         onMiss={handleMiss}
       />
 
@@ -134,6 +162,8 @@ export function Engine3D() {
         onToggleNetwork={toggleNetwork}
         showHelp={showHelp}
         onToggleHelp={toggleHelp}
+        immersive={immersive}
+        onToggleImmersive={canGoFullscreen ? toggleImmersive : undefined}
       />
 
       {showHelp && !selected && <HelpCard />}
