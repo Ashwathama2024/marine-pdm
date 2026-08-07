@@ -64,22 +64,19 @@ export function Engine3D() {
     setSelected(id);
   }, []);
 
-  /** Select the part AND fly to it — what the dock and the panel's fly button both want. */
+  /**
+   * Select the part AND fly to it.
+   *
+   * Reached from exactly one place: the ▶ FLY button on the detail panel. Selecting a part must
+   * never move the camera on its own — an earlier cut flew on any canvas click while full screen and
+   * it read as the view lurching away the moment you touched anything. Picking a part and travelling
+   * to it are two decisions, and the operator makes them separately.
+   */
   const handleFlyTo = useCallback((id: string) => {
     selectedRef.current = id;
     setSelected(id);
     flyRequestRef.current = id;
   }, []);
-
-  /**
-   * Picking a part in the scene. Full screen is the "walk the engine" mode, so a click there travels
-   * to what you picked and opens its detail; windowed it only selects, because at 40% of a laptop
-   * screen an unrequested camera move is disorienting rather than helpful.
-   */
-  const handleCanvasSelect = useCallback(
-    (id: string) => (immersive ? handleFlyTo(id) : handleSelect(id)),
-    [immersive, handleFlyTo, handleSelect],
-  );
 
   const handleMiss = useCallback(() => {
     selectedRef.current = null;
@@ -142,7 +139,7 @@ export function Engine3D() {
         showNetwork={showNetwork}
         flyRequestRef={flyRequestRef}
         onFlyingChange={handleFlyingChange}
-        onSelect={handleCanvasSelect}
+        onSelect={handleSelect}
         onMiss={handleMiss}
       />
 
@@ -168,9 +165,9 @@ export function Engine3D() {
 
       {showHelp && !selected && <HelpCard />}
 
-      {/* The dock is labelled "Jump to subassembly" and now actually travels there, following the
-          harness, rather than cutting to it. */}
-      <SubassemblyDock selected={selected} onSelect={handleFlyTo} />
+      {/* Selects, does not fly — same rule as the canvas. The FLY button on the panel that opens is
+          the one and only thing that moves the camera. */}
+      <SubassemblyDock selected={selected} onSelect={handleSelect} />
 
       {selected && (
         <PartDetailPanel

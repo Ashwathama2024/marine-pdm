@@ -194,7 +194,7 @@ export function ControlsPill({
           title={
             immersive
               ? 'Exit full screen (Esc)'
-              : 'Full screen — engine and control network only. Clicking a part flies to it.'
+              : 'Full screen — engine and control network, without the app chrome'
           }
           style={{ minWidth: 34, padding: '6px 10px' }}
         >
