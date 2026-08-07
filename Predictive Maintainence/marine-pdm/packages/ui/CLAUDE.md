@@ -60,7 +60,7 @@ src/
 ├── simulator/
 │   ├── FaultInjector.tsx          # F02–F06/F08/F09 + intensity/speed + SEVERITY RAMP toggle
 │   ├── CylinderInjectorPanel.tsx  # F01/F07 per-cylinder
-│   ├── SensorFailurePanel.tsx     # 52-tag search, 5 failure modes, health badges
+│   ├── SensorFailurePanel.tsx     # tag search (list derived from ingestion TAG_MAP), 5 failure modes
 │   ├── EngineControlPanel.tsx · InterlockPanel.tsx · LopDisplay.tsx · StartAirGauge.tsx
 │   └── ValueInjectionPanel.tsx · FaultPlacard.tsx · registry.ts
 ├── management/                    # BaselineEditor (UI-only) · PatternLibraryView · SensorManager

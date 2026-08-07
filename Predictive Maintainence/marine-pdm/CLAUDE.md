@@ -51,7 +51,7 @@ marine-pdm/
 ├── packages/features/src/   # Feature extraction: EngineSnapshot → FeatureSnapshot
 ├── packages/decision/src/   # AI decision: patterns, risk, safety overrides (see decision/CLAUDE.md)
 ├── packages/knowledge/src/  # Baseline curves + sensor registry
-├── packages/ingestion/src/  # OPC-UA client + 52-tag map (see ingestion/CLAUDE.md)
+├── packages/ingestion/src/  # OPC-UA client + 62-tag map (see ingestion/CLAUDE.md)
 └── packages/ui/src/         # React frontend — Vite + Recharts (see ui/CLAUDE.md)
 ```
 

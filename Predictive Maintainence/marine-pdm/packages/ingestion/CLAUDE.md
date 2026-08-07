@@ -1,5 +1,5 @@
 # Ingestion Package — CLAUDE.md
-> OPC-UA client + 52-tag MTU 8000 → snapshot field mapping. See root `CLAUDE.md` for monorepo rules.
+> OPC-UA client + 62-tag MTU 8000 → snapshot field mapping. See root `CLAUDE.md` for monorepo rules.
 
 > ⚠ `alarmHi` / `ssLimit` on a `TagMapping` must come from MTU `ZNG00028788`, not from what the
 > simulator happens to produce — see [`../../OEM-CALIBRATION-GAP.md`](../../OEM-CALIBRATION-GAP.md).

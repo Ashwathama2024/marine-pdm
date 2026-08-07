@@ -1,5 +1,5 @@
 // packages/ingestion/src/tag-map.ts
-// MTU 8000 M71/M71L — 52-tag OPC-UA mapping for IPMS connection.
+// MTU 8000 M71/M71L — 62-tag OPC-UA mapping for IPMS connection.
 // Maps real IPMS NodeIds → MTU8000Snapshot fields.
 // PDF upgrade spec §4 and §10.1.
 //

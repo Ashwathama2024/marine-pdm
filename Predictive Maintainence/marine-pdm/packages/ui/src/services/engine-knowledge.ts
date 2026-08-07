@@ -11,7 +11,7 @@ import {
   FAULT_DEFINITIONS, DEGRADATION_MODES, ROOT_FACTORS, predictEffect,
   exhaustTemp_MTU8000, lubeOilTemp_MTU8000, lubeOilPressure_MTU8000,
   chargeAirPressure_MTU8000, chargeAirTemp_MTU8000, fuelRailPressure_MTU8000,
-  sfoc_MTU8000, tcSpeed_MTU8000, bearingTemp_MTU8000,
+  sfoc_MTU8000, tcSpeed_MTU8000, bearingTemp_MTU8000, sprayOilTemp_MTU8000,
 } from '@marine-pdm/simulator';
 import type { RootFactor } from '@marine-pdm/simulator';
 import { MTU8000, MTU8000_LIMITS } from '@marine-pdm/shared';
@@ -31,6 +31,7 @@ const sExhaust = exhaustTemp_MTU8000(L, R, 1.0, 1.0);
 const sBearing    = bearingTemp_MTU8000(L, R, sLubeT, sLube, 0, 0);
 const sBearingHot = Math.max(...Array.from({ length: 11 }, (_, i) =>
   bearingTemp_MTU8000(L, R, sLubeT, sLube, i, 0)));
+const sSprayOil = sprayOilTemp_MTU8000(L, R, sLubeT, 0, 0);
 const sCaP     = chargeAirPressure_MTU8000(R, L, 1.0);
 const sCaT     = chargeAirTemp_MTU8000(L, R, 36);
 const sRail    = fuelRailPressure_MTU8000(L, R, 0);
@@ -45,6 +46,7 @@ function sensorCatalogue(): string {
     ['Last-bearing LO pressure', `~${f(sLube * 0.55, 2)} bar`, `SS < ${MTU8000_LIMITS.lubeOil.pressure_last_bearing_min}`, 'furthest lubrication point'],
     ['Jacket cooling outlet', `${f(sCoolant)} °C`, `HI ${MTU8000_LIMITS.cooling.coolant_temp_after_engine_max} · SS ${MTU8000_LIMITS.cooling.coolant_temp_ss}`, 'HT circuit health'],
     ['Bearing temp (hottest of 11)', `${f(sBearingHot)} °C (mid-engine ${f(sBearing)})`, `HI ${MTU8000_LIMITS.lubeOil.bearing_temp_hi} · SS ${MTU8000_LIMITS.lubeOil.bearing_temp_max}`, 'friction / lube starvation'],
+    ['Spray oil temp (10, one per crank throw)', `${f(sSprayOil)} °C`, `difference HI +${MTU8000_LIMITS.sprayOil.diff_warn} · SS +${MTU8000_LIMITS.sprayOil.diff_shutdown} above the mean`, 'earliest bearing-distress signal'],
     ['Charge air pressure', `${f(sCaP, 2)} bar`, `nominal ${MTU8000_LIMITS.chargeAir.pressure_nominal_at_85pct}`, 'boost / TC output'],
     ['Charge air temp (LT-cooled)', `${f(sCaT)} °C`, `HI ${MTU8000_LIMITS.chargeAir.temp_after_intercooler_hi}`, 'intercooler (LT circuit ~36 °C)'],
     ['TC speed', `${f(sTc / 1000, 1)}k RPM`, `nominal ${MTU8000_LIMITS.turbocharger.speed_nominal_at_85pct}`, 'turbocharger health'],
@@ -93,14 +95,21 @@ function causalMatrix(): string {
 }
 
 function safetyThresholds(): string {
-  const lo = MTU8000_LIMITS.lubeOil, co = MTU8000_LIMITS.cooling, ex = MTU8000_LIMITS.exhaust, fu = MTU8000_LIMITS.fuel;
+  const lo = MTU8000_LIMITS.lubeOil, co = MTU8000_LIMITS.cooling, ex = MTU8000_LIMITS.exhaust,
+        fu = MTU8000_LIMITS.fuel, so = MTU8000_LIMITS.sprayOil;
   return [
     `- Immediate shutdown (systemRisk → 100): last-bearing LO pressure < ${lo.pressure_last_bearing_min} bar; ` +
-      `any bearing > ${lo.bearing_temp_max} °C; coolant > ${co.coolant_temp_ss} °C.`,
+      `any bearing > ${lo.bearing_temp_max} °C; coolant > ${co.coolant_temp_ss} °C; ` +
+      `spray-oil spread > +${so.diff_shutdown} °C.`,
     `- High-priority floors: mean exhaust > ${ex.mean_hi} °C; fuel rail < ${fu.rail_pressure_min} bar; ` +
-      `bearing > ${lo.bearing_temp_hi} °C.`,
-    `- Note: hot lube oil at rated drives bearings to ~107 °C naturally, so the HI band is ${lo.bearing_temp_hi} °C ` +
-      `(not 100) to avoid false alarms.`,
+      `bearing > ${lo.bearing_temp_hi} °C; spray-oil spread > +${so.diff_warn} °C.`,
+    `- Note: hot lube oil at rated drives bearings to ~107 °C naturally (~112 °C for the hottest of the 11), ` +
+      `so the HI band is ${lo.bearing_temp_hi} °C — not 100, which sat BELOW the healthy value and was the ` +
+      `real source of the false alarms once blamed on the ${lo.bearing_temp_max} °C shutdown.`,
+    `- Spray oil (B77.11–B77.20) is judged ONLY as a difference: how far the hottest of the ten channels ` +
+      `sits above their mean. MTU codes no absolute band for it. All ten rising together is not a fault; ` +
+      `one channel pulling away is, and it names the crank throw. It trips before HI T-Bearing on the same ` +
+      `fault because oil in transit heats faster than the bearing casting.`,
   ].join('\n');
 }
 

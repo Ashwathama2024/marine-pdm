@@ -146,10 +146,13 @@ The user's screenshots are the only real visual feedback. Ask for them.
 ### A. Gap analysis: documents → main model
 The 3D view consumed the manuals; **the rest of the app has not.** Known gaps found while building:
 
-- **Spray-oil temperatures `B77.1`–`B77.20`** (20 per-cylinder sensors on EMU 2-II / X5.3) are
-  **entirely unmodelled** — no `SENSOR_META`, no physics, no baseline, no fault coupling. Probably
-  the single largest addition available, and per-cylinder piston-cooling temperature is genuinely
-  diagnostic.
+- ~~**Spray-oil temperatures**~~ — **DONE.** And the note above was wrong on two counts: there are
+  **ten**, not twenty, and they are per **crank throw**, not per cylinder (a 20V shares each throw
+  between two opposing con-rods). `B77.11`–`B77.20`, ECS channels `B1`–`B10`, on the B-side crankcase
+  wall — MS15082/00E p38, drawing TD0000012616_096. The alarm is a **difference**, not a band: MTU
+  codes no absolute limit for spray oil anywhere, only T-Splash Oil Difference Lim1 +4 °C warning /
+  Lim2 +6 °C shutdown against the mean of the ten. Modelled in `mtu8000-physics.ts`, coupled to F04
+  through the two throws either side of a hot bearing, displayed by `dashboard/SprayOilPanel.tsx`.
 - Also undocumented in-app: `B24.1/B24.2` oil level, `F46.1/F46.2` leak-off fuel level, `B19`
   starting air, `S37` start interlock, `B34.1/B34.2` fuel filter ΔP, `B16.1/2/3` coolant pressures,
   `B6.3/B6.4` coolant temps, `B21` raw water, `B78` epsilon lube oil, `B3/B10.2` intake air,

@@ -4,6 +4,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { MTU8000, BSIDE_TEMP_BIAS } from '@marine-pdm/shared';
+import { TAG_MAP } from '@marine-pdm/ingestion';
 import {
   Section, SubSection, P, Code, Hi, Callout, DataTable, DiagramFrame, Bullets,
 } from '../AboutPrimitives';
@@ -128,7 +129,7 @@ export function ModuleArchitectureSection() {
           <><Code>features</Code> — turns a raw snapshot into deviation/rate/σ/imbalance features.</>,
           <><Code>decision</Code> — risk scoring, safety overrides, pattern matching. §5's worked example is sourced from here.</>,
           <><Code>knowledge</Code> — the live baseline curves that risk scoring actually uses (see §9, the dual-baseline-system limitation).</>,
-          <><Code>ingestion</Code> — the OPC-UA client + 52-tag map; the one-line swap point for a real ship (see §8).</>,
+          <><Code>ingestion</Code> — the OPC-UA client + {TAG_MAP.length}-tag map; the one-line swap point for a real ship (see §8).</>,
           <><Code>ui</Code> — everything you're reading right now. Depends on all the above; nothing depends on it.</>,
         ]} />
       </SubSection>

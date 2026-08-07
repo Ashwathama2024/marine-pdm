@@ -4,7 +4,7 @@
 // WHY THIS EXISTS. Gauges bind to ALARM_LIMITS (the UI band system) while the safety layer runs on
 // MTU8000_LIMITS (the coded ECS thresholds). Nothing connected the two, so a parameter could be fully
 // modelled in physics, enforced by applyMTU8000SafetyOverride, and still have no display anywhere.
-// Bearing temperature was exactly that: HI T-Bearing at 115 °C and an SS Emergency Stop at 130 °C,
+// Bearing temperature was exactly that: HI T-Bearing at 115 °C and an SS Emergency Stop above it,
 // with no gauge, no trend, no RUL column — an operator watching the dashboard would have seen the
 // shutdown and not the parameter that caused it.
 //

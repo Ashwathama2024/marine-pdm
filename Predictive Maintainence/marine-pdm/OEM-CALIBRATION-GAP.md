@@ -380,6 +380,9 @@ Order matters — bearing temperature depends on LO pressure and oil temperature
 | 2026-08-06 | Exhaust probe `mtuDesignation` flat → `B4A1`–`B4B10` | Location deck; both forms are OEM. Label only, no consumer |
 | 2026-08-06 | Bearing tag `alarmHi` 100 → 115, `ssLimit` 120, both sourced from `MTU8000_LIMITS` | Same stale-hardcode class as the TC tags; 100 was the pre-correction HI that fired false |
 | 2026-08-06 | **Added B77 spray-oil temperature** — 10 channels, physics, tag map, SS/HI trips, dashboard panel | T-Splash Oil Difference Lim1 4 °C / Lim2 6 °C. Differential, so unaffected by §3.1 |
+| 2026-08-06 | Swept the prose the limit changes invalidated | `/help` still printed "SS 130 °C" and "SS 100 °C"; `/about` still explained *why* the shutdown had been raised to 130. Both now read the constants |
+| 2026-08-06 | `part-risk.ts` `BEARING_RISK_SPAN_C` hardcoded 35 → derived from the SS limit | **Behavioural.** Floor 95 + span 35 saturated the 3D bearing ramp at 130, so once the shutdown moved to 120 a bearing showed as less-than-critical while the ECS was already stopping the engine |
+| 2026-08-06 | `SensorFailurePanel` tag list derived from `TAG_MAP` | It kept a hand-copied second list, so the ten new B77 channels were sensors the failure simulator could not fail |
 
 Everything in §3.1 and §3.2 remains **untouched** — it needs the phased plan, not an edit.
 

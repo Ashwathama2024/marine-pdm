@@ -4,6 +4,7 @@
 
 import React from 'react';
 import { MTU8000_ALARM_BANDS } from '@marine-pdm/decision';
+import { MTU8000_LIMITS as LIM } from '@marine-pdm/shared';
 import { DEGRADATION_MODES, FAULT_GROWTH_RATES } from '@marine-pdm/simulator';
 import {
   Section, SubSection, P, Code, Hi, Callout, DataTable, DiagramFrame, Bullets,
@@ -104,14 +105,25 @@ export function AlgorithmSection() {
           Physics-based scoring is advisory; real ECS hard limits are not. When a limit is crossed the system
           risk is forced regardless of the AI score:
         </P>
+        {/* Thresholds read from MTU8000_LIMITS rather than typed here — this table had drifted to the
+            pre-correction 130 °C bearing and 100 °C coolant values and said so with total confidence. */}
         <DataTable columns={['Condition', 'Action', 'ECS code']} rows={[
-          [<>last-bearing pressure &lt; 2.0 bar</>, <Hi color="var(--risk-critical)">risk = 100</Hi>, 'SS P-Oil Last Bearing'],
-          [<>bearing temp &gt; 130 °C</>, <Hi color="var(--risk-critical)">risk = 100</Hi>, 'SS T-Bearing N'],
-          [<>coolant &gt; 100 °C</>, <Hi color="var(--risk-critical)">risk = 100</Hi>, 'SS T-Coolant'],
-          [<>mean exhaust &gt; 460 °C</>, <>risk ≥ 80</>, 'HI T-Exhaust Mean'],
-          [<>fuel-rail &lt; 1200 bar</>, <>risk ≥ 85</>, 'SD P-Fuel Rail'],
-          [<>bearing temp &gt; 115 °C</>, <>risk ≥ 75</>, 'HI T-Bearing N'],
+          [<>last-bearing pressure &lt; {LIM.lubeOil.pressure_last_bearing_min} bar</>, <Hi color="var(--risk-critical)">risk = 100</Hi>, 'SS P-Oil Last Bearing'],
+          [<>bearing temp &gt; {LIM.lubeOil.bearing_temp_max} °C</>, <Hi color="var(--risk-critical)">risk = 100</Hi>, 'SS T-Bearing N'],
+          [<>coolant &gt; {LIM.cooling.coolant_temp_ss} °C</>, <Hi color="var(--risk-critical)">risk = 100</Hi>, 'SS T-Coolant'],
+          [<>spray-oil spread &gt; {LIM.sprayOil.diff_shutdown} °C</>, <Hi color="var(--risk-critical)">risk = 100</Hi>, 'SS T-Splash Oil Bn'],
+          [<>mean exhaust &gt; {LIM.exhaust.mean_hi} °C</>, <>risk ≥ 80</>, 'HI T-Exhaust Mean'],
+          [<>fuel-rail &lt; {LIM.fuel.rail_pressure_min} bar</>, <>risk ≥ 85</>, 'SD P-Fuel Rail'],
+          [<>spray-oil spread &gt; {LIM.sprayOil.diff_warn} °C</>, <>risk ≥ 75</>, 'HI T-Splash Oil Bn'],
+          [<>bearing temp &gt; {LIM.lubeOil.bearing_temp_hi} °C</>, <>risk ≥ 75</>, 'HI T-Bearing N'],
         ]} />
+        <P>
+          <Hi>Spray-oil spread</Hi> is not a temperature — it is how far the hottest of the ten B77
+          channels sits above their mean. MTU codes no absolute limit for spray oil at all, only this
+          difference, so a whole crankshaft running warm is not a fault here (that is what T-Oil and
+          T-Bearing are for) while <em>one</em> throw running warm is. It trips ahead of HI T-Bearing on
+          the same fault, because oil in transit heats faster than the bearing casting it came off.
+        </P>
         <P>
           Overall <Hi>status</Hi> is then banded: <Hi color="var(--risk-normal)">NORMAL</Hi> &lt; 25 ·{' '}
           <Hi color="var(--risk-warning)">WARNING</Hi> 25–49 · <Hi color="var(--risk-high)">HIGH</Hi> 50–74 ·{' '}

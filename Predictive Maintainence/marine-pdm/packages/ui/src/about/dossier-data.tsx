@@ -14,6 +14,7 @@
 import React from 'react';
 import {
   exhaustTemp_MTU8000, cylExhaustTemp_MTU8000, lubeOilPressure_MTU8000, bearingTemp_MTU8000,
+  sprayOilTemp_MTU8000,
   chargeAirPressure_MTU8000, chargeAirTemp_MTU8000, lubeOilTemp_MTU8000, fuelRailPressure_MTU8000,
   sfoc_MTU8000, crankcasePressure_MTU8000, exhaustBackPressure_MTU8000, tcSpeed_MTU8000,
   coolantPressure_MTU8000, fuelTemp_MTU8000, FAULT_DEFINITIONS, FAULT_MAX_EFFECTS,
@@ -31,6 +32,7 @@ const sLube     = lubeOilPressure_MTU8000(R, L, sLubeT, 0.15, 0);
 const sExhaust  = exhaustTemp_MTU8000(L, R, 1.0, 1.0);
 const sBearingMid  = bearingTemp_MTU8000(L, R, sLubeT, sLube, 0, 0);
 const sBearingFree = bearingTemp_MTU8000(L, R, sLubeT, sLube, 10, 0);
+const sSprayOil    = sprayOilTemp_MTU8000(L, R, sLubeT, 0, 0);
 const sCaP      = chargeAirPressure_MTU8000(R, L, 1.0);
 const sCaT      = chargeAirTemp_MTU8000(L, R, 36);
 const sFuelRail = fuelRailPressure_MTU8000(L, R, 0);
@@ -269,9 +271,13 @@ export const DOSSIER_ENTRIES: DossierEntryData[] = [
       (F04, via <Code>bearingFault</Code>). Because all three routes converge on the same reading, a rising
       bearing temperature alone is genuinely ambiguous — the evidence chain must be read alongside lube
       pressure and lube/coolant temperature to identify which of the three is actually happening. Past{' '}
-      {MTU8000_LIMITS.lubeOil.bearing_temp_max}°C the safety override forces risk to 100 immediately: this
-      threshold was deliberately raised from an earlier 120°C after real operational data showed hot oil at
-      rated load naturally drives bearings to ~{n(sBearingFree,0)}°C, which was tripping the old limit falsely.</>,
+      {MTU8000_LIMITS.lubeOil.bearing_temp_max}°C the safety override forces risk to 100 immediately — the
+      shutdown MTU codes on drawing ZNG00028788. The headroom above healthy is genuinely tight by design:
+      hot oil at rated already puts the free-end bearing near {n(sBearingFree,0)}°C, leaving the HI
+      pre-alarm at {MTU8000_LIMITS.lubeOil.bearing_temp_hi}°C only a few degrees away. An earlier revision
+      of this system read that tightness as a calibration error and pushed the shutdown up to 130°C; the
+      false alarms it was chasing actually came from a HI set at 100°C, <em>below</em> the healthy value,
+      and both are now back on the OEM numbers.</>,
     coupledParams: [
       couple('Lube Oil Temp', 'raises', 'F05 path — oil-heat term', 'lube'),
       couple('Lube Oil Pressure', 'lowers', 'F03 path — pressure-starvation term (inverse coupling)', 'lube'),
@@ -282,6 +288,47 @@ export const DOSSIER_ENTRIES: DossierEntryData[] = [
       ['SS (emergency stop)', <Hi color="var(--risk-critical)">{MTU8000_LIMITS.lubeOil.bearing_temp_max}°C</Hi>],
     ]),
     relatedFaults: ['F03', 'F04', 'F05'].map(faultChip),
+  },
+
+  // 4b — SPRAY-OIL TEMPERATURES ........................................................
+  {
+    id: 'dossier-spray-oil', sensorIds: ['sprayOilTemps[all]', 'sprayOilTemps[i]'],
+    name: 'Spray-Oil Temperatures', tag: 'B77.11–B77.20', unit: '°C',
+    definition: <>Ten sensors on the B-side crankcase wall, <em>one per crank throw</em> — a 20V shares
+      each throw between two opposing con-rods, so twenty cylinders sit on ten throws under eleven main
+      bearings. Each reads the oil thrown off its con-rod big end. The ECS knows them as channels
+      B1–B10, which is the name that appears in its messages.</>,
+    howToRead: <>Read the <em>spread</em>, never the value. This is the only parameter in the dossier
+      with no absolute alarm band anywhere in the MTU limit list: what alarms is how far the hottest
+      channel sits above the mean of the ten. All ten drifting up together is not a fault here — that is
+      what oil temperature and bearing temperature are for. One channel pulling away from its nine
+      siblings is. On the real engine each channel is statically calibrated on a healthy engine first,
+      and one that then sits outside its calibration window asks for a new sensor rather than raising an
+      alarm.</>,
+    rated: <>≈{n(sSprayOil,0)}°C, with the ten channels within about a degree of each other</>,
+    risesWhen: [
+      <>The oil supply warms, or load and speed rise — but these lift all ten together and cannot alarm</>,
+      <>A main bearing beside this throw starts running hot — F04 warms the <em>two</em> throws either
+        side of it, since throw <Code>t</Code> runs between bearings <Code>t</Code> and <Code>t+1</Code></>,
+    ],
+    fallsWhen: [<>The local distress clears; a common-mode rise never showed here in the first place</>],
+    cascadeConsequence: <>This is the <Hi color="var(--risk-warning)">earliest bearing-distress signal the
+      engine has</Hi>. Oil in transit responds faster than the bearing casting it came off, so the spread
+      crosses its warning before B57 crosses HI T-Bearing on the same fault — which is the entire reason
+      MTU fits these sensors. It is also the one measurement here that is structurally immune to
+      calibration error: because only a difference is judged, any offset common to all ten channels
+      cancels out. Past {MTU8000_LIMITS.sprayOil.diff_shutdown}°C above the mean the safety override forces
+      risk to 100 and the ECS names the offending channel, so the finding points at a specific throw rather
+      than at the crankshaft in general.</>,
+    coupledParams: [
+      couple('Bearing Temp', 'raises', 'the same F04 fault, reaching here first', 'bearings'),
+      couple('Lube Oil Temp', 'raises', 'common to all ten channels — moves the reading, not the alarm', 'lube'),
+    ],
+    alarmBand: band([
+      ['HI difference', `+${MTU8000_LIMITS.sprayOil.diff_warn}°C above the mean of the ten`],
+      ['SS difference (emergency stop)', <Hi color="var(--risk-critical)">+{MTU8000_LIMITS.sprayOil.diff_shutdown}°C above the mean</Hi>],
+    ]),
+    relatedFaults: ['F04'].map(faultChip),
   },
 
   // 5 — COOLANT / JACKET TEMPERATURE ...................................................
