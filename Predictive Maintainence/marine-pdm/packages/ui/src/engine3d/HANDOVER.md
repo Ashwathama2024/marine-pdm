@@ -202,10 +202,9 @@ the detail panel is its single trigger. Routing was extracted to `cable-route.ts
 follows the **same** polyline `Network.tsx` draws the harness along — two readings of "where does this
 cable go" would have drifted invisibly until the camera flew through the block.
 
-⚠ **It only follows a cable for 26 of the 90 parts.** The registry holds 25 cables and 20 of them are
-the exhaust harness, so the cylinder heads and the ECS units get a real run to follow and everything
-else takes a direct framing arc. Both paths are tested; the shortfall is missing survey data, not
-missing code. Populating `CABLES` upgrades those parts automatically.
+**It follows a cable for 42 of the 90 parts** (was 26). Everything else takes a direct framing arc.
+Both paths are tested. The rest is missing survey data, not missing code — see §8 for where it is and
+how to read it; populating `CABLES` upgrades those parts automatically with no change to the flight.
 
 ⚠ **Never seen move.** The Browser pane does not composite in this environment (§6), so `useFrame`
 never runs and the flight cannot be observed here — `document.hidden` is true and the canvas stays at
@@ -213,6 +212,35 @@ the 300×150 default. The planner was verified against the live registry through
 graph, and the geometry is pinned by tests, but the *motion* is unverified. Ask for a screen recording.
 
 ---
+
+## 7b. The engine harness — where the rest of `CABLES` comes from
+
+The connector drawings in `D:\ECS 8K MTU I 2024\` are the authority for sensor → unit → pin. They are
+**image-only**: no text layer worth decoding, so rasterise at ~185 dpi and read. Each is a handful of
+A3 sheets and each sheet lays out 8 runs side by side — sensor symbol at the bottom with its
+designation and range, pin letters along the connector strip at the top.
+
+| Drawing | Connector | Carries |
+|---|---|---|
+| `5695393600_a` | EMU 2-I **X5.1** | the 20 exhaust probes ✅ *done* |
+| `XZ00E50000575_3_b` | EMU 2-I **X5.2** | air before booster B1/B2, coolant after cooler |
+| `XZ00E50000106_c` | EMU 2-I **X5.3** | ✅ bearings B57.1–11, TC A1/A2 · **not yet**: B5.1/B5.4/B5.5 LO pressures, B6.2 coolant, B13.2/B13.3 speeds, B16.2, B19 starting air, B21 raw water, B24.1/B24.2 oil pan level |
+| `X00013729_L`, `XZ00E50000199_R` | EMU 2-II **X5.3** | spray oil B77.11–B77.20 (T-SPRITZÖL A6–A10, B6–B10) |
+| `XZ00E50000105_f` | ECU-4 **X2** | ✅ TC B1/B2 · **not yet**: lube oil temp, charge-air temp, fuel after filter |
+| `5695393400_b` | ECU-4 **X3** | HP pump, start interlock, starting air |
+| `5695392600_a` | ECU-4 **X4** | **the 20 injection valves** — the largest remaining block |
+
+Pin pairs read so far, for the format: `B57.1` → X5.3 NN/PP · `B57.2` → LL/MM · `B57.3` → JJ/KK ·
+`B44.1` → E/F · `B44.2` → C/D · `B4A1` → X5.1 PP/NN through `B4A8` → z/y.
+
+**Only write a terminal you have actually read.** Rows here carry `X5.3 NN/PP` where the pins were
+seen and bare `X5.3` where only the connector is known. A pin number nobody has verified is worse
+than no pin number.
+
+⚠ The two **wiring diagrams** (`BZ599001`, `BZ599002`) are a red herring for this: they *do* have a
+text layer, but it is drawing-frame furniture, and the drawings themselves are **ship** wiring —
+unit-to-vessel (LOP, CB, PIM, power), not the engine sensor harness. Their equipment-code table on
+sheet 2 is still the best reference for what `+A001`…`+X020` mean.
 
 ## 8. Immediate state
 

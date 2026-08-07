@@ -687,8 +687,55 @@ const exhaustHarness: CableDef[] = MTU8000.CYL_NAMES.map((name, i) => ({
   provenance: 'vessel' as const,
 }));
 
+/**
+ * X5.3 — the eleven crankshaft bearing PT1000s into EMU 2-I.
+ *
+ * From MTU drawing XZ00E50000106 ("SM MOTORVERKABELUNG / EMU-STECKER X5.3"), sheet 3: each bearing
+ * is a two-wire PT1000 reading −25…200 °C on a GND/TEn + IN/TEn pin pair. The first three pairs are
+ * transcribed below because they were read directly; the rest of the block continues on sheet 4 and
+ * carries the connector only. Terminals name what was actually seen — a pin number nobody has
+ * verified is worse than no pin number.
+ */
+const BEARING_PIN_PAIRS: Record<number, string> = { 1: 'NN/PP', 2: 'LL/MM', 3: 'JJ/KK' };
+
+const bearingHarness: CableDef[] = Array.from({ length: 11 }, (_, i) => {
+  const n = i + 1;
+  const pins = BEARING_PIN_PAIRS[n];
+  return {
+    cableNo: `X5.3/B57.${n}`,
+    from: { partId: `bearing.${n}`, terminal: `B57.${n}` },
+    to: { partId: 'emu2.1', terminal: pins ? `X5.3 ${pins}` : 'X5.3' },
+    kind: 'signal' as const,
+    cores: 2,
+    provenance: 'vessel' as const,
+  };
+});
+
+/**
+ * Turbocharger speed pickups.
+ *
+ * The A-side pair goes to EMU 2-I on X5.3 (XZ00E50000106 sheet 3, pins E/F and C/D); the B-side pair
+ * goes to the ECU on X2 instead, which is why they are not one loom. Worth keeping straight: the
+ * designations are B44.1/B44.2 for A and B44.11/B44.12 for B, per ZNG00028788.
+ */
+const tcSpeedHarness: CableDef[] = [
+  { id: 'tc.A1', d: 'B44.1', to: 'emu2.1', t: 'X5.3 E/F' },
+  { id: 'tc.A2', d: 'B44.2', to: 'emu2.1', t: 'X5.3 C/D' },
+  { id: 'tc.B1', d: 'B44.11', to: 'ecu4', t: 'X2' },
+  { id: 'tc.B2', d: 'B44.12', to: 'ecu4', t: 'X2' },
+].map(r => ({
+  cableNo: `${r.t.split(' ')[0]}/${r.d}`,
+  from: { partId: r.id, terminal: r.d },
+  to: { partId: r.to, terminal: r.t },
+  kind: 'signal' as const,
+  cores: 2,
+  provenance: 'vessel' as const,
+}));
+
 export const CABLES: CableDef[] = [
   ...exhaustHarness,
+  ...bearingHarness,
+  ...tcSpeedHarness,
   {
     cableNo: 'X5.3/SPRAY-OIL',
     from: { partId: 'emu2.2', terminal: 'X5.3' },

@@ -62,13 +62,15 @@ describe('choosing what to follow', () => {
   });
 
   it('records how much of the engine actually has a cable to follow', () => {
-    // Only a minority does, and that is worth stating rather than discovering. 20 of the 25 cables
-    // in the registry are the exhaust harness, so the flight follows a real run to the cylinder
-    // heads and the ECS units and takes a direct arc everywhere else. Both paths are exercised
-    // above; this is a floor, so populating more of the registry improves coverage without
-    // failing here.
+    // Not all of it, and that is worth stating rather than discovering. 42 of 90 parts now have a
+    // real run — the twenty cylinder heads on X5.1, the eleven crankshaft bearings and the A-side
+    // turbochargers on X5.3, the B-side pair on the ECU's X2, and the units themselves. Everything
+    // else still takes a direct framing arc. Both paths are exercised above.
+    //
+    // A FLOOR, not an equality: reading more of the connector sheets (EMU I X5.2, ECU-4 X3/X4 for
+    // the twenty injection valves) raises this, and that should not fail the suite.
     const followCable = PARTS.filter(p => chooseCable(p.id) !== null).length;
-    expect(followCable).toBeGreaterThanOrEqual(26);
+    expect(followCable).toBeGreaterThanOrEqual(42);
     expect(followCable).toBeLessThan(PARTS.length);
   });
 });
