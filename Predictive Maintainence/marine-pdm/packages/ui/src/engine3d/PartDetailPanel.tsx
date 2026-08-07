@@ -15,6 +15,7 @@ import { useEngine } from '../context/EngineContext';
 import { cablesTouching, getPart, partsInside, SUBASSEMBLIES } from './topology';
 import { MagButton } from './MagButton';
 import { getEcsUnit, type EcsUnitInfo } from './ecs-units';
+import { chooseCable } from './fly-through';
 import { YELLOW } from './palette';
 import type { LiveRef } from './useLiveBridge';
 import type { TCInfo } from '../services/turbo-state';
@@ -264,12 +265,17 @@ export function PartDetailPanel({
   zIndex = 30,
   onClose,
   onSelect,
+  onFlyTo,
+  flying = false,
 }: {
   partId: string;
   live: LiveRef;
   zIndex?: number;
   onClose: () => void;
   onSelect?: (id: string) => void;
+  /** Absent when the host cannot fly (no canvas), which hides the button rather than dead-ending it. */
+  onFlyTo?: (id: string) => void;
+  flying?: boolean;
 }) {
   const { snapshot, baseline, history } = useEngine();
   const [showFull, setShowFull] = useState(false);
@@ -289,6 +295,8 @@ export function PartDetailPanel({
 
   const tag = part.sensorTags[0];
   const meta = tag ? getSensorMeta(tag) : null;
+  // Named on the fly button's tooltip so the operator knows which run the camera will follow.
+  const cableTo = chooseCable(partId)?.cableNo ?? null;
 
   return (
     <>
@@ -322,6 +330,25 @@ export function PartDetailPanel({
               </div>
             )}
           </div>
+          {onFlyTo && (
+            <MagButton
+              onClick={() => onFlyTo(partId)}
+              ariaLabel={`Fly the camera to ${part.label}`}
+              title={
+                flying
+                  ? 'In flight'
+                  : `Follow ${cableTo ? `cable ${cableTo}` : 'the route'} to this part`
+              }
+              style={{
+                padding: '4px 9px',
+                fontSize: 10,
+                minHeight: 28,
+                color: flying ? 'var(--text-dim)' : GREEN,
+              }}
+            >
+              {flying ? '· · ·' : '▶ FLY'}
+            </MagButton>
+          )}
           <MagButton
             onClick={onClose}
             ariaLabel="Close part detail"

@@ -180,9 +180,21 @@ increasing order of fidelity:
 Also outstanding: **off-engine cabinet positions are mine, not surveyed.** MEU 1, GCU 6, CB-X11 and
 the MCS are placed for legibility. An engine-room GA would make them real.
 
-### C. Stage 3 — cable fly-through
-Never built. Camera tweens along a `CatmullRomCurve3` through the cable waypoints to the clicked
-subassembly. Data is all in place.
+### C. Stage 3 — cable fly-through — **BUILT**
+`fly-through.ts` plans the flight (pure, 17 tests), `FlyCamera.tsx` flies it, the subassembly dock and
+a ▶ FLY button on the detail panel trigger it. Routing was extracted to `cable-route.ts` so the camera
+follows the **same** polyline `Network.tsx` draws the harness along — two readings of "where does this
+cable go" would have drifted invisibly until the camera flew through the block.
+
+⚠ **It only follows a cable for 26 of the 90 parts.** The registry holds 25 cables and 20 of them are
+the exhaust harness, so the cylinder heads and the ECS units get a real run to follow and everything
+else takes a direct framing arc. Both paths are tested; the shortfall is missing survey data, not
+missing code. Populating `CABLES` upgrades those parts automatically.
+
+⚠ **Never seen move.** The Browser pane does not composite in this environment (§6), so `useFrame`
+never runs and the flight cannot be observed here — `document.hidden` is true and the canvas stays at
+the 300×150 default. The planner was verified against the live registry through the page's own module
+graph, and the geometry is pinned by tests, but the *motion* is unverified. Ask for a screen recording.
 
 ---
 

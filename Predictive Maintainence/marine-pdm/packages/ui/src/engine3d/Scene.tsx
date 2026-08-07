@@ -10,6 +10,8 @@ import { Grid, OrbitControls } from '@react-three/drei';
 import { Bloom, EffectComposer } from '@react-three/postprocessing';
 import { PartsLayer } from './Parts';
 import { NetworkLayer } from './Network';
+import { FlyCamera, type FlyRequestRef } from './FlyCamera';
+import type { FlightPlan } from './fly-through';
 import { ENGINE_CENTRE, ORBIT_RADIUS } from './engine-layout';
 import { BACKDROP } from './palette';
 import type { LiveRef } from './useLiveBridge';
@@ -20,6 +22,9 @@ interface SceneProps {
   showFiringRef: React.MutableRefObject<boolean>;
   /** Prop rather than a ref: mounting the layer is a structural change, not a per-frame one. */
   showNetwork: boolean;
+  /** Set `.current` to a partId to fly there. A ref for the same reason the others are. */
+  flyRequestRef: FlyRequestRef;
+  onFlyingChange?: (plan: FlightPlan | null) => void;
   onSelect: (id: string) => void;
   onMiss: () => void;
 }
@@ -29,6 +34,8 @@ export const Scene = React.memo(function Scene({
   selectedRef,
   showFiringRef,
   showNetwork,
+  flyRequestRef,
+  onFlyingChange,
   onSelect,
   onMiss,
 }: SceneProps) {
@@ -56,6 +63,8 @@ export const Scene = React.memo(function Scene({
 
       {showNetwork && <NetworkLayer />}
 
+      <FlyCamera requestRef={flyRequestRef} onFlyingChange={onFlyingChange} />
+
       {/* A floor grid is the cheapest way to make rotation legible; kept far below bloom threshold. */}
       <Grid
         position={[ENGINE_CENTRE[0], -0.95, 0]}
@@ -70,7 +79,10 @@ export const Scene = React.memo(function Scene({
         fadeStrength={1.2}
       />
 
+      {/* makeDefault publishes the controls on R3F state, which is how FlyCamera reaches the orbit
+          target without either component holding a ref to the other. */}
       <OrbitControls
+        makeDefault
         target={ENGINE_CENTRE}
         enableDamping
         dampingFactor={0.08}

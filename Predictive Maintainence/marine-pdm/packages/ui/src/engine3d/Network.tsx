@@ -12,18 +12,11 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { BUSES, BUS_X0, BUS_X1, BUS_Z, ECS_NODES } from './ecs-network';
 import { CABLES, getPart } from './topology';
+import { cableRoute } from './cable-route';
 import { YELLOW } from './palette';
 import { useReducedMotion } from './useReducedMotion';
 
 const DROP_OPACITY = 0.55;
-
-/**
- * Height of the harness spine above the crank axis. Looms leave a sensor, rise to this height, run
- * along the engine to their unit and drop in — which is how a real harness is routed and, more
- * practically, keeps the tubes outside the block instead of buried in it. The first cut ran every
- * cable straight from centre to centre through the casting, which is why nothing was visible.
- */
-const SPINE_Y = 1.78;
 
 /** Travelling-pulse material — one uniform, shared by every run of a given colour. */
 function makeFlowMaterial(color: string, repeat: number, base = 0.5) {
@@ -104,23 +97,12 @@ export function NetworkLayer({ live }: { live?: unknown }) {
 
     // Physical harness runs from the cable registry, routed up over the engine rather than through
     // it: sensor -> rise to the spine -> run along the engine -> drop into the unit.
+    // Routing lives in cable-route.ts because the fly-through camera follows the same polyline.
     const harnessParts: THREE.TubeGeometry[] = [];
     for (const c of CABLES) {
-      const a = getPart(c.from.partId);
-      const b = getPart(c.to.partId);
-      if (!a || !b) continue;
-      const from = new THREE.Vector3(...a.position);
-      const to = new THREE.Vector3(...b.position);
-      const pts = c.waypoints
-        ? [from, ...c.waypoints.map(w => new THREE.Vector3(...w)), to]
-        : [
-            from,
-            // Rise clear of the part, pulled slightly inboard so the two banks' looms converge.
-            new THREE.Vector3(from.x, SPINE_Y, from.z * 0.45),
-            // Run along the spine to above the destination.
-            new THREE.Vector3(to.x, SPINE_Y, to.z * 0.9),
-            to,
-          ];
+      const route = cableRoute(c);
+      if (!route) continue;
+      const pts = route.map(p => new THREE.Vector3(...p));
       harnessParts.push(tube(pts, c.kind === 'can' ? 0.024 : 0.015));
     }
 

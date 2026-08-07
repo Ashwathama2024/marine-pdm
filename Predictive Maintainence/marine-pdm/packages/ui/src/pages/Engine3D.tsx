@@ -16,6 +16,7 @@ import { Scene } from '../engine3d/Scene';
 import { PartDetailPanel } from '../engine3d/PartDetailPanel';
 import { ControlsPill, HelpCard, StatusPill, SubassemblyDock, Z } from '../engine3d/Hud';
 import { useLiveBridge } from '../engine3d/useLiveBridge';
+import type { FlightPlan } from '../engine3d/fly-through';
 import { GREEN } from '../engine3d/palette';
 import { useEngine } from '../context/EngineContext';
 
@@ -40,11 +41,27 @@ export function Engine3D() {
   const [showHelp, setShowHelp] = useState(false);
   const selectedRef = useRef<string | null>(null);
   const showFiringRef = useRef(false);
+  const flyRequestRef = useRef<string | null>(null);
   const webgl = useMemo(hasWebGL, []);
+
+  // What the camera is currently flying to, for the HUD. Held as state rather than a ref because it
+  // is chrome outside the canvas — the R3F tree never reads it.
+  const [flyingTo, setFlyingTo] = useState<string | null>(null);
+  const handleFlyingChange = useCallback(
+    (plan: FlightPlan | null) => setFlyingTo(plan ? plan.targetPartId : null),
+    [],
+  );
 
   const handleSelect = useCallback((id: string) => {
     selectedRef.current = id;
     setSelected(id);
+  }, []);
+
+  /** Select the part AND fly to it — what the dock and the panel's fly button both want. */
+  const handleFlyTo = useCallback((id: string) => {
+    selectedRef.current = id;
+    setSelected(id);
+    flyRequestRef.current = id;
   }, []);
 
   const handleMiss = useCallback(() => {
@@ -95,6 +112,8 @@ export function Engine3D() {
         selectedRef={selectedRef}
         showFiringRef={showFiringRef}
         showNetwork={showNetwork}
+        flyRequestRef={flyRequestRef}
+        onFlyingChange={handleFlyingChange}
         onSelect={handleSelect}
         onMiss={handleMiss}
       />
@@ -119,7 +138,9 @@ export function Engine3D() {
 
       {showHelp && !selected && <HelpCard />}
 
-      <SubassemblyDock selected={selected} onSelect={handleSelect} />
+      {/* The dock is labelled "Jump to subassembly" and now actually travels there, following the
+          harness, rather than cutting to it. */}
+      <SubassemblyDock selected={selected} onSelect={handleFlyTo} />
 
       {selected && (
         <PartDetailPanel
@@ -128,6 +149,8 @@ export function Engine3D() {
           zIndex={Z.panel}
           onClose={handleMiss}
           onSelect={handleSelect}
+          onFlyTo={handleFlyTo}
+          flying={flyingTo === selected}
         />
       )}
     </div>
