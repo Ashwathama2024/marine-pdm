@@ -650,7 +650,12 @@ const ancillaries: PartDef[] = [
     subassembly: 'harness',
     note: 'Control room. RS422 serial on PIM 5, parallel instruments and push buttons on PIM 3',
     kind: 'box',
-    position: [3.3, deckSeatY(0.72), -2.05],
+    // On its own line further out, not in the engine-room row: this is the customer's control-room
+    // cabinet, and ECS_NODES already says so with location 'controlRoom'. It also has to be off that
+    // row for a plainer reason — seated on the deck at z=-2.05 it occupied the same space as CB-X11,
+    // which only went unnoticed while the two were separated vertically by floating at different
+    // heights.
+    position: [3.3, deckSeatY(0.72), -3.1],
     size: [0.5, 0.72, 0.36],
     sensorTags: [],
     detail: 'cabinet',

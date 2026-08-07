@@ -35,6 +35,32 @@ describe('everything is supported by something', () => {
     }
   });
 
+  it('does not let two units occupy the same space', () => {
+    // CB-X11 and the customer MCS did exactly this the moment both were seated on the deck. It had
+    // been invisible only because they floated at different heights — 0.55 and 3.5 — so the clash was
+    // there all along, hidden by one of them being in the wrong place vertically.
+    const box = (partId: string) => {
+      const p = getPart(partId)!;
+      return [0, 1, 2].map(i => [
+        p.position[i]! - p.size[i]! / 2,
+        p.position[i]! + p.size[i]! / 2,
+      ] as const);
+    };
+    const overlaps = (a: string, b: string) => {
+      const [ba, bb] = [box(a), box(b)];
+      return [0, 1, 2].every(i => ba[i]![0] < bb[i]![1] - 1e-9 && bb[i]![0] < ba[i]![1] - 1e-9);
+    };
+
+    const clashes: string[] = [];
+    for (let i = 0; i < ECS_NODES.length; i++) {
+      for (let j = i + 1; j < ECS_NODES.length; j++) {
+        const [a, b] = [ECS_NODES[i]!.partId, ECS_NODES[j]!.partId];
+        if (overlaps(a, b)) clashes.push(`${a} ∩ ${b}`);
+      }
+    }
+    expect(clashes).toEqual([]);
+  });
+
   it('runs the bus rails above the cabinets they serve, not over the engine', () => {
     const tallestCabinetTop = Math.max(
       ...ECS_NODES.filter(n => n.location !== 'engine')
