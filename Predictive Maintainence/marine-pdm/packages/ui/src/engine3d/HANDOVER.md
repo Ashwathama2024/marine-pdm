@@ -213,6 +213,22 @@ graph, and the geometry is pinned by tests, but the *motion* is unverified. Ask 
 
 ---
 
+## 7a. Harness routing — do not go back to a spine
+
+Cables run as an **orthogonal tray route**: out of the part sideways, down the outside of the block to
+a duct at `DUCT_Z = ±0.98` / `DUCT_Y = 0.72`, along the duct, then back in to the unit. Every segment
+is axis-aligned, which is what structurally guarantees a run cannot cut a corner through the casting.
+`cable-route.test.ts` asserts that on every cable.
+
+The first version rose to a spine *above* the engine and took one straight segment to above the
+destination. Sensor and unit are usually on opposite sides, so that segment was a diagonal through the
+block — in plan view the whole harness fanned out of the EMU across the casting. It took a screenshot
+from the user to catch it; nothing in the tests or the DOM could show it.
+
+The duct sits **below** the cylinder heads (~0.96) on purpose: a tray over the top dominates the
+engine's silhouette and is not where the real ducting goes. `lane` spreads cables across the duct so a
+bundle reads as a bundle rather than thirty tubes z-fighting on one centreline.
+
 ## 7b. The engine harness — where the rest of `CABLES` comes from
 
 The connector drawings in `D:\ECS 8K MTU I 2024\` are the authority for sensor → unit → pin. They are

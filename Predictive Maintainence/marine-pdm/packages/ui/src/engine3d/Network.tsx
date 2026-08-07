@@ -98,12 +98,24 @@ export function NetworkLayer({ live }: { live?: unknown }) {
     // Physical harness runs from the cable registry, routed up over the engine rather than through
     // it: sensor -> rise to the spine -> run along the engine -> drop into the unit.
     // Routing lives in cable-route.ts because the fly-through camera follows the same polyline.
+    //
+    // `lane` spreads cables across the duct instead of stacking them on one centreline. Counted per
+    // side, so each duct fills from its own wall rather than leaving a gap where the other side's
+    // cables would have been.
     const harnessParts: THREE.TubeGeometry[] = [];
+    const laneCount = new Map<number, number>();
     for (const c of CABLES) {
-      const route = cableRoute(c);
+      const a = getPart(c.from.partId);
+      const b = getPart(c.to.partId);
+      if (!a || !b) continue;
+      const side = Math.sign(Math.abs(a.position[2]) > 0.05 ? a.position[2] : b.position[2]) || 1;
+      const lane = laneCount.get(side) ?? 0;
+      laneCount.set(side, lane + 1);
+
+      const route = cableRoute(c, lane);
       if (!route) continue;
       const pts = route.map(p => new THREE.Vector3(...p));
-      harnessParts.push(tube(pts, c.kind === 'can' ? 0.024 : 0.015));
+      harnessParts.push(tube(pts, c.kind === 'can' ? 0.02 : 0.011));
     }
 
     return { railGeos: rails, dropGeos: drops, harnessGeo: harnessParts };
