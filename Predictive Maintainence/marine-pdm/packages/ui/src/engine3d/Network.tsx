@@ -81,11 +81,14 @@ export function NetworkLayer({ live }: { live?: unknown }) {
         if (!bus) continue;
         // Small x offset so the two taps do not overlap on the same unit.
         const x = px + (busId === 'fb1' ? -0.06 : 0.06);
+        // Orthogonal, for the same reason the harness is: the middle point used to be the midpoint
+        // of rail and unit, making one long diagonal that cut across whatever lay between them.
+        // Along the tray to the unit's plane, then straight in.
         drops.push({
           geo: tube(
             [
               new THREE.Vector3(x, bus.y, BUS_Z),
-              new THREE.Vector3(x, (bus.y + py) / 2, (BUS_Z + pz) / 2),
+              new THREE.Vector3(x, bus.y, pz),
               new THREE.Vector3(x, py, pz),
             ],
             0.011,

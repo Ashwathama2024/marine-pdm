@@ -35,6 +35,7 @@ import {
   headTransform,
   manifoldTransform,
   tcTransform,
+  deckSeatY,
   type Vec3,
 } from './engine-layout';
 import type { UnitDetail } from './unit-models';
@@ -595,7 +596,7 @@ const ancillaries: PartDef[] = [
     subassembly: 'harness',
     note: 'Emergency air-shutoff flaps (SSK), EMU 2-I and 2-II, LPU, PPC, engine-room sensors',
     kind: 'box',
-    position: [3.6, 0.55, -2.05],
+    position: [3.6, deckSeatY(0.3), -2.05],
     size: [0.62, 0.3, 0.4],
     sensorTags: [],
     detail: 'terminal',
@@ -607,9 +608,10 @@ const ancillaries: PartDef[] = [
     subassembly: 'harness',
     note: 'Nodes 4 (Display 13) and 5 (MPU-29). Engine-room local monitoring and control',
     kind: 'box',
-    // Above the ECU/EMU row and stood off past the free end, so the panel reads as engine-room
-    // equipment rather than something bolted to the engine.
-    position: [7.6, 2.3, -1.2],
+    // Past the free end and on the engine-room line with the other cabinets, standing on the deck —
+    // which is what makes it read as engine-room equipment rather than something bolted to the
+    // engine. It used to be at y=2.3, level with the top of the block and supported by nothing.
+    position: [7.6, deckSeatY(0.6), -2.05],
     size: [0.5, 0.6, 0.34],
     sensorTags: [],
     nodeNo: 4,
@@ -622,7 +624,7 @@ const ancillaries: PartDef[] = [
     subassembly: 'harness',
     note: 'Node 6 (SAM). Redundant gearbox signals and plant I/O',
     kind: 'box',
-    position: [-0.4, 0.85, -2.05],
+    position: [-0.4, deckSeatY(0.42), -2.05],
     size: [0.5, 0.42, 0.34],
     sensorTags: [],
     nodeNo: 6,
@@ -635,7 +637,7 @@ const ancillaries: PartDef[] = [
     subassembly: 'harness',
     note: 'Node 7 (MPU-29). Gearbox state and actuators; trips alarms or an engine stop',
     kind: 'box',
-    position: [5.5, 0.6, -2.05],
+    position: [5.5, deckSeatY(0.55), -2.05],
     size: [0.5, 0.55, 0.36],
     sensorTags: [],
     nodeNo: 7,
@@ -648,7 +650,7 @@ const ancillaries: PartDef[] = [
     subassembly: 'harness',
     note: 'Control room. RS422 serial on PIM 5, parallel instruments and push buttons on PIM 3',
     kind: 'box',
-    position: [3.3, 3.5, -2.05],
+    position: [3.3, deckSeatY(0.72), -2.05],
     size: [0.5, 0.72, 0.36],
     sensorTags: [],
     detail: 'cabinet',

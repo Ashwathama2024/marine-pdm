@@ -28,9 +28,14 @@ export const BUS_X0 = -0.9;
 /** Runs past the free end far enough to reach the LOP, which stands off beyond the engine. */
 export const BUS_X1 = 7.9;
 
+/**
+ * Rail heights. Just above the tallest engine-room cabinet, which is where a bus tray actually runs —
+ * these were at 2.62 and 2.82, sailing over the top of the engine with the cabinets hanging off them
+ * in mid-air. A CAN trunk is cable in a tray at working height, not a catenary.
+ */
 export const BUSES: Bus[] = [
-  { id: 'fb1', label: 'Field-BUS 1', color: '#EF4444', y: 2.62 },
-  { id: 'fb2', label: 'Field-BUS 2', color: '#CBD5E1', y: 2.82 },
+  { id: 'fb1', label: 'Field-BUS 1', color: '#EF4444', y: 0.20 },
+  { id: 'fb2', label: 'Field-BUS 2', color: '#CBD5E1', y: 0.36 },
 ];
 
 export interface EcsNode {

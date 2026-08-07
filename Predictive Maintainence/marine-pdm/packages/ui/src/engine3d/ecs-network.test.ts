@@ -7,6 +7,46 @@ import { describe, expect, it } from 'vitest';
 import { BUSES, BUS_X0, BUS_X1, ECS_NODES, KNOWN_NODE_NUMBERS, nodeFor } from './ecs-network';
 import { PARTS, getPart, isNetworkPart } from './topology';
 import { ECS_UNITS, getEcsUnit } from './ecs-units';
+import { DECK_Y } from './engine-layout';
+
+describe('everything is supported by something', () => {
+  // Every off-engine unit used to hang in mid-air — the LOP at y=2.3 and the customer MCS at 3.5,
+  // level with or above the top of the block, with the bus rails sailing over the engine at 2.6 and
+  // the cabinets dangling off them. It reads as debris rather than an engine room, and no test or
+  // DOM check could see it; it took a screenshot.
+
+  const seatedOn = (partId: string) => {
+    const p = getPart(partId)!;
+    return p.position[1] - p.size[1] / 2;
+  };
+
+  it('stands every engine-room and control-room cabinet on the deck', () => {
+    const floating = ECS_NODES
+      .filter(n => n.location !== 'engine')
+      .filter(n => Math.abs(seatedOn(n.partId) - DECK_Y) > 1e-6)
+      .map(n => `${n.partId} base ${seatedOn(n.partId).toFixed(2)}`);
+    expect(floating).toEqual([]);
+  });
+
+  it('keeps the engine-mounted units on the engine, not on the deck', () => {
+    // The converse matters too: seating an EMU on the floor would be just as wrong.
+    for (const n of ECS_NODES.filter(x => x.location === 'engine')) {
+      expect(seatedOn(n.partId), n.partId).toBeGreaterThan(DECK_Y + 1);
+    }
+  });
+
+  it('runs the bus rails above the cabinets they serve, not over the engine', () => {
+    const tallestCabinetTop = Math.max(
+      ...ECS_NODES.filter(n => n.location !== 'engine')
+        .map(n => { const p = getPart(n.partId)!; return p.position[1] + p.size[1] / 2; }),
+    );
+    for (const bus of BUSES) {
+      expect(bus.y, bus.label).toBeGreaterThan(tallestCabinetTop);
+      // Comfortably below the top of the block (~2.5) — a CAN trunk is a tray, not a catenary.
+      expect(bus.y, bus.label).toBeLessThan(1.0);
+    }
+  });
+});
 
 describe('node list', () => {
   it('matches the documented node numbers', () => {

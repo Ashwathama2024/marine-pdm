@@ -68,6 +68,19 @@ export const LAST_CYL_X = CYL_1_X + (PER_BANK - 1) * BORE_SPACING; // 5.865
 // ESTIMATE, from the left-side view: deep marine sump below the crank, heads and V-valley above it,
 // turbocharger and exhaust stack on top at the driving end.
 export const PAN_BOTTOM_Y = -1.0;
+
+/**
+ * The engine-room deck — where the floor grid is drawn, and what anything standing in the room rests
+ * on. Off-engine cabinets are seated with `deckSeatY` rather than given a hand-picked height: every
+ * one of them used to float, the LOP at y=2.3 and the MCS at 3.5, hanging in the air above the
+ * engine with nothing under them.
+ */
+export const DECK_Y = -0.95;
+
+/** Centre height for a box of `height` standing on the deck. */
+export function deckSeatY(height: number): number {
+  return DECK_Y + height / 2;
+}
 export const HEAD_RISE = 1.05; // head centre, along the bank axis
 export const TC_TOP_Y = 2.12;
 
