@@ -3,9 +3,9 @@
 // and that no part is wired to a tag that cannot actually drive it.
 
 import { describe, expect, it } from 'vitest';
-import { MTU8000 } from '@marine-pdm/shared';
+import { MTU8000, MTU8000_LIMITS } from '@marine-pdm/shared';
 import { SENSOR_META } from '../services/sensor-map';
-import { partRisk } from './part-risk';
+import { partRisk, BEARING_RISK_FLOOR_C } from './part-risk';
 import { PARTS, getPart } from './topology';
 import type { LiveValues } from './useLiveBridge';
 
@@ -61,14 +61,22 @@ describe('instance-addressable parts read their own element', () => {
   });
 
   it('scales a bearing across its own alarm band, not the engine mean', () => {
+    // Full red lands ON the SS shutdown, wherever that limit sits — the span is derived from it
+    // rather than typed, after a hardcoded 35 left the ramp saturating at the old 130 °C shutdown
+    // and showing a bearing as less than fully critical while the ECS was already stopping.
+    const ss = MTU8000_LIMITS.lubeOil.bearing_temp_max;
     const temps = new Array(11).fill(90);
-    temps[6] = 130; // bearing 7 at the SS limit
+    temps[6] = ss;
     const v = live({ bearingTemps: temps });
 
     expect(partRisk(getPart('bearing.7')!, v)).toBe(1);
     expect(partRisk(getPart('bearing.6')!, v)).toBe(0); // 90 °C is below the 95 °C floor
-    temps[6] = 112.5;
+
+    temps[6] = (BEARING_RISK_FLOOR_C + ss) / 2;         // halfway up the band
     expect(partRisk(getPart('bearing.7')!, live({ bearingTemps: temps }))).toBeCloseTo(0.5, 6);
+
+    temps[6] = MTU8000_LIMITS.lubeOil.bearing_temp_hi;  // the HI pre-alarm is already deep in the red
+    expect(partRisk(getPart('bearing.7')!, live({ bearingTemps: temps }))).toBeGreaterThan(0.75);
   });
 
   it('gives each turbocharger its own reading', () => {

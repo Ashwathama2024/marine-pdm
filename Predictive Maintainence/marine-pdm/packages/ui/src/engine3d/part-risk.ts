@@ -4,6 +4,7 @@
 // whether a given cylinder, bearing or ancillary looks healthy, and it is worth pinning.
 
 import { ROOT_FACTORS } from '@marine-pdm/simulator';
+import { MTU8000_LIMITS } from '@marine-pdm/shared';
 import type { PartDef } from './topology';
 import type { LiveValues, RootFactors } from './useLiveBridge';
 
@@ -31,9 +32,18 @@ export function factorRisk(componentId: string | undefined, rf: RootFactors): nu
   }
 }
 
-/** Bearing severity opens at 95 °C: HI is 115 and SS 130, but hot oil at rated already sits at 107. */
+/**
+ * Bearing severity opens at 95 °C — below HI, because hot oil at rated already puts the hottest
+ * bearing near 112 °C and the operator wants to see it climbing before the ECS says anything.
+ *
+ * The span runs from that floor to the SS shutdown, so full red lands exactly where the engine
+ * trips. It is DERIVED rather than typed: it used to be a hardcoded 35, which paired with the floor
+ * to saturate at 130 — the old shutdown. Once that limit moved to the OEM's 120 the ramp was
+ * over-running the trip by 10 °C, showing a bearing as less than fully critical while the ECS was
+ * already stopping the engine.
+ */
 export const BEARING_RISK_FLOOR_C = 95;
-export const BEARING_RISK_SPAN_C = 35;
+export const BEARING_RISK_SPAN_C = MTU8000_LIMITS.lubeOil.bearing_temp_max - BEARING_RISK_FLOOR_C;
 
 /**
  * Per-part risk, in priority order:
