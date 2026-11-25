@@ -23,6 +23,8 @@ import {
   crankcasePressure_MTU8000,
   exhaustBackPressure_MTU8000,
   tcSpeed_MTU8000,
+  LAST_BEARING_PRESSURE_RATIO,
+  PISTON_COOLING_PRESSURE_RATIO,
 } from '../src/mtu8000-physics';
 import { makeInitialPhysicsState, tickPhysics } from '../src/physics';
 import { tickFaultsMTU8000, createFaultConfig, FAULT_MAX_EFFECTS } from '../src/faults-mtu8000';
@@ -38,8 +40,12 @@ import {
 // Rated operating point (matrix weights are the partials evaluated here).
 const LOAD = 85;
 const RPM = 1150;
-const OIL = 98;              // ~rated hot-oil temp
-const P_HEALTHY = 6.44;      // ~rated gallery pressure (hot oil, nominal filter ΔP)
+// The rated operating point, recalibrated to the OEM envelope in Phase 2 of
+// OEM-CALIBRATION-GAP.md. DERIVED rather than typed, so the partials below are always evaluated
+// at whatever the physics actually produces: these were 98 °C and 6.44 bar, and the recalibration
+// moved both. A hardcoded rated point is the same class of mistake as a hardcoded limit.
+const OIL = lubeOilTemp_MTU8000(LOAD, RPM, 36, 1.0);                 // 78.3 °C
+const P_HEALTHY = lubeOilPressure_MTU8000(RPM, LOAD, OIL, 0.15, 0);  // 7.16 bar
 
 /** Secant slope of f over [x0, x0+δ] — the discrete ∂/∂x used to check a matrix weight. */
 const slope = (f: (x: number) => number, x0: number, dx: number) => (f(x0 + dx) - f(x0)) / dx;
@@ -92,9 +98,9 @@ describe('Degradation matrix ↔ physics — finite-difference (modeled weights 
     const s = slope(tc => exhaustTemp_MTU8000(LOAD, RPM, 1.0, tc), 1.0, -0.2) * -1;
     expectWeight(s, eff('F06', 'exhaustMeanTemp').weight); // 20
   });
-  it('F06 → exhaustBackPressure weight (tcFoulEffect = drop·40)', () => {
+  it('F06 → exhaustBackPressure weight (tcFoulEffect = drop·16)', () => {
     const s = slope(tc => exhaustBackPressure_MTU8000(LOAD, RPM, tc), 1.0, -0.2) * -1;
-    expectWeight(s, eff('F06', 'exhaustBackPressure').weight); // 40
+    expectWeight(s, eff('F06', 'exhaustBackPressure').weight); // 16
   });
   it('F06 → sfoc weight (tcPenalty = drop·25)', () => {
     const s = slope(tc => sfoc_MTU8000(LOAD, RPM, {}, 1.0, tc), 1.0, -0.2) * -1;
@@ -106,11 +112,11 @@ describe('Degradation matrix ↔ physics — finite-difference (modeled weights 
     const s = slope(lf => lubeOilPressure_MTU8000(RPM, LOAD, OIL, 0.15, lf), 0, 0.5);
     expectWeight(s, eff('F03', 'lubeOilPressure').weight, 0.02); // −3.8
   });
-  it('F03 → lubeLastBearingPressure weight ((gallery − filterDpTarget)·0.55)', () => {
+  it('F03 → lubeLastBearingPressure weight (gallery(filterDpTarget)·0.92)', () => {
     const lastB = (lf: number) =>
-      lubeOilPressure_MTU8000(RPM, LOAD, OIL, 0.15 + lf * 0.5, lf) * 0.55;
+      lubeOilPressure_MTU8000(RPM, LOAD, OIL, 0.15 + lf * 0.5, lf) * LAST_BEARING_PRESSURE_RATIO;
     const s = slope(lastB, 0, 0.5);
-    expectWeight(s, eff('F03', 'lubeLastBearingPressure').weight, 0.05); // −2.37
+    expectWeight(s, eff('F03', 'lubeLastBearingPressure').weight, 0.05); // −3.956
   });
   it('F03 → lubeOilPressureAfterFilter weight (gallery − filterDpTarget)', () => {
     const after = (lf: number) =>
@@ -118,10 +124,11 @@ describe('Degradation matrix ↔ physics — finite-difference (modeled weights 
     const s = slope(after, 0, 0.5);
     expectWeight(s, eff('F03', 'lubeOilPressureAfterFilter').weight, 0.02); // −4.3
   });
-  it('F03 → pistonCoolingPress weight (gallery·0.68 − lf·0.5)', () => {
-    const pc = (lf: number) => lubeOilPressure_MTU8000(RPM, LOAD, OIL, 0.15, lf) * 0.68 - lf * 0.5;
+  it('F03 → pistonCoolingPress weight (gallery·0.85 − lf·0.5)', () => {
+    const pc = (lf: number) =>
+      lubeOilPressure_MTU8000(RPM, LOAD, OIL, 0.15, lf) * PISTON_COOLING_PRESSURE_RATIO - lf * 0.5;
     const s = slope(pc, 0, 0.5);
-    expectWeight(s, eff('F03', 'pistonCoolingPress').weight, 0.02); // −3.08
+    expectWeight(s, eff('F03', 'pistonCoolingPress').weight, 0.02); // −3.73
   });
   it('F03 → bearingTemps[all] weight (via pressure starvation: pressureDef)', () => {
     // bearing rise comes from lower gallery pressure raising pressureDef, NOT from faultHeat.
@@ -270,7 +277,11 @@ describe('Time / intensity model — severityAt ramp+cap, predictEffect magnitud
     const f06 = getMode('F06')!;
     const tcSpeedDelta = tcSpeed_MTU8000(RPM, LOAD, 1 - tcDrop) - tcSpeed_MTU8000(RPM, LOAD, 1.0);
     expectWeight(predictEffect(f06, eff('F06', 'tcSpeeds[i]'), 1.0), tcSpeedDelta, 0.02);
-    expect(predictEffect(f06, eff('F06', 'exhaustBackPressure'), 1.0)).toBeCloseTo(0.4 * 40, 6); // 16 mbar
+    // Derived from the physics rather than hand-arithmetic, like the F05 deltas above — the
+    // hardcoded `0.4 * 40` here is exactly what went stale when Phase 2 rescaled the equation.
+    const backPDelta =
+      exhaustBackPressure_MTU8000(LOAD, RPM, 1 - tcDrop) - exhaustBackPressure_MTU8000(LOAD, RPM, 1.0);
+    expect(predictEffect(f06, eff('F06', 'exhaustBackPressure'), 1.0)).toBeCloseTo(backPDelta, 6); // 6.4 mbar
 
     // F01 rootMax 1.0: severity maps 1:1 onto injFault, so effect == weight at s=1.0.
     expect(predictEffect(getMode('F01')!, eff('F01', 'cylTemps[n]'), 1.0)).toBeCloseTo(65, 6);
