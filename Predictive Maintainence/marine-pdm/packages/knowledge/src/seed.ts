@@ -135,32 +135,42 @@ const PRIMARY_BASELINES: BaselineCurve[] = [
   },
   {
     sensorId: 'ME.LubeOilPressure',
-    // Accounts for pump curve, load demand, oil viscosity at operating temp, and normal filter ΔP.
-    // oilTemp ≈ 70 + (load/100)*32 + (rpm/1150)*8  →  viscDrop = max(0, (oilTemp-85)*0.018)
-    // Simplified to: loadFactor 1.13 = 0.8 (demand) + 0.33 (avg viscosity slope) + 0.15 (filter ΔP const).
-    // Validates: rated 1150/85% → ~6.4 bar (physics output with hot oil + filter).
-    equation: '3.5 + rpm / 1150 * 4.0 - load / 100 * 1.13 - 0.15',
-    coefficients: { base: 3.5, rpmFactor: 4.0, loadFactor: 1.13, filterDP: 0.15 },
+    // Mirrors lubeOilPressure_MTU8000 EXACTLY at every load/rpm, viscosity term included:
+    //   pump curve  1.15 + rpm/1150·6.85
+    //   load demand −load/100·0.8
+    //   viscosity   −max(0, (oilTemp − 78)·0.018) with oilTemp = 58 + load/100·18 + rpm/1150·5
+    //   filter ΔP   −0.15  (folded into the leading constant: 1.15 − 0.15 = 1.0)
+    // coldDrop is identically zero — lubeOilTemp_MTU8000's base is 58, which is its own threshold.
+    //
+    // The old curve folded viscosity into an averaged loadFactor of 1.13 because the term was large
+    // (the oil ran 98 °C against an 85 °C reference). With the oil recalibrated to 78.3 °C at rated
+    // the term is at most 0.054 bar, so writing it out exactly costs nothing and removes the
+    // approximation — which matters because analyticRul DIVIDES by this baseline.
+    // Rated 1150 / 85 % → 7.1646 bar. Idle 400 / 0 % → 3.383 bar.
+    equation: '1.0 + rpm / 1150 * 6.85 - load / 100 * 0.8 - max(0, (load / 100 * 18 + rpm / 1150 * 5 - 20) * 0.018)',
+    coefficients: { base: 1.15, rpmFactor: 6.85, loadFactor: 0.8, filterDP: 0.15, viscSlope: 0.018, viscRefC: 78 },
     dependsOn: ['load', 'rpm'],
     validLoadMin: 0, validLoadMax: 100,
-    source: 'MTU 8000 M71L Physics Model v3 (rated → ~6.4 bar incl. viscosity + filter ΔP)',
+    source: 'mtu8000-physics.ts lubeOilPressure_MTU8000 (rated → 7.16 bar); level set by MTU ZNG00028788 curves 1–4',
     addedDate: new Date().toISOString(), isActive: true,
   },
   {
     sensorId: 'ME.LubeOilPressure.LastBearing',
-    // The main gallery curve above, scaled by the 0.55 the physics applies at the furthest
-    // lubrication point (`targetLubeLastB = lubeOilPressure_MTU8000(...) * 0.55`). Written out rather
-    // than referenced because a BaselineDefinition is a standalone mathjs string — so if the gallery
-    // equation is retuned, this one must be retuned with it.
+    // The gallery curve above × LAST_BEARING_PRESSURE_RATIO (0.92), which is what the physics
+    // applies at the furthest lubrication point. Written out rather than referenced because a
+    // BaselineDefinition is a standalone mathjs string — retune the gallery and you must retune
+    // this with it.
     //
-    // Validates against the coded limit's own note: idle 400 RPM / 0 % load → 2.61 bar, matching the
-    // "idle 400 RPM gives ~2.67 bar" recalibration recorded on pressure_last_bearing_min (SS 2.0 bar).
-    // Rated 1150 / 85 % → 3.51 bar.
-    equation: '(3.5 + rpm / 1150 * 4.0 - load / 100 * 1.13 - 0.15) * 0.55',
-    coefficients: { base: 3.5, rpmFactor: 4.0, loadFactor: 1.13, filterDP: 0.15, lastBearingRatio: 0.55 },
+    // The ratio was 0.55, which put the healthy last bearing at 3.51 bar against ZNG00028788's
+    // 5.3 bar SHUTDOWN (curve 4) — the engine would not have been running. Curve 3 warns at 5.8 bar
+    // and curve 1 warns on piston cooling at only 5.2, so the last bearing is the HIGHER of the two
+    // takeoffs; see the ratio constants in mtu8000-physics.ts.
+    // Rated 1150 / 85 % → 6.591 bar. Idle 400 / 0 % → 3.112 bar (OEM curve 3 floor there is 2.37).
+    equation: '(1.0 + rpm / 1150 * 6.85 - load / 100 * 0.8 - max(0, (load / 100 * 18 + rpm / 1150 * 5 - 20) * 0.018)) * 0.92',
+    coefficients: { base: 1.15, rpmFactor: 6.85, loadFactor: 0.8, filterDP: 0.15, lastBearingRatio: 0.92 },
     dependsOn: ['load', 'rpm'],
     validLoadMin: 0, validLoadMax: 100,
-    source: 'MTU 8000 M71L Physics Model v3 (physics.ts targetLubeLastB = gallery × 0.55)',
+    source: 'mtu8000-physics.ts targetLubeLastB = gallery × LAST_BEARING_PRESSURE_RATIO; clears MTU ZNG00028788 curves 3/4',
     addedDate: new Date().toISOString(), isActive: true,
   },
   {
@@ -241,14 +251,17 @@ const PRIMARY_BASELINES: BaselineCurve[] = [
   },
   {
     sensorId: 'ME.PistonCoolingPress',
-    // 68% of corrected main gallery pressure (matches physics: newLagLube * 0.68).
-    // Uses same corrected LO baseline (incl. viscosity + filter ΔP) so deviation stays near zero.
-    // Validates: rated 1150/85% → ~4.35 bar (physics output with hot oil).
-    equation: '(3.5 + rpm / 1150 * 4.0 - load / 100 * 1.13 - 0.15) * 0.68',
-    coefficients: { lubeFraction: 0.68 },
+    // The gallery curve × PISTON_COOLING_PRESSURE_RATIO (0.85), matching physics.ts
+    // `newLagLube * PISTON_COOLING_PRESSURE_RATIO`. The lubeFault term the physics subtracts on top
+    // is a FAULT term and is correctly absent from a healthy baseline.
+    //
+    // Was 0.68 of a lower gallery, giving ~4.35 bar at rated — below ZNG00028788 curve 2, the
+    // 4.7 bar SHUTDOWN (MDEC 2D-27, 2 s). Rated 1150 / 85 % → 6.090 bar, against a 5.2 bar warning.
+    equation: '(1.0 + rpm / 1150 * 6.85 - load / 100 * 0.8 - max(0, (load / 100 * 18 + rpm / 1150 * 5 - 20) * 0.018)) * 0.85',
+    coefficients: { lubeFraction: 0.85 },
     dependsOn: ['load', 'rpm'],
     validLoadMin: 0, validLoadMax: 100,
-    source: 'MTU 8000 M71L Physics Model v3 (~68% of corrected LO gallery pressure, rated → ~4.35 bar)',
+    source: 'mtu8000-physics.ts targetPistonCool = gallery × PISTON_COOLING_PRESSURE_RATIO; clears MTU ZNG00028788 curves 1/2',
     addedDate: new Date().toISOString(), isActive: true,
   },
   {
@@ -265,31 +278,37 @@ const PRIMARY_BASELINES: BaselineCurve[] = [
     // Healthy (fault=0) terms of bearingTemp_MTU8000, shared across all 11 bearings — the same
     // simplification the per-cylinder baselines use in reusing one expectedExhaust for 20 cylinders.
     //
-    // NOW INCLUDES oilHeat, previously dropped. The old comment justified omitting it as "zero at a
-    // healthy rated oil temp (85°C)", but 85 is the REFERENCE in `(lubeOilTemp − 85)·0.4`, not the
-    // operating point: lubeOilTemp_MTU8000 returns 98.2 °C at rated, so oilHeat is +5.28 °C there,
-    // not 0. The curve read 91.8 °C at rated against its own source note of "~96 °C".
+    // Includes oilHeat AND pressureDef, so the curve now reproduces every healthy term of
+    // bearingTemp_MTU8000 exactly, at every operating point rather than only near rated.
     //
-    // The resulting 10.8 °C shortfall against the true hottest bearing was invisible while nothing
-    // displayed or labelled bearing temperature, and rulQuality cannot catch it either — that flag
-    // compares the LAGGED baseline against the INSTANT one, and a bias in the shared curve cancels
-    // out of both. It surfaced only once analyticRul divided by it: severityAtCross came out 0.516
-    // against an intensity cap of 0.5, so F04 at 50 % was labelled NO_CROSS ("cannot reach the
-    // band") while the sensor sat at ~125 °C, well past the 115 °C HI. Restored, it is 0.276.
+    // History worth keeping: oilHeat was once omitted on the grounds that it is "zero at a healthy
+    // rated oil temp (85 °C)" — but 85 was the REFERENCE in `(lubeOilTemp − 85)·0.4`, not the
+    // operating point, and the oil then ran 98.2 °C, so the term was +5.28 °C. The resulting
+    // 10.8 °C shortfall against the hottest bearing was invisible to rulQuality (it compares the
+    // LAGGED baseline against the INSTANT one, and a bias in the shared curve cancels out of both)
+    // and surfaced only once analyticRul divided by it: F04 at 50 % was labelled NO_CROSS while the
+    // sensor sat past the HI limit. Both references are now the rated point, so each term is zero
+    // at rated by construction and cannot drift that way again.
+    //
+    // pressureDef is now included too. It was dropped as "0.5 °C at rated, ~8 °C at idle", but with
+    // the corrected gallery it reaches ~17 °C at idle — a healthy low-speed engine genuinely does
+    // run warmer bearings on lower oil pressure, so this belongs in the HEALTHY expectation, not in
+    // the deviation. Folding it in is what lets bearing-baseline.test.ts assert an exact match
+    // instead of a tolerated residual.
     //
     // Folded algebraically so the curve stays a pure function of load/rpm:
-    //   oilHeat = (63 + load/100·32 + rpm/1150·8 − 85)·0.4 = load/100·12.8 + rpm/1150·3.2 − 8.8
-    //   base 58 − 8.8 = 49.2 ·  load 28 + 12.8 = 40.8 ·  rpm 10 + 3.2 = 13.2
+    //   oilHeat  = (58 + load/100·18 + rpm/1150·5 − 78)·0.4 = load/100·7.2 + rpm/1150·2 − 8
+    //   base 61 − 8 = 53  ·  load 28 + 7.2 = 35.2  ·  rpm 10 + 2 = 12
+    //   pressureDef = max(0, 7.15 − gallery)·4.5, gallery as in ME.LubeOilPressure above
     //
-    // pressureDef stays omitted: 0.5 °C at rated, though ~8 °C at idle where the gallery sits
-    // furthest below its 6.5 bar reference. No alarm band applies at idle, so that residual costs a
-    // small display deviation there and nothing in the RUL labels. positionBias is not in this curve
-    // either — it is per-bearing, and the consumer adds it (see BEARING_MAX_POSITION_BIAS).
-    equation: '49.2 + load / 100 * 40.8 + rpm / 1150 * 13.2',
-    coefficients: { base: 49.2, loadFactor: 40.8, rpmFactor: 13.2, rpmDivisor: 1150 },
+    // positionBias is deliberately NOT here — it is per-bearing, and whoever reduces the 11 to a
+    // max adds MTU8000_LIMITS.bearingMaxPositionBias (+5 °C) back. See ui/CLAUDE.md gotcha 6.
+    // Rated 1150 / 85 % → 94.92 °C (hottest = 99.92 with the bias). Idle 400 / 0 % → 74.12 °C.
+    equation: '53 + load / 100 * 35.2 + rpm / 1150 * 12 + max(0, 7.15 - (1.0 + rpm / 1150 * 6.85 - load / 100 * 0.8 - max(0, (load / 100 * 18 + rpm / 1150 * 5 - 20) * 0.018))) * 4.5',
+    coefficients: { base: 53, loadFactor: 35.2, rpmFactor: 12, rpmDivisor: 1150, pressureDefRefBar: 7.15, pressureDefSlope: 4.5 },
     dependsOn: ['load', 'rpm'],
     validLoadMin: 0, validLoadMax: 100,
-    source: 'MTU 8000 M71L Physics Model v3 (rated → 97.1°C incl. oilHeat; idle → 53.8°C)',
+    source: 'mtu8000-physics.ts bearingTemp_MTU8000 healthy terms (rated → 94.92°C; idle → 74.12°C); limits MTU ZNG00028788 T-Bearing',
     addedDate: new Date().toISOString(), isActive: true,
   },
   {
