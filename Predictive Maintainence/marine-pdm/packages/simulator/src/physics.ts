@@ -19,6 +19,8 @@ import {
   coolantPressure_MTU8000,
   fuelTemp_MTU8000,
   sprayOilTemp_MTU8000,
+  LAST_BEARING_PRESSURE_RATIO,
+  PISTON_COOLING_PRESSURE_RATIO,
 } from './mtu8000-physics';
 
 const BEARING_COUNT = 11;
@@ -136,17 +138,17 @@ export function makeInitialPhysicsState(rpm = 1000, load = 85): PhysicsState {
   const tcEffs     = [1.0, 1.0, 1.0, 1.0];
   const injFaults  = {};
 
-  // Lube oil temperature at rated steady state (105°C at 85%/1150)
+  // Lube oil temperature at rated steady state (78.3°C at 85%/1150 — inside T-Oil Lim1 83)
   const lubeOilT = lubeOilTemp_MTU8000(load, rpm);
 
   // Lube pressures: use hot-oil values (includes viscosity penalty + normal filter ΔP)
   // so there's no large deviation on tick 1.
-  const lubePre   = lubeOilPressure_MTU8000(rpm, load, lubeOilT, 0.15);  // ~6.4 bar at rated
+  const lubePre   = lubeOilPressure_MTU8000(rpm, load, lubeOilT, 0.15);  // ~7.16 bar at rated
   const lubePost  = Math.max(0.5, lubePre - 0.15);                        // after-filter ≈ lubePost
-  const lubeLastB = lubePre * 0.55;                                        // last bearing ~55% gallery
+  const lubeLastB = lubePre * LAST_BEARING_PRESSURE_RATIO;                // ~6.59 bar at rated
 
-  // Piston cooling at steady state: 68% of main gallery pressure
-  const pistonCool = Math.max(0.5, lubePre * 0.68);
+  // Piston cooling at steady state — the lower of the two gallery takeoffs.
+  const pistonCool = Math.max(0.5, lubePre * PISTON_COOLING_PRESSURE_RATIO);  // ~6.09 bar at rated
 
   // HT coolant (jacket water) at rated steady state — NOT the LT circuit temperature
   const coolantT = 30 + (load / 100) * 55;  // 76.75°C at 85% load
@@ -252,12 +254,16 @@ export function tickPhysics(state: PhysicsState): PhysicsState {
   const filterDpTarget = 0.15 + lubeFault * 0.5;
   const newLagLubeAfter = Math.max(0.5, newLagLube - filterDpTarget);
 
-  // Last bearing: main pressure drops as it reaches furthest lubrication point
-  const targetLubeLastB = lubeOilPressure_MTU8000(rpm, load, newLagLubeOilTemp, filterDpTarget, lubeFault) * 0.55;
+  // Last bearing (B5.3/B5.4): the far end of the same gallery, so it loses only the flow-dependent
+  // drop along it. ZNG00028788 warns HERE at a higher pressure than at piston cooling (curve 3 =
+  // 5.8 bar vs curve 1 = 5.2 at 1150 RPM), which is what fixes the order of these two ratios.
+  const targetLubeLastB = lubeOilPressure_MTU8000(rpm, load, newLagLubeOilTemp, filterDpTarget, lubeFault)
+                          * LAST_BEARING_PRESSURE_RATIO;
   const newLagLubeLastB = applyLag(state.lagLubeLastBearing, targetLubeLastB, LAG.lubeLastBearing);
 
-  // Piston cooling pressure: approximately 70% of main gallery
-  const targetPistonCool = Math.max(0.5, newLagLube * 0.68 - lubeFault * 0.5);
+  // Piston cooling (B5.2): fed through metering restrictors, so below both the gallery and the last
+  // bearing. The extra lubeFault term is the restrictor loss growing as the circuit degrades.
+  const targetPistonCool = Math.max(0.5, newLagLube * PISTON_COOLING_PRESSURE_RATIO - lubeFault * 0.5);
   const newLagPistonCool = applyLag(state.lagPistonCoolingPress, targetPistonCool, LAG.lube);
 
   // ── Bearing temperatures (11 bearings) ──

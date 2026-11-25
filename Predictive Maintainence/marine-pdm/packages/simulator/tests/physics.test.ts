@@ -5,6 +5,7 @@ import {
   cylExhaustTemp_MTU8000,
   chargeAirPressure_MTU8000,
   sfoc_MTU8000,
+  lubeOilTemp_MTU8000,
 } from '../src/mtu8000-physics';
 import {
   makeInitialPhysicsState,
@@ -14,21 +15,36 @@ import {
 import { SimulatorEngine } from '../src/engine';
 import { MTU8000 } from '@marine-pdm/shared';
 
-// MTU 8000 rated operating point from PDF §3 validation targets
+// MTU 8000 rated operating point.
+//
+// These are magnitude targets for the equations. Whether a value is SAFE is a separate question,
+// answered against the manual in tests/oem-envelope.test.ts — the two are deliberately split so
+// that nobody can satisfy a safety check by loosening a magnitude target here.
 const LOAD = 85;
 const RPM = 1150;
 
-describe('MTU 8000 Physics — validation targets (PDF §3)', () => {
+describe('MTU 8000 Physics — validation targets', () => {
   it('exhaustTemp at 85% load, 1150 RPM → 440°C ±5', () => {
     const val = exhaustTemp_MTU8000(LOAD, RPM, 1.0, 1.0);
     expect(val).toBeGreaterThanOrEqual(435);
     expect(val).toBeLessThanOrEqual(445);
   });
 
-  it('lubeOilPressure at 1150 RPM, 85% load → 6.7 bar ±0.3', () => {
-    const val = lubeOilPressure_MTU8000(RPM, LOAD, 85, 0, 0);
-    expect(val).toBeGreaterThanOrEqual(6.4);
-    expect(val).toBeLessThanOrEqual(7.0);
+  it('lubeOilPressure at the rated point → 7.16 bar ±0.15', () => {
+    // Stated at the RATED oil temperature and the nominal filter ΔP, which is how physics.ts
+    // actually calls it — the old target quoted 85 °C oil and zero ΔP, neither of which the
+    // pipeline uses. Raised from ~6.4 bar because the last-bearing and piston-cooling takeoffs
+    // have to clear OEM curves 3 and 1 (5.8 and 5.2 bar at 1150 RPM); see oem-envelope.test.ts.
+    const oilTemp = lubeOilTemp_MTU8000(LOAD, RPM);
+    const val = lubeOilPressure_MTU8000(RPM, LOAD, oilTemp, 0.15, 0);
+    expect(val).toBeGreaterThanOrEqual(7.01);
+    expect(val).toBeLessThanOrEqual(7.31);
+  });
+
+  it('lubeOilTemp at the rated point → 78.3°C, inside the 83°C T-Oil warning', () => {
+    const val = lubeOilTemp_MTU8000(LOAD, RPM);
+    expect(val).toBeGreaterThanOrEqual(77.5);
+    expect(val).toBeLessThanOrEqual(79.0);
   });
 
   it('chargeAirPressure at 1150 RPM, 85% load → 3.2 bar ±0.2', () => {
