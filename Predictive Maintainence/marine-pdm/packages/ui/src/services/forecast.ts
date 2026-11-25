@@ -8,7 +8,8 @@
 // Everything here is deterministic: the caller hands numbers to an LLM rather than asking it to
 // estimate a rate or a timeline. The math is unchanged from the original tool implementation.
 
-import { MTU8000_LIMITS } from '@marine-pdm/shared';
+import { MTU8000, MTU8000_LIMITS, resolveLimit } from '@marine-pdm/shared';
+import type { LimitValue } from '@marine-pdm/shared';
 import type { SensorHistory } from '../context/EngineContext';
 
 /** Round for LLM/JSON consumption; NaN → null so a bad value is visibly absent, not silently 0. */
@@ -40,10 +41,42 @@ export function downsample(a: number[], max: number): number[] {
 // with a real coded alarm band are forecastable — everything else stays a trend question.
 const L = MTU8000_LIMITS;
 
+/**
+ * A band as authored. `hi`/`ss`/`lo` may be RPM curves — several of the MTU limits these point at
+ * are tabulated against engine speed on ZNG00028788 sheet 2, not fixed numbers.
+ */
 export type ForecastLimit = {
+  key: keyof SensorHistory; unit: string; label: string;
+  hi?: LimitValue; ss?: LimitValue; lo?: LimitValue; dir: 'high' | 'low';
+};
+
+/** The same band at one engine speed — what the ETA math and every display actually need. */
+export type ResolvedForecastLimit = {
   key: keyof SensorHistory; unit: string; label: string;
   hi?: number; ss?: number; lo?: number; dir: 'high' | 'low';
 };
+
+/**
+ * Forecasts are referenced to the rated operating point unless a caller supplies the live speed.
+ * Every baseline and alarm band in this app is calibrated at 85 % load / 1150 RPM, so this is the
+ * speed the documentation pages mean when they print "the alarm threshold".
+ */
+export const FORECAST_DEFAULT_RPM = MTU8000.RATED_RPM;
+
+export function resolveForecastLimit(lim: ForecastLimit, rpm: number = FORECAST_DEFAULT_RPM): ResolvedForecastLimit {
+  return {
+    key: lim.key, unit: lim.unit, label: lim.label, dir: lim.dir,
+    hi: resolveLimit(lim.hi, rpm),
+    ss: resolveLimit(lim.ss, rpm),
+    lo: resolveLimit(lim.lo, rpm),
+  };
+}
+
+/** Look up a forecastable metric's band, already resolved at `rpm`. */
+export function forecastLimit(key: string, rpm: number = FORECAST_DEFAULT_RPM): ResolvedForecastLimit | undefined {
+  const lim = FORECAST_LIMITS[key];
+  return lim ? resolveForecastLimit(lim, rpm) : undefined;
+}
 
 export const FORECAST_LIMITS: Record<string, ForecastLimit> = {
   exhaust:            { key: 'exhaustTemp',       unit: '°C',   label: 'Mean exhaust temp',      dir: 'high', hi: L.exhaust.mean_hi,                          ss: L.exhaust.critical_max },
@@ -82,9 +115,14 @@ export function eta(current: number, threshold: number | undefined, slopePerMin:
 
 export function forecastFrom(
   series: number[],
-  lim: { unit: string; label: string; hi?: number; ss?: number; lo?: number; dir: 'high' | 'low' },
+  limSpec: { unit: string; label: string; hi?: LimitValue; ss?: LimitValue; lo?: LimitValue; dir: 'high' | 'low' },
   horizonMin: number,
+  rpm: number = FORECAST_DEFAULT_RPM,
 ): Record<string, unknown> {
+  const lim = {
+    unit: limSpec.unit, label: limSpec.label, dir: limSpec.dir,
+    hi: resolveLimit(limSpec.hi, rpm), ss: resolveLimit(limSpec.ss, rpm), lo: resolveLimit(limSpec.lo, rpm),
+  };
   const recent = series.slice(-SLOPE_TICKS);
   const st = stats(recent);
   const slopePerMin = st.slope * 60;
@@ -114,8 +152,8 @@ export function forecastFrom(
  * Observable minutes-to-alarm for one forecastable metric — the naive linear-projection baseline the
  * training set records alongside the analytic `rulTrue_*` label. `null` when not projected to cross.
  */
-export function minutesToAlarm(series: number[], forecastKey: string): number | null {
-  const lim = FORECAST_LIMITS[forecastKey];
+export function minutesToAlarm(series: number[], forecastKey: string, rpm: number = FORECAST_DEFAULT_RPM): number | null {
+  const lim = forecastLimit(forecastKey, rpm);
   if (!lim || series.length < 3) return null;
   const st = stats(series.slice(-SLOPE_TICKS));
   const target = lim.dir === 'high' ? lim.hi : lim.lo;

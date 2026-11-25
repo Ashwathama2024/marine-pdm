@@ -35,7 +35,7 @@
 
 import type { BaselineSnapshot } from '@marine-pdm/shared';
 import type { RulDetail } from './rul';
-import { FORECAST_LIMITS } from './forecast';
+import { FORECAST_LIMITS, forecastLimit } from './forecast';
 
 /**
  * Per-key label quality. One enum column rather than a boolean plus a separate reason: a bare boolean
@@ -152,7 +152,8 @@ export function classifyRulQuality(
   // if they disagree at all, the "already in band" verdict was reached from an unsettled value.
   if (input.detail.reason === 'already-breached') {
     const field = BASELINE_FIELD[input.forecastKey];
-    const lim = FORECAST_LIMITS[input.forecastKey];
+    // Resolved at rated: the band this check needs is the one the label was produced against.
+    const lim = forecastLimit(input.forecastKey);
     if (field && lim) {
       const instantV = input.instant[field] as number;
       const instantInBand = lim.dir === 'high'

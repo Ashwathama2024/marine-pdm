@@ -18,7 +18,17 @@
 // spelled out again at each of its twelve call sites — and it is what this module was extracted from.
 // It now calls sensorSeverity and paints the tier. Do not re-inline any of it.
 
-import { ALARM_LIMITS } from '@marine-pdm/shared';
+import { ALARM_LIMITS, MTU8000, resolveAlarmBand } from '@marine-pdm/shared';
+import type { AlarmBandSpec } from '@marine-pdm/shared';
+
+/**
+ * A band is RESOLVED: every field is a plain number at one engine speed. Several OEM limits are
+ * RPM curves (ZNG00028788 sheet 2), so the band in force depends on how fast the engine is
+ * turning. Callers that know the live RPM should pass it; those that do not — documentation
+ * pages, the training recorder's rated-point columns — get the rated-speed band, which is the
+ * operating point every number in this app is calibrated at.
+ */
+export const BAND_DEFAULT_RPM = MTU8000.RATED_RPM;
 
 export interface AlarmBand {
   physMin?: number;
@@ -100,9 +110,16 @@ function bandFor(sensorId: string, expected: number, limits: AlarmBand): number 
   return spec.rated;
 }
 
-export function getAlarmBand(sensorId: string): AlarmBand | undefined {
+/**
+ * The alarm band in force for a sensor at an engine speed, with any RPM-curve entry resolved to a
+ * number. Defaults to the rated speed so existing callers keep the band they always had — for a
+ * band of scalars the `rpm` argument changes nothing at all.
+ */
+export function getAlarmBand(sensorId: string, rpm: number = BAND_DEFAULT_RPM): AlarmBand | undefined {
   const key = LIMIT_KEY[sensorId];
-  return key ? ((ALARM_LIMITS as Record<string, AlarmBand>)[key] ?? undefined) : undefined;
+  if (!key) return undefined;
+  const spec = (ALARM_LIMITS as Record<string, AlarmBandSpec | undefined>)[key];
+  return spec ? (resolveAlarmBand(spec, rpm) as AlarmBand) : undefined;
 }
 
 /**
@@ -115,8 +132,9 @@ export function sensorSeverity(
   sensorId: string,
   value: number,
   expected: number | undefined,
+  rpm: number = BAND_DEFAULT_RPM,
 ): number {
-  const limits = getAlarmBand(sensorId);
+  const limits = getAlarmBand(sensorId, rpm);
   if (!limits) return 0;
 
   // 1. True ECS shutdown limits — unconditional at any load.

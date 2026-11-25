@@ -28,7 +28,7 @@
 
 import { DEGRADATION_MODES, GROWTH_RATES, predictEffect } from '@marine-pdm/simulator';
 import type { FaultConfig } from '@marine-pdm/simulator';
-import { FORECAST_LIMITS } from './forecast';
+import { FORECAST_DEFAULT_RPM, forecastLimit } from './forecast';
 import { matrixIdsForForecastKey } from './sensor-map';
 
 /** Strip the per-instance suffix: 'F01_cyl_7' → 'F01'. */
@@ -74,11 +74,18 @@ const NONE: RulDetail = {
  * @param healthyValue  the fault-free value of that metric at the CURRENT load/rpm (the lagged
  *                      baseline). Using the live reading instead would fold the fault's own effect
  *                      into the starting point and shorten every ETA.
+ * @param rpm           engine speed, which selects the point on any RPM-curve limit
+ *                      (ZNG00028788 sheet 2). Defaults to rated — the point the labels mean.
  *
  * Returns the soonest crossing across all active faults. `minutes: 0` means already in the band.
  */
-export function analyticRul(faults: FaultConfig[], forecastKey: string, healthyValue: number): RulDetail {
-  const lim = FORECAST_LIMITS[forecastKey];
+export function analyticRul(
+  faults: FaultConfig[],
+  forecastKey: string,
+  healthyValue: number,
+  rpm: number = FORECAST_DEFAULT_RPM,
+): RulDetail {
+  const lim = forecastLimit(forecastKey, rpm);
   if (!lim) return { ...NONE, reason: 'no-band' };
   const threshold = lim.dir === 'high' ? lim.hi : lim.lo;
   if (threshold === undefined) return { ...NONE, reason: 'no-band' };

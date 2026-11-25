@@ -1,7 +1,7 @@
 import React from 'react';
 import type { EngineSnapshot, BaselineSnapshot, DecisionOutput } from '@marine-pdm/shared';
-import { ALARM_LIMITS, bearingTempMax } from '@marine-pdm/shared';
-import { hasCodedBand, sensorSeverity, severityTier } from '../services/sensor-severity';
+import { ALARM_LIMITS, bearingTempMax, resolveLimitSet } from '@marine-pdm/shared';
+import { BAND_DEFAULT_RPM, hasCodedBand, sensorSeverity, severityTier } from '../services/sensor-severity';
 import type { SeverityTier } from '../services/sensor-severity';
 
 const CX = 60, CY = 64, R = 48;
@@ -226,6 +226,7 @@ function sensorValueColor(
   limits: AlarmBand,
   sensorId?: string,  // SENSOR_META id — unlocks the load-aware path
   expected?: number,  // load-adjusted baseline (from BaselineSnapshot)
+  rpm: number = BAND_DEFAULT_RPM,  // live speed — picks the point on any RPM-curve limit
 ): string {
   // ── 1. True ECS shutdown limits — unconditional at any load ────────────────
   if (limits.shutdownHigh !== undefined && value >= limits.shutdownHigh) return 'var(--risk-critical)';
@@ -233,7 +234,7 @@ function sensorValueColor(
 
   // ── 2. Load-aware coloring, single-sourced from sensor-severity.ts ─────────
   if (sensorId !== undefined && expected !== undefined && hasCodedBand(sensorId)) {
-    return TIER_COLOR[severityTier(sensorSeverity(sensorId, value, expected))];
+    return TIER_COLOR[severityTier(sensorSeverity(sensorId, value, expected, rpm))];
   }
 
   // ── 3. Fallback: absolute-threshold coloring (no baseline to deviate from) ──
@@ -251,7 +252,9 @@ function sensorValueColor(
 
 // ── Shaft Power Strip (exported for Dashboard layout control) ─────────────────
 export function ShaftPowerStrip({ snap, decision, isOperational = true }: { snap: EngineSnapshot; decision: DecisionOutput; isOperational?: boolean }) {
-  const AL = ALARM_LIMITS;
+  // Resolved at the live engine speed: several OEM limits are RPM curves (ZNG00028788
+  // sheet 2). Scalar bands are unaffected.
+  const AL = resolveLimitSet(ALARM_LIMITS, snap.rpm);
   const shaftPowerRisk = derivedRisk(decision.systemRisk, 0.5);
   const shaftPowerPct  = (snap.shaftPower / 9100) * 100;
   const dimColor = isOperational ? undefined : 'var(--text-dim)';
@@ -311,7 +314,9 @@ function derivedRisk(base: number, factor: number): number {
 
 export function GaugeGrid({ snap, baseline, decision, isOperational = true, onGaugeClick }: Props) {
   const dimmed = !isOperational;
-  const AL = ALARM_LIMITS;
+  // Resolved at the live engine speed: several OEM limits are RPM curves (ZNG00028788
+  // sheet 2). Scalar bands are unaffected.
+  const AL = resolveLimitSet(ALARM_LIMITS, snap.rpm);
 
   // ── Section 1: Core thermodynamic sensors ──────────────────────────────
   const coreGauges: (ArcGaugeProps & { sensorId: string })[] = [
@@ -322,7 +327,7 @@ export function GaugeGrid({ snap, baseline, decision, isOperational = true, onGa
       unit: '°C', risk: decision.exhaustRisk,
       physMin: AL.exhaustTemp.physMin, physMax: AL.exhaustTemp.physMax,
       ribbonColor: 'var(--risk-high)',
-      gaugeColor: sensorValueColor(snap.exhaustTemp, AL.exhaustTemp.physMin, AL.exhaustTemp.physMax, AL.exhaustTemp, 'ME.ExhaustTemp', baseline.expectedExhaust),
+      gaugeColor: sensorValueColor(snap.exhaustTemp, AL.exhaustTemp.physMin, AL.exhaustTemp.physMax, AL.exhaustTemp, 'ME.ExhaustTemp', baseline.expectedExhaust, snap.rpm),
       alarmTicks: [
         { value: AL.exhaustTemp.preAlarmHigh, color: L1, label: 'L1' },
         { value: AL.exhaustTemp.alarmHigh,    color: L2, label: 'L2' },
@@ -337,7 +342,7 @@ export function GaugeGrid({ snap, baseline, decision, isOperational = true, onGa
       unit: 'bar', risk: decision.lubeRisk, decimals: 2,
       physMin: AL.lubeOilPressure.physMin, physMax: AL.lubeOilPressure.physMax,
       ribbonColor: 'var(--accent-blue)',
-      gaugeColor: sensorValueColor(snap.lubeOilPressure, AL.lubeOilPressure.physMin, AL.lubeOilPressure.physMax, AL.lubeOilPressure, 'ME.LubeOilPressure', baseline.expectedLube),
+      gaugeColor: sensorValueColor(snap.lubeOilPressure, AL.lubeOilPressure.physMin, AL.lubeOilPressure.physMax, AL.lubeOilPressure, 'ME.LubeOilPressure', baseline.expectedLube, snap.rpm),
       alarmTicks: [
         { value: AL.lubeOilPressure.alarmHigh,   color: L2, label: 'L2↑' },
         { value: AL.lubeOilPressure.preAlarmLow, color: L1, label: 'L1↓', inner: true },
@@ -353,7 +358,7 @@ export function GaugeGrid({ snap, baseline, decision, isOperational = true, onGa
       unit: 'bar', risk: derivedRisk(decision.exhaustRisk, 0.5), decimals: 2,
       physMin: AL.scavengeAir.physMin, physMax: AL.scavengeAir.physMax,
       ribbonColor: 'var(--accent-cyan, #22D3EE)',
-      gaugeColor: sensorValueColor(snap.scavengeAir, AL.scavengeAir.physMin, AL.scavengeAir.physMax, AL.scavengeAir, 'ME.ScavengeAirPressure', baseline.expectedScavenge),
+      gaugeColor: sensorValueColor(snap.scavengeAir, AL.scavengeAir.physMin, AL.scavengeAir.physMax, AL.scavengeAir, 'ME.ScavengeAirPressure', baseline.expectedScavenge, snap.rpm),
       alarmTicks: [
         { value: AL.scavengeAir.alarmHigh, color: L2, label: 'L2↑' },
         { value: AL.scavengeAir.alarmLow,  color: L2, label: 'L2↓', inner: true },
@@ -366,7 +371,7 @@ export function GaugeGrid({ snap, baseline, decision, isOperational = true, onGa
       unit: '°C', risk: derivedRisk(decision.exhaustRisk, 0.35), decimals: 1,
       physMin: AL.chargeAirTemp.physMin, physMax: AL.chargeAirTemp.physMax,
       ribbonColor: 'var(--accent-cyan, #22D3EE)',
-      gaugeColor: sensorValueColor(snap.chargeAirTemp, AL.chargeAirTemp.physMin, AL.chargeAirTemp.physMax, AL.chargeAirTemp, 'ME.ChargeAirTemp', baseline.expectedChargeAirTemp),
+      gaugeColor: sensorValueColor(snap.chargeAirTemp, AL.chargeAirTemp.physMin, AL.chargeAirTemp.physMax, AL.chargeAirTemp, 'ME.ChargeAirTemp', baseline.expectedChargeAirTemp, snap.rpm),
       alarmTicks: [
         { value: AL.chargeAirTemp.preAlarmHigh,  color: L1, label: 'L1' },
         { value: AL.chargeAirTemp.alarmHigh,     color: L2, label: 'L2' },
@@ -381,7 +386,7 @@ export function GaugeGrid({ snap, baseline, decision, isOperational = true, onGa
       unit: '°C', risk: decision.coolingRisk,
       physMin: AL.jacketOutlet.physMin, physMax: AL.jacketOutlet.physMax,
       ribbonColor: 'var(--accent-steel, #94A3B8)',
-      gaugeColor: sensorValueColor(snap.jacketOutlet, AL.jacketOutlet.physMin, AL.jacketOutlet.physMax, AL.jacketOutlet, 'ME.JacketCoolingOutlet', baseline.expectedJacket),
+      gaugeColor: sensorValueColor(snap.jacketOutlet, AL.jacketOutlet.physMin, AL.jacketOutlet.physMax, AL.jacketOutlet, 'ME.JacketCoolingOutlet', baseline.expectedJacket, snap.rpm),
       alarmTicks: [
         { value: AL.jacketOutlet.preAlarmHigh,  color: L1, label: 'L1' },
         { value: AL.jacketOutlet.alarmHigh,     color: L2, label: 'L2' },
@@ -400,7 +405,7 @@ export function GaugeGrid({ snap, baseline, decision, isOperational = true, onGa
       unit: 'bar', risk: derivedRisk(decision.lubeRisk, 0.4), decimals: 2,
       physMin: AL.fuelOilPressure.physMin, physMax: AL.fuelOilPressure.physMax,
       ribbonColor: 'var(--risk-warning)',
-      gaugeColor: sensorValueColor(snap.fuelOilPressure, AL.fuelOilPressure.physMin, AL.fuelOilPressure.physMax, AL.fuelOilPressure, 'ME.FuelOilPressure', baseline.expectedFuelOilPressure),
+      gaugeColor: sensorValueColor(snap.fuelOilPressure, AL.fuelOilPressure.physMin, AL.fuelOilPressure.physMax, AL.fuelOilPressure, 'ME.FuelOilPressure', baseline.expectedFuelOilPressure, snap.rpm),
       alarmTicks: [
         { value: AL.fuelOilPressure.alarmHigh,   color: L2, label: 'L2↑' },
         { value: AL.fuelOilPressure.preAlarmLow, color: L1, label: 'L1↓', inner: true },
@@ -415,7 +420,7 @@ export function GaugeGrid({ snap, baseline, decision, isOperational = true, onGa
       unit: '°C', risk: derivedRisk(decision.lubeRisk, 0.2), decimals: 1,
       physMin: AL.fuelOilTemp.physMin, physMax: AL.fuelOilTemp.physMax,
       ribbonColor: 'var(--risk-warning)',
-      gaugeColor: sensorValueColor(snap.fuelOilTemp, AL.fuelOilTemp.physMin, AL.fuelOilTemp.physMax, AL.fuelOilTemp, 'ME.FuelOilTemp', baseline.expectedFuelOilTemp),
+      gaugeColor: sensorValueColor(snap.fuelOilTemp, AL.fuelOilTemp.physMin, AL.fuelOilTemp.physMax, AL.fuelOilTemp, 'ME.FuelOilTemp', baseline.expectedFuelOilTemp, snap.rpm),
       alarmTicks: [
         { value: AL.fuelOilTemp.preAlarmHigh, color: L1, label: 'L1' },
         { value: AL.fuelOilTemp.alarmHigh,    color: L2, label: 'L2' },
@@ -445,7 +450,7 @@ export function GaugeGrid({ snap, baseline, decision, isOperational = true, onGa
       unit: 'bar', risk: derivedRisk(decision.coolingRisk, 0.6), decimals: 2,
       physMin: AL.pistonCoolingPress.physMin, physMax: AL.pistonCoolingPress.physMax,
       ribbonColor: 'var(--accent-steel, #94A3B8)',
-      gaugeColor: sensorValueColor(snap.pistonCoolingPress, AL.pistonCoolingPress.physMin, AL.pistonCoolingPress.physMax, AL.pistonCoolingPress, 'ME.PistonCoolingPress', baseline.expectedPistonCoolingPress),
+      gaugeColor: sensorValueColor(snap.pistonCoolingPress, AL.pistonCoolingPress.physMin, AL.pistonCoolingPress.physMax, AL.pistonCoolingPress, 'ME.PistonCoolingPress', baseline.expectedPistonCoolingPress, snap.rpm),
       alarmTicks: [
         { value: AL.pistonCoolingPress.alarmHigh,   color: L2, label: 'L2↑' },
         { value: AL.pistonCoolingPress.preAlarmLow, color: L1, label: 'L1↓', inner: true },
@@ -466,7 +471,7 @@ export function GaugeGrid({ snap, baseline, decision, isOperational = true, onGa
       gaugeColor: sensorValueColor(
         (snap.lubeLastBearingPressure as number | undefined) ?? 0,
         AL.lubeLastBearingPressure.physMin, AL.lubeLastBearingPressure.physMax,
-        AL.lubeLastBearingPressure, 'ME.LubeOilPressure.LastBearing', baseline.expectedLubeLastBearing,
+        AL.lubeLastBearingPressure, 'ME.LubeOilPressure.LastBearing', baseline.expectedLubeLastBearing, snap.rpm
       ),
       alarmTicks: [
         { value: AL.lubeLastBearingPressure.preAlarmLow, color: L1, label: 'L1↓', inner: true },
@@ -487,7 +492,7 @@ export function GaugeGrid({ snap, baseline, decision, isOperational = true, onGa
       gaugeColor: sensorValueColor(
         (snap.fuelRailPressure as number | undefined) ?? 0,
         AL.fuelRailPressure.physMin, AL.fuelRailPressure.physMax,
-        AL.fuelRailPressure, 'ME.FuelRailPressure', baseline.expectedFuelRailPressure,
+        AL.fuelRailPressure, 'ME.FuelRailPressure', baseline.expectedFuelRailPressure, snap.rpm
       ),
       alarmTicks: [
         { value: AL.fuelRailPressure.preAlarmLow, color: L1, label: 'L1↓', inner: true },
@@ -508,7 +513,7 @@ export function GaugeGrid({ snap, baseline, decision, isOperational = true, onGa
       ribbonColor: 'var(--risk-high)',
       gaugeColor: sensorValueColor(
         bearingTempMax(snap, baseline.expectedBearingTemp),
-        AL.bearingTemp.physMin, AL.bearingTemp.physMax, AL.bearingTemp, 'ME.BearingTemp', baseline.expectedBearingTemp,
+        AL.bearingTemp.physMin, AL.bearingTemp.physMax, AL.bearingTemp, 'ME.BearingTemp', baseline.expectedBearingTemp, snap.rpm
       ),
       alarmTicks: [
         { value: AL.bearingTemp.preAlarmHigh, color: L1, label: 'L1' },

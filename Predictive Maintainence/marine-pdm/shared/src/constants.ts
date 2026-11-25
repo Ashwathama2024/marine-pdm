@@ -26,6 +26,55 @@ export const CYL_SPREAD: number[] = [
 // L3 SLOWDOWN  — automatic slowdown if not overridden
 // L4 SHUTDOWN  — automatic shutdown
 
+// ── CURVE-VALUED LIMITS ────────────────────────────────────────────────────
+// Most of the MTU 8000's coded limits are NOT scalars. Sheet 2 of ZNG00028788 tabulates thirteen
+// of them against engine speed, so "the piston-cooling shutdown" has no single value — it is
+// 4.7 bar at 1150 RPM, 3 bar at 800, and 0.2 bar at 300. Writing one of them down as a scalar
+// silently picks a speed, which is how several thresholds here drifted away from the manual.
+//
+// A threshold may therefore be either a plain number or a function of engine RPM. Scalar entries
+// behave exactly as before; a curve entry is resolved by the consumer at the speed the engine is
+// actually turning. The curves themselves live in `oem-limits.ts`, cited to the drawing — a limit
+// written as `rpm => oemCurve(2, rpm)` carries its provenance with it.
+export type LimitValue = number | ((rpm: number) => number);
+
+export function resolveLimit(v: LimitValue, rpm: number): number;
+export function resolveLimit(v: LimitValue | undefined, rpm: number): number | undefined;
+export function resolveLimit(v: LimitValue | undefined, rpm: number): number | undefined {
+  return typeof v === 'function' ? v(rpm) : v;
+}
+
+/** One sensor's alarm band as authored — entries may be scalars or RPM curves. */
+export type AlarmBandSpec = Record<string, LimitValue | undefined>;
+/** The same band at one engine speed — every entry a plain number. */
+export type ResolvedAlarmBand = Record<string, number | undefined>;
+
+/** Collapse a band to plain numbers at `rpm`. A band of scalars is returned unchanged in value. */
+export function resolveAlarmBand(spec: AlarmBandSpec, rpm: number): ResolvedAlarmBand {
+  const out: ResolvedAlarmBand = {};
+  for (const key of Object.keys(spec)) out[key] = resolveLimit(spec[key], rpm);
+  return out;
+}
+
+/** A whole limit set with every curve resolved — same keys, every threshold a plain number. */
+export type ResolvedLimitSet<T> = { [K in keyof T]: { [P in keyof T[K]]: number } };
+
+/**
+ * Resolve every band of a limit set at one engine speed. The gauges use this so that a gauge's
+ * painted alarm ticks and the colour of its needle come from the same RPM — reading a curve limit
+ * at two different speeds within one gauge would put the tick somewhere the colour does not change.
+ */
+export function resolveLimitSet<T extends Record<string, Record<string, LimitValue>>>(
+  limits: T,
+  rpm: number,
+): ResolvedLimitSet<T> {
+  const out = {} as ResolvedLimitSet<T>;
+  for (const band of Object.keys(limits) as Array<keyof T>) {
+    out[band] = resolveAlarmBand(limits[band] as AlarmBandSpec, rpm) as ResolvedLimitSet<T>[keyof T];
+  }
+  return out;
+}
+
 export const ALARM_LIMITS = {
   exhaustTemp: {
     physMin: 200,   // °C

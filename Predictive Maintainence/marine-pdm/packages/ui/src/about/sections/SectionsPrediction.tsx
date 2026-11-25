@@ -19,7 +19,7 @@ import {
   bearingTemp_MTU8000, lubeOilTemp_MTU8000, lubeOilPressure_MTU8000,
 } from '@marine-pdm/simulator';
 import { Section, SubSection, P, Code, Hi, Callout, DataTable, Bullets } from '../AboutPrimitives';
-import { FORECAST_LIMITS, SLOPE_TICKS } from '../../services/forecast';
+import { forecastLimit, SLOPE_TICKS } from '../../services/forecast';
 import { LABEL_ERROR_TOLERANCE_MIN } from '../../services/rul-quality';
 
 const L = 85, R = 1150;
@@ -30,7 +30,7 @@ function solve(modeId: string, sensorId: string, forecastKey: string, healthy: n
   const mode = DEGRADATION_MODES.find(m => m.id === modeId)!;
   const effect = mode.effects.find(e => e.sensorId === sensorId)!;
   const perSeverity = predictEffect(mode, effect, 1);
-  const lim = FORECAST_LIMITS[forecastKey]!;
+  const lim = forecastLimit(forecastKey)!;   // worked examples are all at the rated point
   const threshold = (lim.dir === 'high' ? lim.hi : lim.lo)!;
   const severityAtCross = (threshold - healthy) / perSeverity;
   return { mode, effect, perSeverity, threshold, severityAtCross };
