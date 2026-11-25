@@ -335,15 +335,21 @@ export function recordTrainingSample(input: RecordInput): boolean {
   // appears to INCREASE as the fault develops — so without a per-row flag a regressor silently
   // averages poison. Per-key rather than per-row because the lag alphas span 10x: a slow-settling
   // jacket must not discard a perfectly good lube label on the same tick.
+  // Both the label and the observable baseline are solved against the band in force AT THIS
+  // ENGINE SPEED. Several MTU limits are RPM curves (ZNG00028788 sheet 2) and the spread is wide —
+  // the last-bearing warning is 5.8 bar at rated and 2.37 at idle — so resolving them at the rated
+  // point would mislabel every row recorded at part load, systematically and in one direction.
+  const liveRpm = snapshot.rpm;
+
   for (const key of FORECAST_KEYS) {
     const refKey = HEALTHY_REF[key];
     const healthy = refKey !== undefined ? lagged[refKey] : undefined;
-    const detail = healthy === undefined ? null : analyticRul(faults, key, healthy);
+    const detail = healthy === undefined ? null : analyticRul(faults, key, healthy, liveRpm);
 
     row[`rulTrue_${key}`] = detail ? fx(detail.minutes ?? undefined, 2) : null;
 
     const series = (history[FORECAST_LIMITS[key]!.key] as number[] | undefined) ?? [];
-    row[`minsToAlarm_${key}`] = fx(minutesToAlarm(series, key) ?? undefined, 2);
+    row[`minsToAlarm_${key}`] = fx(minutesToAlarm(series, key, liveRpm) ?? undefined, 2);
 
     if (detail && healthy !== undefined && input.instantBaseline) {
       const { quality, errorMinutes } = classifyRulQuality({
