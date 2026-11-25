@@ -25,7 +25,35 @@ export const DB_VERSION = 1;
 //       thresholded from. Version-2 rows carry the verdict but not the quantity, so the tolerance
 //       (LABEL_ERROR_TOLERANCE_MIN) cannot be re-validated or re-chosen from them — only v3 rows
 //       support that analysis.
-export const SCHEMA_VERSION = 3;
+//   4 → OEM RECALIBRATION. Rows 1–3 are not merely missing a column, they are MISLABELLED, and
+//       they are deleted rather than kept and filtered. See OEM-CALIBRATION-GAP.md.
+//
+//       `analyticRul()` solves `(threshold − healthy) / perSeverity`. Before the recalibration
+//       every one of those three terms was wrong: the baselines mirrored a physics whose healthy
+//       rated engine violated five OEM limits, the thresholds were in several cases invented, and
+//       the degradation weights were the partials of the old equations. The labels are not noisy,
+//       they are biased, each in a fixed direction — which is exactly what a regressor learns.
+//
+//       Nothing in the row content distinguishes a poisoned v3 row from a sound one.
+//       `rulQuality_*` cannot: it compares the lagged baseline against the instant one, so an
+//       error living in the curve itself sits in both and cancels, and the row reports OK
+//       (ui/CLAUDE.md gotcha 7). A v3 export therefore looks trustworthy and is not.
+export const SCHEMA_VERSION = 4;
+
+/**
+ * Which calibration produced a row's labels.
+ *
+ * Stamped per row alongside `schemaVersion` so that the NEXT time the envelope moves, the
+ * affected rows are identifiable from their own content instead of inferred from a schema bump
+ * that may not happen. The schema version says "what columns"; this says "against what truth".
+ *
+ * Change it whenever a baseline curve, an alarm threshold or a degradation weight changes in a way
+ * that moves the labels — not for a new column, which is what SCHEMA_VERSION is for.
+ */
+export const CALIBRATION_REVISION = 'oem-zng00028788-2026-11';
+
+/** Rows written before this schema version are deleted on startup, never migrated. */
+export const MIN_TRUSTED_SCHEMA_VERSION = 4;
 
 export interface TrainingRun {
   runId: string;
@@ -33,6 +61,8 @@ export interface TrainingRun {
   endedAt: number | null;
   sampleCount: number;
   schemaVersion: number;
+  /** CALIBRATION_REVISION at write time. Absent on runs predating the OEM recalibration. */
+  calibrationRevision?: string;
   engineModel: string;
   /** Whether severity ramping was on for this run — a run recorded without it has no incipient phase. */
   rampMode: boolean;
@@ -270,6 +300,39 @@ export async function reconcileOpenRuns(): Promise<{ closed: number; pruned: num
     closed++;
   }
   return { closed, pruned };
+}
+
+/**
+ * Delete every run recorded against a superseded calibration.
+ *
+ * Dropped, not migrated and not merely filtered. The labels in those rows were solved against
+ * wrong baselines and wrong thresholds, so there is no transformation that recovers them — and
+ * leaving them in place with a filter relies on every future consumer remembering to apply it.
+ * An export is the obvious way that goes wrong: the run record does not survive it.
+ *
+ * Runs with no `schemaVersion` are pre-v1 and go too. Called once at startup, before the first
+ * `startRun()`, from the same path as `reconcileOpenRuns()`.
+ *
+ * @returns the runs removed, so the caller can say so rather than deleting silently.
+ */
+export async function purgeStaleCalibration(): Promise<{ removed: number; runIds: string[] }> {
+  const runs = await listRuns();
+  const stale = runs.filter(r => !isTrustedRun(r));
+  for (const run of stale) await deleteRun(run.runId);
+  return { removed: stale.length, runIds: stale.map(r => r.runId) };
+}
+
+/**
+ * Whether a run's labels are referenced to the current calibration — the predicate
+ * `purgeStaleCalibration` deletes on, separated out so it is testable without a database.
+ *
+ * Deliberately a whitelist: anything whose version is missing, unparseable or older than
+ * MIN_TRUSTED_SCHEMA_VERSION is untrusted. A data-destroying rule should fail toward deleting a
+ * questionable run, not toward keeping one that silently poisons a training set.
+ */
+export function isTrustedRun(run: Pick<TrainingRun, 'schemaVersion'>): boolean {
+  const v = Number(run.schemaVersion);
+  return Number.isFinite(v) && v >= MIN_TRUSTED_SCHEMA_VERSION;
 }
 
 export async function wipeDatabase(): Promise<void> {
