@@ -1,11 +1,14 @@
 # Shared Package — CLAUDE.md
 > Shared types, constants, utils. No framework dependencies. See root `CLAUDE.md` for monorepo rules.
 
-> ⚠ **`constants.ts` and `mtu8000.constants.ts` are the front line of an open calibration defect** —
-> see [`../OEM-CALIBRATION-GAP.md`](../OEM-CALIBRATION-GAP.md). Several limits here were tuned to fit
-> the simulator rather than the manual, and several the simulator now violates at healthy load. Before
-> editing any threshold: cite the MTU drawing it comes from (master list is `ZNG00028788`), and never
-> loosen or tighten one merely to stop an alarm firing.
+> **`src/oem-limits.ts` is the single source of truth for every coded MTU limit** — drawing
+> `ZNG00028788`, all 41 rows of sheet 1 and all 13 curves of sheet 2, verified at 340 dpi. Thresholds in
+> `constants.ts` and `mtu8000.constants.ts` are DERIVED from it (`oemCurve(...)`, `oemScalar(...)`),
+> never typed. Anything that is not an OEM value is marked **`NOT OEM`** in its comment.
+>
+> Before editing any threshold: derive it from the drawing, never loosen or tighten one merely to stop
+> an alarm firing, and **never restate a derived number in a comment** — that is a second source of
+> truth and it is how the bearing band silently drifted 5°C. See [`../OEM-CALIBRATION-GAP.md`](../OEM-CALIBRATION-GAP.md).
 
 ---
 
@@ -45,9 +48,14 @@ BSIDE_TEMP_BIAS = +4  // °C
 MTU8000_CYL_SPREAD = [-8,+12,-4,+16,-6,+10,-3,+14,-9,+7, +5,-11,+9,-5,+13,-7,+11,-2,+8,-4]
 // Max spread ~27°C. B5 (index 14) = mean + 13 + 4 bias = +17°C from mean.
 
-// Post-calibration alarm limits (constants.ts)
-cylImbalance.preAlarmHigh = 30°C   // was 25 — natural spread ~27°C, gives margin
-cylImbalance.alarmHigh    = 40°C
-pistonCoolingPress.preAlarmLow = 4.0 bar  // physics gives ~4.34 bar at rated
-ENGINE_MCR_KW = 9100              // was 5113 — matches MTU8000.MAX_POWER_KW
+// Alarm limits (constants.ts) — derived, not typed
+cylImbalance.preAlarmHigh = 30°C   // NOT OEM — natural spread ~27°C, gives margin
+pistonCoolingPress.preAlarmLow = (rpm) => oemCurve(1, rpm)   // 5.2 bar at rated, MDEC 2D-26
+pistonCoolingPress.shutdownLow = (rpm) => oemCurve(2, rpm)   // 4.7 bar at rated, MDEC 2D-27
+lubeLastBearingPressure.preAlarmLow = (rpm) => oemCurve(3, rpm)  // 5.8 bar at rated
+lubeLastBearingPressure.shutdownLow = (rpm) => oemCurve(4, rpm)  // 5.3 bar at rated
+ENGINE_MCR_KW = 9100              // matches MTU8000.MAX_POWER_KW
+
+// A limit may be a number OR an (rpm) => number. resolveLimit / resolveAlarmBand /
+// resolveLimitSet collapse a band at one speed; getAlarmBand(id, rpm) is the UI entry point.
 ```

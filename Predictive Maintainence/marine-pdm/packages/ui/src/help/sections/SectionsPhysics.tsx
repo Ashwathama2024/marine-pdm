@@ -7,10 +7,12 @@ import {
   exhaustTemp_MTU8000, cylExhaustTemp_MTU8000, lubeOilPressure_MTU8000, bearingTemp_MTU8000,
   chargeAirPressure_MTU8000, chargeAirTemp_MTU8000, lubeOilTemp_MTU8000, fuelRailPressure_MTU8000,
   sfoc_MTU8000, crankcasePressure_MTU8000, exhaustBackPressure_MTU8000, tcSpeed_MTU8000,
-  sprayOilTemp_MTU8000,
+  sprayOilTemp_MTU8000, LAST_BEARING_PRESSURE_RATIO, PISTON_COOLING_PRESSURE_RATIO,
+  RATED_GALLERY_PRESSURE_BAR, RATED_LUBE_OIL_TEMP_C,
 } from '@marine-pdm/simulator';
 import {
   MTU8000, MTU8000_CYL_SPREAD, BSIDE_TEMP_BIAS, MTU8000_LIMITS as LIM,
+  MTU8000_LIMIT_CURVES as CURVE, OEM_VARIANT,
 } from '@marine-pdm/shared';
 import {
   Section, SubSection, P, Code, Hi, Callout, DataTable, EquationBlock, Bullets,
@@ -77,7 +79,7 @@ export function PhysicsSection() {
           rated={`${n(sExhaust)} °C`}
           drivers="load (dominant), RPM, HT-cooling loss, TC fouling"
           expect="Rises with load; a whole-engine rise means cooling or TC, a single-cylinder rise means an injector."
-          band="HI mean 460 °C · SS 530 °C" />
+          band={`HI mean ${LIM.exhaust.mean_hi} °C (MTU curve 10 at rated)`} />
         <EquationBlock name="Per-cylinder exhaust temperature" tag="B4.1–B4.20"
           formula="meanExhaust + cylSpread[i] + (i≥10 ? +4 : 0) + injFault[i]·65"
           rated={`mean ± natural spread (max ~${Math.max(...MTU8000_CYL_SPREAD)}°C)`}
@@ -95,13 +97,13 @@ export function PhysicsSection() {
           rated={`${n(sCaT)} °C`}
           drivers="LT (sea-water) circuit + load heat — independent of HT-cooler fouling by design"
           expect="Tracks load only; unaffected by F05. Monitored as a deviation from its own baseline, so the absolute value is not compared directly to the HI limit."
-          band="HI 50 °C (B9) — deviation-based in practice" />
+          band={`UL ${LIM.chargeAir.temp_after_intercooler_hi} °C · LL ${LIM.chargeAir.temp_after_intercooler_lo} °C (B9) — monitored as a deviation in practice`} />
         <EquationBlock name="Lube-oil temperature" tag="B7"
-          formula="63 + load·32 + (rpm/1150)·8 + (1−coolingEff)·15"
+          formula="58 + load·18 + (rpm/1150)·5 + (1−coolingEff)·15"
           rated={`${n(sLubeT)} °C`}
           drivers="load + RPM + HT-cooling loss"
-          expect="Climbs with a fouled HT cooler (F05); drags bearing temps up with it."
-          band="HI 115 °C" />
+          expect="Climbs with a fouled HT cooler (F05); drags bearing temps up with it. Held below the OEM warning by the oil cooler — an engine whose oil sits above it is not healthy."
+          band={`T-Oil Lim1 83 °C warning · Lim2 ${LIM.lubeOil.temp_max} °C power reduction`} />
         <EquationBlock name="Coolant temp after engine" tag="B6.1"
           formula="max(50, 30 + load·55 + (1−coolingEff)·15)"
           rated={`${n(sCoolant)} °C`}
@@ -112,19 +114,19 @@ export function PhysicsSection() {
 
       <SubSection title="Pressure & speed equations">
         <EquationBlock name="Lube-oil gallery pressure" tag="B5.1"
-          formula="(3.5 + (rpm/1150)·4.0) − load·0.8 − viscosity − filterΔP − lubeFault·3.8"
+          formula="(1.15 + (rpm/1150)·6.85) − load·0.8 − viscosity − filterΔP − lubeFault·3.8"
           rated={`${n(sLube, 2)} bar`}
           drivers="pump speed (RPM), hot-oil viscosity, filter ΔP, lube fault"
           expect="A rapid drop is a pump/lube fault (F03); starves the bearings → they heat up."
-          band="LO 5.5 bar (gallery) · last-bearing SS < 2.0 bar" />
+          band={`LO ${n(LIM.lubeOil.pressure_before_filter_min, 2)} bar at rated — the gallery pressure at which the last bearing reaches its own coded warning (MTU curve 3). RPM-indexed, so it follows speed.`} />
         <EquationBlock name="Last-bearing LO pressure" tag="B5.3/B5.4"
-          formula="gallery pressure × 0.55"
-          rated={`${n(sLube * 0.55, 2)} bar`}
+          formula={`gallery pressure × ${LAST_BEARING_PRESSURE_RATIO}`}
+          rated={`${n(sLube * LAST_BEARING_PRESSURE_RATIO, 2)} bar`}
           drivers="whatever moves the gallery — pump speed, viscosity, filter ΔP, lube fault"
-          expect="The furthest lubrication point, so it falls first and hardest under F03. Its own gauge — the LO Pressure gauge is the gallery, which stays healthier for longer."
-          band="SS < 2.0 bar — Emergency Stop" />
+          expect="The far end of the same gallery, so it falls first and hardest under F03. Its own gauge — the LO Pressure gauge is the gallery, which stays healthier for longer. MTU warns HERE at a higher pressure than at piston cooling, which is what fixes the order of the two takeoff ratios."
+          band={`Lim1 ${n(CURVE.lastBearingPressHI(R), 2)} bar warning · Lim2 ${n(CURVE.lastBearingPressSS(R), 2)} bar SHUTDOWN, both at rated (MTU curves 3 and 4, RPM-indexed)`} />
         <EquationBlock name="Bearing temperature" tag="B57.1–B57.11"
-          formula="58 + load·28 + (rpm/1150)·10 + (oilTemp−85)·0.4 + max(0,6.5−P)·4.5 + posBias + bearingFault·45"
+          formula={`61 + load·28 + (rpm/1150)·10 + (oilTemp−${RATED_LUBE_OIL_TEMP_C})·0.4 + max(0,${RATED_GALLERY_PRESSURE_BAR}−P)·4.5 + posBias + bearingFault·45`}
           rated={`${n(sBearing)} °C (free-end)`}
           drivers="load, oil temp, pressure starvation, per-bearing fault"
           expect="Rises from hot oil (F05) OR low pressure (F03) OR a direct bearing fault (F04)."
@@ -145,26 +147,26 @@ export function PhysicsSection() {
           formula="(500 + (rpm/1150)·17300 + load·12000) · tcEff"
           rated={`${n(sTc, 0)} RPM`}
           drivers="RPM + load, scaled by TC efficiency"
-          expect="Drops sharply with TC fouling (F06); overspeed L1 alarm at 40 500 RPM."
-          band="SD on abnormal drop · L1 40 500 RPM" />
+          expect="Drops sharply with TC fouling (F06)."
+          band={`SD on abnormal drop · overspeed L1 ${OEM_VARIANT.etcOverspeedL1} RPM · L2 ${OEM_VARIANT.etcOverspeedL2} RPM`} />
         <EquationBlock name="Fuel-rail pressure" tag="B48"
           formula="1600 + load·200 − injFaultCount·15"
           rated={`${n(sFuelRail, 0)} bar`}
           drivers="load; small drop per faulted injector"
           expect="Micro-drops accompany injector faults."
-          band="SD < 1200 bar" />
+          band={`SD < ${LIM.fuel.rail_pressure_min} bar. MTU codes a DEVIATION limit here instead (${LIM.fuel.rail_pressure_deviation} bar from setpoint); the absolute floor is ours.`} />
         <EquationBlock name="Crankcase pressure" tag="B50"
-          formula="−2.0 + load·1.5 + pistonBlowby·8"
+          formula="−2.0 + load·1.5 + pistonBlowby·45"
           rated={`${n(sCrank, 1)} mbar`}
           drivers="load + piston blow-by"
           expect="Rises with worn rings / blow-by (F08); normally slightly negative."
-          band="HI +5 mbar" />
+          band={`HI ${LIM.crankcase.pressure_hi} mbar (MTU curve 9, flat across the speed range) · SS ${LIM.crankcase.pressure_ss} mbar`} />
         <EquationBlock name="Exhaust back-pressure" tag="B41.1"
-          formula="20 + load·70 + (rpm/1150)·20 + (1−tcEff)·40"
+          formula="8 + load·25 + (rpm/1150)·9 + (1−tcEff)·16"
           rated={`${n(sBackP, 0)} mbar`}
           drivers="load, RPM, TC fouling (restricted flow)"
           expect="Rises when a TC fouls — a corroborating F06 signal alongside falling TC speed."
-          band="alarm ~150 mbar" />
+          band={`${OEM_VARIANT.exhaustBackPressureWarn} mbar warning · >${LIM.exhaustBackPressure.fuel_limitation} mbar fuel limitation`} />
       </SubSection>
 
       <SubSection title="The thermal / hydraulic lag model">

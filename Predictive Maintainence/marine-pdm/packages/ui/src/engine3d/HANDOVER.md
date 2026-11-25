@@ -31,7 +31,7 @@ Registered in the four mandatory places: `App.tsx` (lazy route — the only one)
 
 ## 2. Source documents, and how to read them
 
-Three decks in `D:\ECS 8K MTU I 2024\ECS 8K MTU I 2024\`. **They are text-obfuscated.**
+Three decks in `D:\1 Work\05 Engines\ECS 8K MTU I 2024\ECS 8K MTU I 2024\`. **They are text-obfuscated.**
 
 - `4a_Sensor location_ECS-8000.pdf` — 85 sensors across 4 views, with OEM designations. Shift **+29**.
 - `4b_Sensor location.pdf` — same family. Shift **+29**.
@@ -231,7 +231,7 @@ bundle reads as a bundle rather than thirty tubes z-fighting on one centreline.
 
 ## 7b. The engine harness — where the rest of `CABLES` comes from
 
-The connector drawings in `D:\ECS 8K MTU I 2024\` are the authority for sensor → unit → pin. They are
+The connector drawings in `D:\1 Work\05 Engines\ECS 8K MTU I 2024\` are the authority for sensor → unit → pin. They are
 **image-only**: no text layer worth decoding, so rasterise at ~185 dpi and read. Each is a handful of
 A3 sheets and each sheet lays out 8 runs side by side — sensor symbol at the bottom with its
 designation and range, pin letters along the connector strip at the top.

@@ -272,12 +272,15 @@ export const DOSSIER_ENTRIES: DossierEntryData[] = [
       bearing temperature alone is genuinely ambiguous — the evidence chain must be read alongside lube
       pressure and lube/coolant temperature to identify which of the three is actually happening. Past{' '}
       {MTU8000_LIMITS.lubeOil.bearing_temp_max}°C the safety override forces risk to 100 immediately — the
-      shutdown MTU codes on drawing ZNG00028788. The headroom above healthy is genuinely tight by design:
-      hot oil at rated already puts the free-end bearing near {n(sBearingFree,0)}°C, leaving the HI
-      pre-alarm at {MTU8000_LIMITS.lubeOil.bearing_temp_hi}°C only a few degrees away. An earlier revision
-      of this system read that tightness as a calibration error and pushed the shutdown up to 130°C; the
-      false alarms it was chasing actually came from a HI set at 100°C, <em>below</em> the healthy value,
-      and both are now back on the OEM numbers.</>,
+      shutdown MTU codes on drawing ZNG00028788. There is now real headroom above healthy: the free-end
+      bearing sits near {n(sBearingFree,0)}°C at rated, {n(MTU8000_LIMITS.lubeOil.bearing_temp_hi - sBearingFree,0)}°C
+      below the HI pre-alarm at {MTU8000_LIMITS.lubeOil.bearing_temp_hi}°C. That headroom is the result of
+      a calibration, not of loose limits. This parameter has been read wrong twice in opposite directions:
+      once with the HI set at 100°C, <em>below</em> the healthy value, which produced constant false alarms;
+      then by raising the shutdown to 130°C to chase them, which moved it past the OEM number. Both limits
+      are the coded ones now, and the reason healthy sits comfortably under them is that the lube-oil
+      temperature feeding this equation was itself corrected — it used to run 98°C, past the point the real
+      ECS reduces power, which dragged every bearing up with it.</>,
     coupledParams: [
       couple('Lube Oil Temp', 'raises', 'F05 path — oil-heat term', 'lube'),
       couple('Lube Oil Pressure', 'lowers', 'F03 path — pressure-starvation term (inverse coupling)', 'lube'),

@@ -12,6 +12,7 @@ import {
   exhaustTemp_MTU8000, lubeOilTemp_MTU8000, lubeOilPressure_MTU8000,
   chargeAirPressure_MTU8000, chargeAirTemp_MTU8000, fuelRailPressure_MTU8000,
   sfoc_MTU8000, tcSpeed_MTU8000, bearingTemp_MTU8000, sprayOilTemp_MTU8000,
+  LAST_BEARING_PRESSURE_RATIO,
 } from '@marine-pdm/simulator';
 import type { RootFactor } from '@marine-pdm/simulator';
 import { MTU8000, MTU8000_LIMITS } from '@marine-pdm/shared';
@@ -43,7 +44,7 @@ function sensorCatalogue(): string {
   const rows: [string, string, string, string][] = [
     ['Mean exhaust temp', `${f(sExhaust)} °C`, `HI ${MTU8000_LIMITS.exhaust.mean_hi} · SS ${MTU8000_LIMITS.exhaust.critical_max}`, 'combustion / thermal load'],
     ['Lube oil pressure (gallery)', `${f(sLube, 2)} bar`, `LO alarm ${MTU8000_LIMITS.lubeOil.pressure_before_filter_min}`, 'pump + bearing supply'],
-    ['Last-bearing LO pressure', `~${f(sLube * 0.55, 2)} bar`, `SS < ${MTU8000_LIMITS.lubeOil.pressure_last_bearing_min}`, 'furthest lubrication point'],
+    ['Last-bearing LO pressure', `~${f(sLube * LAST_BEARING_PRESSURE_RATIO, 2)} bar`, `SS < ${MTU8000_LIMITS.lubeOil.pressure_last_bearing_min}`, 'far end of the main gallery'],
     ['Jacket cooling outlet', `${f(sCoolant)} °C`, `HI ${MTU8000_LIMITS.cooling.coolant_temp_after_engine_max} · SS ${MTU8000_LIMITS.cooling.coolant_temp_ss}`, 'HT circuit health'],
     ['Bearing temp (hottest of 11)', `${f(sBearingHot)} °C (mid-engine ${f(sBearing)})`, `HI ${MTU8000_LIMITS.lubeOil.bearing_temp_hi} · SS ${MTU8000_LIMITS.lubeOil.bearing_temp_max}`, 'friction / lube starvation'],
     ['Spray oil temp (10, one per crank throw)', `${f(sSprayOil)} °C`, `difference HI +${MTU8000_LIMITS.sprayOil.diff_warn} · SS +${MTU8000_LIMITS.sprayOil.diff_shutdown} above the mean`, 'earliest bearing-distress signal'],

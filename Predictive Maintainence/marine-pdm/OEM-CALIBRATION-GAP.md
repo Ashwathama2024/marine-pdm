@@ -1,8 +1,18 @@
 # OEM Calibration Gap — diagnosis and correction plan
 
-> **Status: OPEN. Nothing in Phase 1–8 has started.**
-> Owner: unassigned. Opened 2026-08-06 from the MTU manual set.
+> **Status: CLOSED 2026-11-25. Phases 0–8 complete.**
+> Opened 2026-08-06 from the MTU manual set. Closed on branch `claude/epic-blackwell-7f2044`,
+> eight commits, one per phase.
 > Linked from root `CLAUDE.md`, `packages/simulator/CLAUDE.md`, `shared/CLAUDE.md`.
+>
+> **The ground truth now lives in code**, not in this document: `shared/src/oem-limits.ts` holds all
+> 41 rows of ZNG00028788 sheet 1 and all 13 curves of sheet 2, and every threshold in the app is
+> DERIVED from it. The drawing was re-read at 340 dpi before any code changed — §2 below was correct
+> in every value; see [`ZNG00028788-VERIFICATION.md`](./ZNG00028788-VERIFICATION.md).
+>
+> This file is kept as the record of what was wrong and why. §4 is the account of how the envelope
+> drifted, and §8's Progress Log is the only place that says which numbers moved and on whose
+> authority — read both before changing a threshold.
 
 ---
 
@@ -18,15 +28,67 @@ fixed by editing thresholds; the thresholds are the only part we now have OEM pr
 
 ---
 
+## 0b. The baseline, stated plainly
+
+So there is no ambiguity about what this model is calibrated to — for a reader of the paper as much
+as for the next person editing the code.
+
+**This is a proof of concept for the prognosis method, not a certified MTU digital twin.** The
+structure is meant to be right and every number traceable, so that re-pointing it at a different
+engine, build state or hull is a change to `oem-limits.ts` — data — and not a change to the
+physics, the matrix or the decision layer. That is a design goal, not an excuse: the numbers below
+are the OEM ones.
+
+Three categories, and the code says which is which:
+
+| | Where it comes from | How it is written | How to recalibrate |
+|---|---|---|---|
+| **Coded limits** | MTU drawing `ZNG00028788`, verified at 340 dpi | `oemCurve(n, rpm)` / `oemScalar(id)` — derived, never typed | Edit `shared/src/oem-limits.ts` only. Everything downstream follows |
+| **Physics coefficients** | Fitted so a healthy engine clears those limits with margin at every speed | Literals in `mtu8000-physics.ts`, each with the limit it clears in the comment | Refit, then re-run `oem-envelope.test.ts`; the matrix must move with it |
+| **App-only thresholds** | No OEM counterpart exists | Marked **`NOT OEM`** in the comment | Free to change — but say so |
+
+**The healthy rated point (85 % load, 1150 RPM)** is the reference every residual in this system is
+measured from. `seed.ts`'s `PRIMARY_BASELINES` are exact mirrors of the physics at that point, so a
+healthy engine produces a residual of ~0 by construction, and any deviation is signal:
+
+| Sensor | Healthy at rated | Nearest OEM limit | Margin |
+|---|---|---|---|
+| Mean exhaust temp | 440 °C | 700 °C warn (curve 10) | 260 °C |
+| Lube-oil temp | 78.3 °C | 83 °C warn (T-Oil Lim1) | 4.7 °C |
+| LO gallery pressure | 7.16 bar | no coded limit | — |
+| Last-bearing pressure | 6.59 bar | 5.8 warn / 5.3 **SS** (curves 3, 4) | 0.79 bar |
+| Piston-cooling pressure | 6.09 bar | 5.2 warn / 4.7 **SS** (curves 1, 2) | 0.89 bar |
+| Bearing temp (hottest of 11) | ~100 °C | 115 warn / 120 **SS** | 15 °C |
+| Coolant temp | 76.8 °C | 95 warn / 97 power reduction | 18 °C |
+| Coolant pressure | 5.00 bar | 4.1 warn (curve 0) | 0.9 bar |
+| Charge-air temp | 63 °C | 75 UL / 20 LL | 12 °C |
+| Exhaust back pressure | 38.3 mbar | 50 warn / >70 fuel limitation | 11.7 mbar |
+| Crankcase pressure | −0.725 mbar | 27 warn (curve 9) | 27.7 mbar |
+| Fuel temp | 43 °C | 45 warn / 50 power reduction | 2 °C |
+| Spray-oil spread | 2.2 °C | 4 warn / 6 **SS** (difference) | 1.8 °C |
+| TC speed | 28 000 rpm | 40 500 / 41 000 | 12 500 rpm |
+
+Two numbers in that table are knowingly NOT referenced to the manual, and the paper should say so:
+
+- **SFOC ~185 g/kWh.** No SFOC table has been located in this manual set. The figure is the
+  simulator's own, unsourced. (§3.4.)
+- **Rail pressure 1200 bar floor.** MTU codes a *deviation* limit (50 bar from setpoint, MDEC 18),
+  not an absolute floor. Different concept, so the absolute band is ours. (§3.4.)
+
+---
+
 ## 1. Where the data comes from
 
 ### 1.1 The manual set
 
 ```
-D:\ECS 8K MTU I 2024\
+D:\1 Work\05 Engines\ECS 8K MTU I 2024\
 ```
 
-40 PDFs. The ones that matter for calibration, in priority order:
+> **Path corrected 2026-11-25.** This read `D:\ECS 8K MTU I 2024\`, which no longer exists. Two
+> further copies sit under `D:\1 Work\05 Engines\_Duplicates\` — ignore those.
+
+46 entries, 40 of them PDFs. The ones that matter for calibration, in priority order:
 
 | File | Holds | Extractable? |
 |---|---|---|
@@ -274,19 +336,19 @@ Phased and ordered by dependency. **Do not start a phase before the one above it
 degradation matrix is a finite-difference check against the physics, so recalibrating physics while
 the matrix is stale produces test failures that hide real errors.
 
-### Phase 0 — Freeze the ground truth *(prerequisite for everything)*
+### Phase 0 — Freeze the ground truth — **DONE** (`42666d9`)
 - Create `packages/knowledge/src/oem-limits.ts`: the §2.1 table and all 13 curves of §2.2 as data,
   each row carrying `{ drawing: 'ZNG00028788', sheet, mdecParam }`.
 - Add a linear interpolator `oemCurve(id, x)` and a test pinning every bold rated value in §2.2.
 - **Exit:** every OEM number lives in exactly one place, cited, and is queryable.
 
-### Phase 1 — Teach the app curve-valued limits
+### Phase 1 — Teach the app curve-valued limits — **DONE** (`90cec9e`)
 - The limit model is scalar today; OEM limits are RPM-indexed curves and 2D maps.
 - Extend `ALARM_LIMITS` entries to accept `(rpm) => number` alongside plain numbers; update
   `sensor-severity.ts` `getAlarmBand`, the gauge alarm ticks, and `forecast.ts` `FORECAST_LIMITS`.
 - **Exit:** a limit can be expressed as a curve; scalar entries still work; 240 tests green.
 
-### Phase 2 — Recalibrate the physics to the OEM envelope
+### Phase 2 — Recalibrate the physics to the OEM envelope — **DONE** (`86593cc`)
 Order matters — bearing temperature depends on LO pressure and oil temperature.
 1. `coolantPressure_MTU8000` → clear curve 0 (4.1 bar @1150) with margin.
 2. `lubeOilPressure_MTU8000` (gallery) → re-derive; it drives 3 and 4.
@@ -299,19 +361,19 @@ Order matters — bearing temperature depends on LO pressure and oil temperature
 - Rewrite `physics.test.ts` rated targets **from the manual first**, then make the physics meet them.
 - **Exit:** no healthy-rated value violates any OEM limit; every rated target cites a drawing.
 
-### Phase 3 — Rebaseline
+### Phase 3 — Rebaseline — **DONE** (`29dd628`)
 - `knowledge/src/seed.ts` `PRIMARY_BASELINES` mirror the physics — regenerate all 15 curves.
 - Re-verify the two-stage lag cascade (`baseline-lag-convention.test.ts`, `bearing-baseline.test.ts`)
   and the `ME.BearingTemp.Mean` positionBias exclusion (`ui/CLAUDE.md` gotcha 6).
 - **Exit:** `rulQuality` reports OK for the right reason; baseline settling test still passes.
 
-### Phase 4 — Re-derive the degradation matrix
+### Phase 4 — Re-derive the degradation matrix — **DONE** (`694bd35`)
 - `degradation-matrix.ts` weights must equal the new `mtu8000-physics.ts` partials.
 - `tests/degradation-matrix.test.ts` is a finite-difference check and will fail until they agree —
   that failure is the acceptance signal, do not silence it.
 - **Exit:** finite-difference test green against the new physics.
 
-### Phase 5 — Re-tune decision and safety overrides onto OEM values
+### Phase 5 — Re-tune decision and safety overrides onto OEM values — **DONE** (`9997ef8`)
 - `override-mtu8000.ts`: SS/HI thresholds straight from §2.1, now that physics is in range.
 - `MTU8000_LIMITS` Class B entries corrected: `exhaust.mean_hi` → curve 10, `crankcase.pressure_hi`
   → 27 mbar, `cooling.raw_water_pressure_min` → curve 8, `fuel.filter_dp_warn` → curve 7.
@@ -320,14 +382,14 @@ Order matters — bearing temperature depends on LO pressure and oil temperature
   undetectable the moment the limit is corrected. Same audit for F01–F09 against their new thresholds.
 - **Exit:** each of P01–P08 still fires from its fault at full severity; no override fires at healthy.
 
-### Phase 6 — Forecast and RUL
+### Phase 6 — Forecast and RUL — **DONE** (`34b9049`)
 - `FORECAST_LIMITS` onto the Phase 0 curves (`hi`/`lo`/`ss` become curve lookups).
 - `rul.ts` `analyticRul()` follows Phase 4 automatically but its `matrixSensorIds` ordering must be
   re-checked — the first match wins and drives the label.
 - `rul-quality.ts` `BASELINE_FIELD` and `training-recorder.ts` `HEALTHY_REF` re-pointed.
 - **Exit:** `rul.test.ts` and `rul-quality.test.ts` green against hand-computed OEM cases.
 
-### Phase 7 — Discard the poisoned training set
+### Phase 7 — Discard the poisoned training set — **DONE** (`1fcfb28`)
 - Bump `SCHEMA_VERSION` in `services/training-store.ts` so existing IndexedDB rows are dropped, not
   migrated. They were labelled against the wrong baselines and the wrong limits.
 - Add a one-line provenance field to each row recording the calibration revision that produced it,
@@ -335,7 +397,7 @@ Order matters — bearing temperature depends on LO pressure and oil temperature
 - Re-record from scratch. Re-check class balance on `/training`.
 - **Exit:** no row predating this document survives; `/training` shows a clean run list.
 
-### Phase 8 — Documentation
+### Phase 8 — Documentation — **DONE**
 - `/help` (`SectionsPhysics.tsx` equations), `/about` (`dossier-data.tsx` cascade prose) and
   `services/jarvis-self-knowledge.ts`. Most numbers live-import and follow automatically; the
   **hand-authored prose explaining why a number matters does not** and must be re-read (root
@@ -370,6 +432,11 @@ Order matters — bearing temperature depends on LO pressure and oil temperature
 
 ## 8. Progress log
 
+### Entries from the earlier passes, before the phased work
+
+These were the limit corrections that could be made in isolation. Everything in §3.1 and §3.2 was
+**untouched** by them — those needed the phased plan, not an edit.
+
 | Date | Change | Evidence |
 |---|---|---|
 | 2026-08-06 | `lubeOil.bearing_temp_max` 130 → **120 °C** | T-Bearing Lim2. Healthy hottest ≈112 °C leaves 8 °C headroom; the old 120/100 false alarm came from the HI at 100, not the SS |
@@ -384,7 +451,58 @@ Order matters — bearing temperature depends on LO pressure and oil temperature
 | 2026-08-06 | `part-risk.ts` `BEARING_RISK_SPAN_C` hardcoded 35 → derived from the SS limit | **Behavioural.** Floor 95 + span 35 saturated the 3D bearing ramp at 130, so once the shutdown moved to 120 a bearing showed as less-than-critical while the ECS was already stopping the engine |
 | 2026-08-06 | `SensorFailurePanel` tag list derived from `TAG_MAP` | It kept a hand-copied second list, so the ten new B77 channels were sensors the failure simulator could not fail |
 
-Everything in §3.1 and §3.2 remains **untouched** — it needs the phased plan, not an edit.
+### The calibration itself — 2026-11-25, branch `claude/epic-blackwell-7f2044`
+
+**Class A — the five violations of §3.1, all cleared.** Healthy at 85 % load / 1150 RPM:
+
+| Parameter | Was | Now | OEM limit cleared |
+|---|---|---|---|
+| LO temperature `B7` | 98.2 °C | **78.3 °C** | T-Oil Lim1 83 warn / Lim2 85 power reduction |
+| Exhaust back pressure `B41.1` | 99.5 mbar | **38.3 mbar** | 50 warn / >70 fuel limitation |
+| Piston-cooling pressure `B5.2` | 4.35 bar | **6.09 bar** | curve 1 warn 5.2 / curve 2 **SS 4.7** |
+| Last-bearing pressure `B5.3/B5.4` | 3.51 bar | **6.59 bar** | curve 3 warn 5.8 / curve 4 **SS 5.3** |
+| Coolant pressure `B16.1` | 2.0 bar | **5.00 bar** | curve 0 warn 4.1 |
+
+Checked at 400/500/600/800/900/1000/1150 RPM, not only at rated — these limits are RPM-indexed, so
+a curve of the wrong SHAPE passes at 1150 and fails at 600. Tightest point in the range is piston
+cooling at 1000 RPM (0.25 bar, ~4× sensor noise), where curve 1 steps 4.5 → 5.2; asserted explicitly.
+
+| Date | Change | Evidence |
+|---|---|---|
+| 2026-11-25 | **`oem-limits.ts` created** — ZNG00028788 as data: 41 rows, 13 curves, `oemCurve()` | Both sheets re-read at 340 dpi. §2 above was correct in every value, so this added citations, not corrections |
+| 2026-11-25 | Placed in `shared`, not `packages/knowledge` as Phase 0 proposed | `constants.ts` and the decision overrides both consume it, and knowledge depends on shared — the proposed placement was a dependency cycle |
+| 2026-11-25 | Limits may be `number \| (rpm) => number` | Most MTU limits are curves; writing one as a scalar silently picks a speed, which is part of how this drifted |
+| 2026-11-25 | `lubeOilTemp_MTU8000` 98.2 → **78.3 °C** at rated | T-Oil Lim1. The root of three of the five — the bearing and spray-oil models both hang off it |
+| 2026-11-25 | **Lube takeoff ratios 0.55/0.68 → 0.92/0.85**, and the right way round | ZNG00028788 warns on the last bearing at 5.8 bar but on piston cooling at 5.2, so the last bearing is the HIGHER of the two. The old pair had them inverted and so low that clearing 5.8 through 0.55 would have needed an 11.8 bar gallery — a pump no MTU 8000 has. **The ratios were the error, not the pump.** Now `MTU8000.LUBE_CIRCUIT`, one definition for the three modules that had drifted to two different pairs |
+| 2026-11-25 | `coolantPressure_MTU8000` linear → **centrifugal head (∝ rpm²)** | Curve 0 has that shape, so the margin stays proportional across the range instead of closing at one end |
+| 2026-11-25 | `exhaustBackPressure_MTU8000` rescaled; fouling term 40 → 16 | Keeps the same FRACTIONAL response to a fouled turbine on a 38 mbar base |
+| 2026-11-25 | `bearingTemp_MTU8000` and `lubeOilPressure_MTU8000` references rebased onto the rated point | Were 85 °C / 65 °C / 6.5 bar — none of which is the rated value of anything. Each term is now zero at healthy rather than a standing offset |
+| 2026-11-25 | `seed.ts` — 4 of 15 curves regenerated, now **exact** mirrors | `analyticRul()` divides by these, so a standing bias moves every label one way. `ME.BearingTemp.Mean` now carries `pressureDef` too (~17 °C at idle against the corrected gallery) |
+| 2026-11-25 | Matrix weights re-derived: F06→backP 40→16, F03→lastBearing −2.37→−3.956, F03→pistonCooling −3.08→−3.73 | Finite-difference test. F03→bearingTemps stays 17.1 — Phase 2 moved that term's REFERENCE, not its slope |
+| 2026-11-25 | **Every `MTU8000_LIMITS` threshold derived from the drawing**; non-OEM entries marked `NOT OEM` | Class B: `exhaust.mean_hi` 460→700, `crankcase.pressure_hi` 5→27, `raw_water_pressure_min` 1.0→1.8, `fuel.filter_dp_warn` 0.8→1.0. Plus `pressure_last_bearing_min` 2.0→5.3 and `piston_cooling_min` 4.0→5.2 |
+| 2026-11-25 | Curve limits resolved at `snap.rpm` in the override | **Essential, not cosmetic.** The last-bearing SS is 5.3 bar at rated and 2.07 at 400 RPM — the rated scalar would trip an Emergency Stop on a healthy idling engine at 3.11 bar |
+| 2026-11-25 | **`FAULT_MAX_EFFECTS.F08_blowby_pressure` 8 → 45 mbar** | Against the real 27 mbar limit its 7.28 mbar ceiling could never fire. **The fault was grown to match the envelope, not the limit tuned to the fault.** F07's coupling stays sub-alarm (12.8 vs 27, was 1.68 vs 5), so P07/P08 discrimination survives |
+| 2026-11-25 | Gallery pre-alarm: flat 5.5 bar → curve 3 over the takeoff ratio | A fixed floor cannot work on a pressure running 3.4 bar at idle and 7.2 at rated; after Phase 2 a healthy engine at 800 RPM / 45 % sat at 5.41 and tripped it. The `load >= 25` guard went with it — it existed to suppress the symptom |
+| 2026-11-25 | `FORECAST_LIMITS` onto the curves; `ss` now applies in both directions | A pressure collapse — the one fault class here that reaches a shutdown — reported no time-to-shutdown at all. `lubeLastBearing.lo` moved from the shutdown to the **warning**: "minutes to alarm" should mean the first thing the ECS does |
+| 2026-11-25 | **`SCHEMA_VERSION` 3 → 4; pre-v4 runs DELETED at startup** | Labels were biased, not noisy, and `rulQuality` cannot see it (gotcha 7) — a poisoned row reports OK. Filtering was not enough: an export carries sample rows only |
+| 2026-11-25 | `CALIBRATION_REVISION` stamped on every run and row | `schemaVersion` says what columns; this says against what truth. Next time the envelope moves, affected rows are identifiable from the export alone |
+| 2026-11-25 | `ALARM_LIMITS.bearingTemp` comments said "122.5 °C" and "130 °C" against values that were 117.5 and 120 | The L3 expression had silently moved the slowdown 5 °C. **Comments now name each number's SOURCE instead of restating it** — a comment repeating a derived value is a second source of truth, which is this document's §4 in miniature |
+| 2026-11-25 | `decision`'s `healthySnapshot()` fixture derived from the physics | It hand-wrote the old equations, so after Phase 2 a fixture named "healthy" described an engine 3.08 bar under the last-bearing shutdown. Its tests only assert pattern behaviour, so nothing failed |
+| 2026-11-25 | `simulator`'s `package.json` `main` → `./dist/src/index.js` | Pointed at `./dist/engine.js`, which has never existed. The UI resolves it through a Vite alias, so the first consumer to use node resolution was the first to notice |
+
+**Decision recorded, not silently taken: HI T-Exhaust Mean is now unreachable by any modelled fault.**
+The OEM limit is 700 °C against a healthy 440; F02 at full severity lifts the mean to ~472 °C. That
+is faithful to the real ECS, which catches a single-bank injector fault through its RELATIVE limits
+— single-cylinder UL (curve 12, against the running mean) and the mean's own 20 °C offset step
+(MDEC 51,03) — which in this app is the job of the deviation scoring and patterns P01/P02/P09. The
+limit had been coded at 460 °C, 20 °C above healthy, which is exactly how it became the de-facto
+detector for everything exhaust-related. Lowering it again would re-create this defect.
+
+**Still open: §7.1, the build state.** BM00 vs BM01 moves only engine overspeed (1240 vs 1323) and
+ETC overspeed. `5a_ECS Node Settings.pdf` is about CAN addressing, and nothing in the 46-file set
+carries the nameplate. The code targets BM01 via `OEM_TARGET_VARIANT`, and **no Class A parameter
+depends on the answer**. §7.2 and §7.3 are closed — see §2.2 and the Phase 2 commit.
+
 
 ---
 
@@ -393,7 +511,7 @@ Everything in §3.1 and §3.2 remains **untouched** — it needs the phased plan
 ### 9.1 Scan the decks
 
 ```python
-# scratchpad/decode.py  —  python decode.py "B77" "D:\ECS 8K MTU I 2024\*.pdf"
+# scratchpad/decode.py  —  python decode.py "B77" "D:\1 Work\05 Engines\ECS 8K MTU I 2024\*.pdf"
 import sys, re, fitz
 
 def dec(s, k):
@@ -439,7 +557,7 @@ the rated figures in §3. Drive load from the `/simulator` page controls, or rea
 
 ```python
 import fitz
-d = fitz.open(r'D:\ECS 8K MTU I 2024\4e_ Alarm Limit XZ56900100007.pdf')
+d = fitz.open(r'D:\1 Work\05 Engines\ECS 8K MTU I 2024\4e_ Alarm Limit XZ56900100007.pdf')
 p = d[1]; r = p.rect
 p.get_pixmap(dpi=340, clip=fitz.Rect(r.x0+40, r.y0+30, r.x0+r.width*0.52, r.y0+r.height*0.46)).save('out.png')
 ```

@@ -5,6 +5,7 @@
 // render a static placeholder during pre-start (before the first snapshot).
 
 import React from 'react';
+import { MTU8000_LIMITS as LIM } from '@marine-pdm/shared';
 import { useEngine } from '../../context/EngineContext';
 import { LiveBadge } from '../HelpPrimitives';
 
@@ -49,16 +50,20 @@ export function LiveGaugeAnnotated() {
   const { snapshot, isOperational } = useEngine();
   const value = snapshot?.exhaustTemp ?? 0;
 
-  // Scale 200 → 540 °C. Zones: normal → HI-mean 460 → SS 530.
-  const MIN = 200, MAX = 540;
+  // Zones read from MTU8000_LIMITS, never typed in: this illustration carried a hardcoded 460/530
+  // pair and went stale the moment the exhaust band was corrected to its OEM curve-10 value. The
+  // scale top follows the band so the upper zone stays on the chart.
+  const HI = LIM.exhaust.mean_hi;        // MTU curve 10 at rated
+  const SS = LIM.exhaust.critical_max;   // the coded +20 °C offset escalation above it
+  const MIN = 200, MAX = Math.ceil((SS + 20) / 20) * 20;
   const W = 560, H = 120, padL = 12, padR = 12, barY = 58, barH = 18;
   const usableW = W - padL - padR;
   const x = (v: number) => padL + ((Math.max(MIN, Math.min(MAX, v)) - MIN) / (MAX - MIN)) * usableW;
 
   const zones: { from: number; to: number; color: string }[] = [
-    { from: MIN, to: 460, color: 'rgba(0,212,170,0.35)' },   // normal (green)
-    { from: 460, to: 530, color: 'rgba(245,158,11,0.40)' },  // HI band (yellow)
-    { from: 530, to: MAX, color: 'rgba(239,68,68,0.45)' },   // SS (red)
+    { from: MIN, to: HI, color: 'rgba(0,212,170,0.35)' },   // normal (green)
+    { from: HI, to: SS, color: 'rgba(245,158,11,0.40)' },   // HI band (yellow)
+    { from: SS, to: MAX, color: 'rgba(239,68,68,0.45)' },   // escalation (red)
   ];
   const needleX = x(value);
 
@@ -78,7 +83,7 @@ export function LiveGaugeAnnotated() {
         ))}
         <rect x={padL} y={barY} width={usableW} height={barH} fill="none" stroke="var(--border)" />
         {/* scale ticks */}
-        {[200, 300, 400, 460, 530].map(t => (
+        {[MIN, 400, 600, HI, SS].map(t => (
           <g key={t}>
             <line x1={x(t)} y1={barY + barH} x2={x(t)} y2={barY + barH + 5} stroke="var(--text-dim)" />
             <text x={x(t)} y={barY + barH + 16} fontSize="9" fill="var(--text-dim)" textAnchor="middle">{t}</text>
@@ -92,9 +97,9 @@ export function LiveGaugeAnnotated() {
           </g>
         )}
         {/* callouts */}
-        <text x={x(330)} y={30} fontSize="10" fill="var(--risk-normal)" textAnchor="middle">NORMAL envelope</text>
-        <text x={x(495)} y={30} fontSize="10" fill="var(--risk-warning)" textAnchor="middle">HI mean 460 °C</text>
-        <text x={x(535)} y={44} fontSize="9" fill="var(--risk-critical)" textAnchor="end">SS 530</text>
+        <text x={x(MIN + (HI - MIN) / 2)} y={30} fontSize="10" fill="var(--risk-normal)" textAnchor="middle">NORMAL envelope</text>
+        <text x={x(HI + (SS - HI) / 2)} y={30} fontSize="10" fill="var(--risk-warning)" textAnchor="middle">HI mean {HI} °C</text>
+        <text x={x(MAX)} y={44} fontSize="9" fill="var(--risk-critical)" textAnchor="end">+{SS - HI} °C offset</text>
       </svg>
       <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.6, marginTop: 6 }}>
         The <span style={{ color: 'var(--accent-blue)' }}>blue needle</span> is the live value. Green is the
