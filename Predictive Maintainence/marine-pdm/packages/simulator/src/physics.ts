@@ -18,9 +18,11 @@ import {
   tcSpeed_MTU8000,
   coolantPressure_MTU8000,
   fuelTemp_MTU8000,
+  sprayOilTemp_MTU8000,
 } from './mtu8000-physics';
 
 const BEARING_COUNT = 11;
+const THROW_COUNT = 10;  // 20V: two con-rods share one throw, so 10 throws under 11 bearings
 const TC_COUNT = 4;  // A1, A2, B1, B2
 
 // Lag alphas — per-sensor thermal/hydraulic response speed
@@ -34,6 +36,9 @@ const LAG = {
   chargeAirTemp:   0.06,
   chargeAirPress:  0.08,    // was 0.10
   bearingTemps:    0.02,    // was 0.03 — large thermal mass
+  // Spray oil responds FASTER than the bearing metal it comes off: it is a thin film in transit,
+  // not a heat-soaked casting. That lead is the point of the sensor — it is why MTU watches it.
+  sprayOilTemps:   0.05,
   crankcasePressure: 0.15,
   tcSpeeds:        0.08,
   lubeOilTemp:     0.025,   // was 0.04
@@ -54,6 +59,7 @@ const NOISE = {
   chargeAirTemp: 0.4,
   chargeAirPress: 0.025,
   bearingTemp: 0.3,
+  sprayOilTemp: 0.25,
   crankcasePressure: 0.2,
   tcSpeed: 100,
   lubeOilTemp: 0.5,
@@ -94,7 +100,8 @@ export interface PhysicsState {
   lagChargeAirPress: number;
 
   // Lagged — bearings (U3)
-  lagBearingTemps: number[];  // [11]
+  lagBearingTemps: number[];
+  lagSprayOilTemps: number[];   // [10] — B77.11–B77.20, one per crank throw  // [11]
 
   // Lagged — crankcase (U3)
   lagCrankcasePressure: number;
@@ -178,6 +185,9 @@ export function makeInitialPhysicsState(rpm = 1000, load = 85): PhysicsState {
     lagChargeAirPress: caPress,
 
     lagBearingTemps: bearingTemps,
+    lagSprayOilTemps: Array.from({ length: THROW_COUNT }, (_, i) =>
+      sprayOilTemp_MTU8000(load, rpm, lubeOilT, i),
+    ),
     lagCrankcasePressure: crankcase,
     lagTcSpeeds: Array(TC_COUNT).fill(tcSpd),
 
@@ -257,6 +267,18 @@ export function tickPhysics(state: PhysicsState): PhysicsState {
     return applyLag(prev, target, LAG.bearingTemps);
   });
 
+  // ── Spray-oil temperatures (10 crank throws) ──
+  // Throw t runs between main bearings t and t+1, so a bearing running hot warms the oil coming off
+  // BOTH throws either side of it. That coupling is the whole reason these sensors exist: F04 shows
+  // up here, on two adjacent channels, before the bearing casting itself has heated through.
+  // Blow-by is common to every throw, so it lifts all ten equally and cancels out of the difference
+  // — correctly, since blow-by is not a bearing fault and must not be reported as one.
+  const newLagSprayOilTemps = state.lagSprayOilTemps.map((prev, t) => {
+    const throwFault = Math.max(bearingFaults[t] ?? 0, bearingFaults[t + 1] ?? 0);
+    const target = sprayOilTemp_MTU8000(load, rpm, newLagLubeOilTemp, t, throwFault);
+    return applyLag(prev, target + pistonBlowby * 4, LAG.sprayOilTemps);
+  });
+
   // ── Crankcase pressure ──
   const targetCrankcase = crankcasePressure_MTU8000(load, pistonBlowby);
   const newLagCrankcase = applyLag(state.lagCrankcasePressure, targetCrankcase, LAG.crankcasePressure);
@@ -296,6 +318,7 @@ export function tickPhysics(state: PhysicsState): PhysicsState {
     lagChargeAirTemp: newLagCaTemp,
     lagChargeAirPress: newLagCaPress,
     lagBearingTemps: newLagBearingTemps,
+    lagSprayOilTemps: newLagSprayOilTemps,
     lagCrankcasePressure: newLagCrankcase,
     lagTcSpeeds: newLagTcSpeeds,
     lagLubeOilTemp: newLagLubeOilTemp,
@@ -322,6 +345,7 @@ export interface PhysicsSnapshot {
   // New MTU 8000 fields
   chargeAirPressure: number;
   bearingTemps: number[];
+  sprayOilTemps: number[];
   crankcasePressure: number;
   tcSpeeds: number[];
   lubeOilTemp: number;
@@ -360,6 +384,8 @@ export function snapshotFromState(state: PhysicsState): PhysicsSnapshot {
     chargeAirTemp: addNoise(state.lagChargeAirTemp, NOISE.chargeAirTemp),
     chargeAirPressure: addNoise(state.lagChargeAirPress, NOISE.chargeAirPress),
     bearingTemps: state.lagBearingTemps.map(v => addNoise(v, NOISE.bearingTemp)),
+    // Noise must stay well under the 4 °C difference warning or the alarm chatters at healthy.
+    sprayOilTemps: state.lagSprayOilTemps.map(v => addNoise(v, NOISE.sprayOilTemp)),
     crankcasePressure: addNoise(state.lagCrankcasePressure, NOISE.crankcasePressure),
     tcSpeeds: state.lagTcSpeeds.map(v => addNoise(v, NOISE.tcSpeed)),
     lubeOilTemp: addNoise(state.lagLubeOilTemp, NOISE.lubeOilTemp),

@@ -46,7 +46,7 @@ describe('SENSOR_META ↔ DEGRADATION_MODES', () => {
     //
     // bearingTemps[i] / bearingTemps[all] were on this list until ME.BearingTemp was added. They were
     // the worst case in it: unlike the rest, bearing temperature is enforced by
-    // applyMTU8000SafetyOverride (HI T-Bearing 115 °C, SS Emergency Stop 130 °C), so F04 could trip a
+    // applyMTU8000SafetyOverride (HI T-Bearing 115 °C, SS Emergency Stop 120 °C), so F04 could trip a
     // shutdown with no gauge, no trend and no RUL column anywhere in the UI.
     expect(orphans.sort()).toEqual(
       ['crankcasePressure', 'cylImbalance', 'exhaustBackPressure', 'lubeOilTemp'].sort(),

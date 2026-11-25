@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { Routes, Route, useLocation } from 'react-router-dom';
 import { Sidebar } from './layout/Sidebar';
 import { Dashboard } from './pages/Dashboard';
@@ -22,8 +22,14 @@ import { DegradationProvider } from './context/DegradationContext';
 import { AlertHistoryProvider } from './context/AlertHistoryContext';
 import { SimulatorControlProvider } from './context/SimulatorControlContext';
 
+// The ONLY lazy route in the app, and deliberately so: three.js + R3F + drei + postprocessing add
+// ~800 KB, several times the rest of the bundle. Everyone who never opens the 3D view should never
+// download it. Every other route stays eagerly imported, as the codebase does elsewhere.
+const Engine3D = lazy(() => import('./pages/Engine3D').then(m => ({ default: m.Engine3D })));
+
 const PAGE_TITLES: Record<string, string> = {
   '/':             'Dashboard',
+  '/engine3d':     '3D Engine',
   '/analysis':     'Analysis Workspace',
   '/deviations':   'Deviation Overview',
   '/table':        'Analysis Table',
@@ -175,6 +181,12 @@ function Header({ sidebarCollapsed }: { sidebarCollapsed: boolean }) {
 
 export default function App() {
   const [collapsed, setCollapsed] = useState(false);
+  const location = useLocation();
+
+  // The 3D view is a canvas, not a document — it needs the full pane, not the shared 20px/1600px
+  // reading column every other route sits in. It still stops short of the fixed AlertTicker footer,
+  // which .app-content already reserves via padding-bottom.
+  const fullBleed = location.pathname === '/engine3d';
 
   return (
     <SimulatorControlProvider>
@@ -186,10 +198,18 @@ export default function App() {
         <div className="app-main">
           <Header sidebarCollapsed={collapsed} />
 
-          <div className="app-content">
-            <div style={{ padding: 20, maxWidth: 1600, margin: '0 auto' }}>
+          <div className="app-content" style={fullBleed ? { overflow: 'hidden' } : undefined}>
+            <div style={fullBleed
+              ? { height: '100%' }
+              : { padding: 20, maxWidth: 1600, margin: '0 auto' }}>
+              <Suspense fallback={
+                <div style={{ padding: 40, fontSize: 11, color: 'var(--text-dim)', letterSpacing: '0.1em' }}>
+                  LOADING…
+                </div>
+              }>
               <Routes>
                 <Route path="/"            element={<Dashboard />} />
+                <Route path="/engine3d"    element={<Engine3D />} />
                 <Route path="/analysis"    element={<AnalysisWorkspace />} />
                 <Route path="/deviations"  element={<DeviationDashboard />} />
                 <Route path="/table"       element={<DeviationTable />} />
@@ -204,6 +224,7 @@ export default function App() {
                 <Route path="/about"       element={<AboutPage />} />
                 <Route path="/ai"          element={<AIAssistant />} />
               </Routes>
+              </Suspense>
             </div>
           </div>
         </div>

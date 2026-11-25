@@ -1,5 +1,5 @@
 // packages/ingestion/src/tag-map.ts
-// MTU 8000 M71/M71L — 52-tag OPC-UA mapping for IPMS connection.
+// MTU 8000 M71/M71L — 62-tag OPC-UA mapping for IPMS connection.
 // Maps real IPMS NodeIds → MTU8000Snapshot fields.
 // PDF upgrade spec §4 and §10.1.
 //
@@ -8,13 +8,13 @@
 // To connect a real vessel: replace ns=2;s=... with your IPMS NodeIds.
 // Use the scale/offset fields for unit conversion (some IPMS report ×10 values).
 
-import { MTU8000 } from '@marine-pdm/shared';
+import { MTU8000, MTU8000_LIMITS } from '@marine-pdm/shared';
 
 export interface TagMapping {
   nodeId: string;         // OPC-UA NodeId (internal simulator or real IPMS)
   field: string;          // MTU8000Snapshot / EngineSnapshot field path
   description: string;    // human-readable label
-  mtuDesignation: string; // MTU sensor designation e.g. B4.1
+  mtuDesignation: string; // MTU sensor designation e.g. B4A1 — a label, NOT an address (see nodeId)
   unit: string;
   alarmHi?: number;       // ECS HI alarm threshold
   ssLimit?: number;       // ECS SS (safety system) limit
@@ -24,13 +24,22 @@ export interface TagMapping {
 
 const CYL_NAMES = MTU8000.CYL_NAMES as unknown as string[];
 
-// ── 4.1 EXHAUST TEMPERATURE SENSORS (B4.1–B4.20) ────────────────────────────
+// ── 4.1 EXHAUST TEMPERATURE SENSORS (B4A1–B4A10 / B4B1–B4B10) ───────────────
+// Two OEM documents name these differently and BOTH are in the manual set:
+//   - the sensor-location deck (4a/4b, MS15082/00E) labels each physical probe B4 + bank + number,
+//     so cylinder B7's probe is B4B7. It is drawn at its position on the engine.
+//   - the alarm/limit list (ZNG00028788) writes the range as "B4.1 bis B4.20" in its sensor-ref
+//     column, alongside "B57.1- B57.11" for the bearings.
+// We follow the location deck, because that is the form stencilled at the sensor an engineer is
+// standing in front of, and because engine3d/topology.ts already resolves clicks to it. If a vessel's
+// IPMS publishes the flat form it changes nothing here: `mtuDesignation` is a label with no consumer,
+// and subscription goes through `nodeId`.
 const exhaustTempTags: TagMapping[] = CYL_NAMES.map((name, i) => ({
   nodeId:          `ns=2;s=ME.Cyl${name}.ExhaustTemp`,
   // Real IPMS example (Kongsberg K-Chief): `ns=4;s=MainEngine.T_EXH_${name}`
   field:           `cylTemps.${i}`,       // also maps to cylExhaustTemps[i]
   description:     `Cylinder ${name} exhaust temperature`,
-  mtuDesignation:  `B4.${i + 1}`,
+  mtuDesignation:  `B4${name}`,
   unit:            '°C',
   alarmHi:         480,
   ssLimit:         530,
@@ -119,8 +128,27 @@ const bearingTempTags: TagMapping[] = Array.from({ length: 11 }, (_, i) => ({
   description:    `Crankshaft bearing ${i + 1} temperature${i === 10 ? ' (free end — runs 5°C hotter)' : ''}`,
   mtuDesignation: `B57.${i + 1}`,
   unit:           '°C',
-  alarmHi:        100,
-  ssLimit:        120,
+  // Was a hardcoded 100/120. The 100 is the pre-correction HI that fired false on a healthy engine —
+  // the hottest bearing reaches ~112 °C at rated. ZNG00028788 codes T-Bearing Lim1 115 / Lim2 120.
+  alarmHi:        MTU8000_LIMITS.lubeOil.bearing_temp_hi,
+  ssLimit:        MTU8000_LIMITS.lubeOil.bearing_temp_max,
+}));
+
+// ── 4.4b SPRAY-OIL TEMPERATURES (B77.11–B77.20) ──────────────────────────────
+// Ten sensors, one per crank throw, on the B-side crankcase wall — MS15082/00E p38. The ECS knows
+// them as channels B1–B10 and its messages use that name ("HI T-Splash Oil B7"), so the description
+// carries both: an engineer reads B7 on the panel and has to find B77.17 on the engine.
+//
+// NO alarmHi/ssLimit here, deliberately. These are the only tags in the map with no absolute band,
+// because MTU codes none — the alarm is on the difference between channels, which is a derived
+// quantity and lives with the decision layer, not on a single tag.
+const sprayOilTempTags: TagMapping[] = Array.from({ length: MTU8000.CRANK_THROWS }, (_, i) => ({
+  nodeId:         `ns=2;s=ME.SprayOilTemp.${i + 1}`,
+  // Real IPMS: `ns=4;s=MainEngine.T_SPRAYOIL_B${i + 1}`
+  field:          `sprayOilTemps.${i}`,
+  description:    `Spray oil temperature B${i + 1} (crank throw ${i + 1})`,
+  mtuDesignation: `B77.${i + 11}`,
+  unit:           '°C',
 }));
 
 // ── 4.5 COOLING SYSTEM ────────────────────────────────────────────────────────
@@ -170,6 +198,10 @@ const chargeAirTags: TagMapping[] = [
 ];
 
 // ── 4.7 TURBOCHARGER SPEEDS (B44.x) ──────────────────────────────────────────
+// These carried ssLimit: 8000 — below the ~17.8k the sim idles at and the 28k it reaches at rated, so
+// the tag would have read "past its safety limit" permanently on a healthy engine. The ECS codes
+// Turbo Overspeed at 40 500 / 41 000 RPM (ZNG00028788), which is what MTU8000_LIMITS already held;
+// sourcing from there rather than retyping keeps the two from parting again.
 const tcSpeedTags: TagMapping[] = [
   {
     nodeId: 'ns=2;s=ME.TC.A1.Speed',
@@ -178,7 +210,8 @@ const tcSpeedTags: TagMapping[] = [
     description: 'Turbocharger A1 speed',
     mtuDesignation: 'B44.1',
     unit: 'RPM',
-    ssLimit: 8000,
+    alarmHi: MTU8000_LIMITS.turbocharger.speed_overspeed_l1,
+    ssLimit: MTU8000_LIMITS.turbocharger.speed_overspeed_l2,
   },
   {
     nodeId: 'ns=2;s=ME.TC.A2.Speed',
@@ -187,7 +220,8 @@ const tcSpeedTags: TagMapping[] = [
     description: 'Turbocharger A2 speed',
     mtuDesignation: 'B44.2',
     unit: 'RPM',
-    ssLimit: 8000,
+    alarmHi: MTU8000_LIMITS.turbocharger.speed_overspeed_l1,
+    ssLimit: MTU8000_LIMITS.turbocharger.speed_overspeed_l2,
   },
   {
     nodeId: 'ns=2;s=ME.TC.B1.Speed',
@@ -196,7 +230,8 @@ const tcSpeedTags: TagMapping[] = [
     description: 'Turbocharger B1 speed',
     mtuDesignation: 'B44.11',
     unit: 'RPM',
-    ssLimit: 8000,
+    alarmHi: MTU8000_LIMITS.turbocharger.speed_overspeed_l1,
+    ssLimit: MTU8000_LIMITS.turbocharger.speed_overspeed_l2,
   },
   {
     nodeId: 'ns=2;s=ME.TC.B2.Speed',
@@ -205,7 +240,8 @@ const tcSpeedTags: TagMapping[] = [
     description: 'Turbocharger B2 speed',
     mtuDesignation: 'B44.12',
     unit: 'RPM',
-    ssLimit: 8000,
+    alarmHi: MTU8000_LIMITS.turbocharger.speed_overspeed_l1,
+    ssLimit: MTU8000_LIMITS.turbocharger.speed_overspeed_l2,
   },
 ];
 
@@ -265,12 +301,14 @@ const fuelAndMiscTags: TagMapping[] = [
   },
 ];
 
-// ── COMBINED 52-TAG MAP ───────────────────────────────────────────────────────
+// ── COMBINED TAG MAP ──────────────────────────────────────────────────────────
+// Was 52 tags; the ten B77 spray-oil channels take it to 62.
 export const TAG_MAP: TagMapping[] = [
   ...exhaustTempTags,
   ...exhaustOtherTags,
   ...lubeOilPressureTags,
   ...bearingTempTags,
+  ...sprayOilTempTags,
   ...coolingTags,
   ...chargeAirTags,
   ...tcSpeedTags,

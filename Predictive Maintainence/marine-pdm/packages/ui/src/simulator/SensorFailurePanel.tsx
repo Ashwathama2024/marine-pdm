@@ -1,39 +1,15 @@
 import React, { useState } from 'react';
 import type { SensorFailureConfig, FailureMode } from '@marine-pdm/simulator';
 import { SensorFailureRegistry } from '@marine-pdm/simulator';
-import { MTU8000 } from '@marine-pdm/shared';
+import { TAG_MAP } from '@marine-pdm/ingestion';
 
-// All 52 MTU 8000 sensor tags (from PDF §4)
-const MTU8000_TAGS: string[] = [
-  // Exhaust temperatures B4.1–B4.20
-  ...MTU8000.CYL_NAMES.map(n => `ME.Cyl${n}.ExhaustTemp`),
-  'ME.ExhaustMean',
-  'ME.ExhaustBackPressure',
-  // Lube oil & bearings
-  'ME.LubeOilPressure.BeforeFilter',
-  'ME.LubeOilPressure.AfterFilter',
-  'ME.LubeOilPressure.PistonCooling',
-  'ME.LubeOilPressure.LastBearing',
-  'ME.LubeOilTemp',
-  ...Array.from({ length: 11 }, (_, i) => `ME.BearingTemp.${i + 1}`),
-  // Cooling & charge air
-  'ME.CoolantTemp.AfterEngine',
-  'ME.CoolantPressure',
-  'ME.ChargeAirPressure',
-  'ME.ChargeAirTemp',
-  // Turbochargers
-  'ME.TC.A1.Speed',
-  'ME.TC.A2.Speed',
-  'ME.TC.B1.Speed',
-  'ME.TC.B2.Speed',
-  // Fuel
-  'ME.FuelRailPressure',
-  'ME.FuelTemp',
-  // Misc
-  'ME.CrankcasePressure',
-  'ME.RPM',
-  'ME.RPM.Redundant',
-];
+// Derived from the ingestion TAG_MAP rather than listed here.
+//
+// This used to be a hand-maintained copy of the same 52 tags, which meant every tag added to the
+// real map had to be remembered here too — and when the ten B77 spray-oil channels landed, it was
+// not: the engine had sensors the failure simulator could not fail. Stripping the `ns=2;s=` prefix
+// off the map's nodeIds gives exactly the ids this panel already used.
+const MTU8000_TAGS: string[] = TAG_MAP.map(t => t.nodeId.replace(/^ns=\d+;s=/, ''));
 
 const FAILURE_MODES: FailureMode[] = ['DROPOUT', 'DRIFT', 'SPIKE', 'INTERMITTENT', 'FREEZE'];
 
@@ -176,7 +152,7 @@ export function SensorFailurePanel({ registry, onRegistryChange }: Props) {
           <div className="label-xs" style={{ marginBottom: 5 }}>Sensor</div>
           <input
             type="text"
-            placeholder="Search 52 tags..."
+            placeholder={`Search ${MTU8000_TAGS.length} tags...`}
             value={search}
             onChange={e => setSearch(e.target.value)}
             style={{

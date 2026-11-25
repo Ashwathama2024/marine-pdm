@@ -36,6 +36,11 @@ export const MTU8000 = {
 
   RPM: { min: 400, idle: 400, nominal: 1150, rated: 1150, max: 1200 },
   LOAD: { min: 10, manoeuvre: 15, cruise: 85, max: 100 },
+
+  // Crank throws. A 20V shares one throw between the two opposing con-rods, so 20 cylinders sit on
+  // 10 throws, carried by 11 main bearings — throw t runs between bearings t and t+1. This is what
+  // the ten spray-oil sensors count, not cylinders.
+  CRANK_THROWS: 10,
 } as const;
 
 // ── HARD LIMITS & ECS ALARM THRESHOLDS ───────────────────────────────────────
@@ -60,14 +65,19 @@ export const MTU8000_LIMITS = {
     temp_max:                   115,   // °C — B7 HI T-Oil
     // Bearings at rated (85%/1150) with hot oil (~105°C) naturally reach ~107°C.
     // Thresholds raised to match real MTU 8000 operational data.
-    bearing_temp_max:           130,   // °C — B57.x SS T-Bearing (was 120)
+    // MTU ZNG00028788 (ALARM/GRENZWERTLISTE) codes T-Bearing Lim2 = 120 °C shutdown, Lim1 = 115 °C
+    // warning. This was 130 because an earlier 120/100 pair fired false — but that was the HI at 100,
+    // which sat BELOW the ~112 °C a healthy hottest bearing reaches at rated (107 mean + the +5
+    // positionBias). With HI already corrected to 115, the OEM 120 leaves 8 °C of headroom above
+    // healthy and is the number the ECS actually trips on.
+    bearing_temp_max:           120,   // °C — B57.x SS T-Bearing (OEM T-Bearing Lim2)
     bearing_temp_hi:            115,   // °C — B57.x HI T-Bearing (was 100, too low for hot oil at rated)
   },
 
   // Cooling system (B6.x, B16.x)
   cooling: {
     coolant_temp_after_engine_max: 95,   // °C — B6.1 HI T-Coolant
-    coolant_temp_ss:               100,  // °C — SS T-Coolant
+    coolant_temp_ss:               97,   // °C — SS T-Coolant (OEM T-Coolant Lim2, ZNG00028788)
     coolant_pressure_min:          1.5,  // bar — B16.1 LO P-Coolant
     raw_water_pressure_min:        1.0,  // bar — B21
   },
@@ -87,7 +97,7 @@ export const MTU8000_LIMITS = {
     rail_pressure_nominal:  1800,  // bar — common rail
     rail_pressure_min:      1200,  // bar — SD P-Fuel (Rail) → Emergency Op
     filter_dp_warn:         0.8,   // bar — B34.1 minus B34.2
-    temp_max:               70,    // °C — B33
+    temp_max:               50,    // °C — B33 (OEM T-Fuel Lim2, ZNG00028788; Lim1 warning is 45)
   },
 
   // Turbocharger (B44.x) — MTU 20V 8000 M71/M91 sequential ETCs
@@ -99,6 +109,25 @@ export const MTU8000_LIMITS = {
     speed_cut_out_3to2:      26000,  // RPM — TC speed condition for 3→2 cut-out
     speed_overspeed_l1:      40500,  // RPM — Yellow alarm
     speed_overspeed_l2:      41000,  // RPM — Power limitation
+  },
+
+  // Spray oil — "Spritzöl" (B77.11–B77.20, ECS channels B1–B10, EMU II connector X5.3)
+  //
+  // Ten sensors, ONE PER CRANK THROW, low on the B-side crankcase wall — MS15082/00E p38, drawing
+  // TD0000012616_096. They read the oil thrown off the con-rod big end, which is how MTU detects a
+  // bearing starting to run hot: the oil leaving it warms before anything else does.
+  //
+  // MTU monitors these DIFFERENTIALLY. Each channel is statically calibrated on a healthy engine
+  // (the ECS raises "AL Splash Oil Bn Cal not Pos" and asks for the sensor to be replaced if a
+  // channel sits outside its calibration window), and thereafter it is the SPREAD that alarms —
+  // "HI T-Splash Oil Bn", cause "Spray-oil temperature too high (1st limit)". There is deliberately
+  // no absolute T-Splash Oil band anywhere in ZNG00028788, only these two difference limits.
+  //
+  // Because the alarm is differential, it is unaffected by the absolute-scale problems recorded in
+  // OEM-CALIBRATION-GAP.md — a common offset across all ten channels cancels.
+  sprayOil: {
+    diff_warn:     4,   // °C — T-Splash Oil Difference Lim1, warning,  3 s delay (MDEC 39)
+    diff_shutdown: 6,   // °C — T-Splash Oil Difference Lim2, shutdown, 1 s delay (MDEC 39,01)
   },
 
   // Crankcase (B50)

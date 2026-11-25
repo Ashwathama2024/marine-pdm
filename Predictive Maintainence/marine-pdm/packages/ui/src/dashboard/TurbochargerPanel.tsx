@@ -1,110 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import type { EngineSnapshot, BaselineSnapshot } from '@marine-pdm/shared';
-
-// ── MTU 20V 8000 M71/M91 Sequential Turbocharger Specification ───────────────
-// TC indices in tcSpeeds[]: 0=A1, 1=A2, 2=B1, 3=B2
-// A2 (idx 1) and B2 (idx 3) are BASIC  — always active, non-switchable
-// A1 (idx 0) is 3rd TC (switchable),  B1 (idx 2) is 4th TC (switchable)
-const TC_META = [
-  { name: 'A1', side: 'A', type: 'switchable', label: '3rd — Switchable', cutInRpm: 850,  cutOutRpm: 830  },
-  { name: 'A2', side: 'A', type: 'basic',      label: '1st — Basic',      cutInRpm: 0,    cutOutRpm: 0    },
-  { name: 'B1', side: 'B', type: 'switchable', label: '4th — Switchable', cutInRpm: 1000, cutOutRpm: 950  },
-  { name: 'B2', side: 'B', type: 'basic',      label: '2nd — Basic',      cutInRpm: 0,    cutOutRpm: 0    },
-] as const;
-
-// MTU 20V 8000 M71/M91 real-engine thresholds — all values are live physics RPM.
-// Physics model is calibrated: idle 7 000 RPM, rated 28 000 RPM, max ~30 000 RPM.
-const REF = {
-  cutInTcSpeed:    37000,  // TC speed for 3rd/4th cut-in (informational)
-  cutOut_4to3_rpm: 950,    cutOut_4to3_tc: 28000,
-  cutOut_3to2_rpm: 830,    cutOut_3to2_tc: 26000,
-  overSpeedL1:     40500,  // Yellow alarm
-  overSpeedL2:     41000,  // Power limitation
-  idleRpm:          7000,  // TC speed at engine idle
-  nominalRatedRpm: 28000,  // TC speed at 85%/1150 RPM (4 TCs active)
-} as const;
-
-// No display scaling — physics now outputs real-world RPM values directly.
-const SPEED_SCALE = 1.0;
-const PHYS_MAX_DISPLAY = 42000;
-
-// Deviation threshold: flag a TC as deviating when its speed differs from
-// expected by more than this fraction of the display range.
-const DEVIATION_FRAC = 0.05; // 5 % of 41 000 ≈ 2 050 RPM
-
-type TCStatus = 'ACTIVE' | 'STANDBY' | 'ALARM';
-
-// Initial cut-in state: basic TCs always on, switchable start off
-const INITIAL_CUTIN: boolean[] = TC_META.map(m => m.type === 'basic');
-
-// Advance hysteresis state using the DUAL cut-in condition from the MTU spec:
-//   Cut-in:  engine RPM ≥ threshold  AND  active-TC speed ≥ 37 000 RPM
-//   Cut-out: engine RPM < threshold  (engine RPM alone — simpler/faster protection)
-//
-// When N TCs share the boost load, each individual TC spins at (4/N) × base_speed,
-// where base_speed is the physics model output (calibrated for all-4-TC operation).
-//
-// Processing order matters: decide A1 (3rd) first, then B1 (4th) using A1's new state.
-function nextCutInState(prev: boolean[], engineRpm: number, baseTcSpeed: number): boolean[] {
-  const next = [...prev] as boolean[];
-
-  // "Basic" (A2/B2) only means "not solenoid-switched by load" — they are still purely exhaust-
-  // gas-driven like every other TC. With the engine stopped (no combustion, no exhaust flow),
-  // there is nothing to spin ANY of the four turbochargers, basic included. Real MTU 8000 turbos
-  // sit fully at rest whenever the engine isn't running.
-  if (engineRpm <= 0) {
-    if (prev.every(v => v === false)) return prev;
-    return [false, false, false, false];
-  }
-
-  // Basic TCs always on while the engine runs (A2 index 1, B2 index 3)
-  next[1] = true;
-  next[3] = true;
-
-  // ── A1 (3rd TC, index 0) ──────────────────────────────────────────────────
-  // Before A1 decision: only A2 + B2 active → each runs at 2× the 4TC base speed
-  const speed2TC = baseTcSpeed * 2;
-  const was_A1 = prev[0]!;
-  let new_A1: boolean;
-  if (engineRpm < TC_META[0]!.cutOutRpm) {
-    new_A1 = false;                                              // below cut-out → OFF
-  } else if (engineRpm >= TC_META[0]!.cutInRpm && speed2TC >= REF.cutInTcSpeed) {
-    new_A1 = true;                                              // both conditions → CUT-IN
-  } else {
-    new_A1 = was_A1;                                            // dead-band → hold
-  }
-  next[0] = new_A1;
-
-  // ── B1 (4th TC, index 2) ─────────────────────────────────────────────────
-  // Before B1 decision: A2 + B2 + (A1 if just activated) = 3 or 2 TCs
-  const activeBeforeB1 = 2 + (new_A1 ? 1 : 0);
-  const speedBeforeB1 = baseTcSpeed * (4 / activeBeforeB1);
-  const was_B1 = prev[2]!;
-  let new_B1: boolean;
-  if (engineRpm < TC_META[2]!.cutOutRpm) {
-    new_B1 = false;
-  } else if (engineRpm >= TC_META[2]!.cutInRpm && speedBeforeB1 >= REF.cutInTcSpeed) {
-    new_B1 = true;
-  } else {
-    new_B1 = was_B1;
-  }
-  next[2] = new_B1;
-
-  if (next.every((v, i) => v === prev[i])) return prev;
-  return next;
-}
-
-function tcStatusFromFlags(
-  isActive: boolean,
-  displaySpeed: number,
-  deviation: number,
-): TCStatus {
-  if (!isActive) return 'STANDBY';
-  const hasDevFault = Math.abs(deviation) > PHYS_MAX_DISPLAY * DEVIATION_FRAC;
-  const overSpeed   = displaySpeed >= REF.overSpeedL1;
-  if (hasDevFault || overSpeed) return 'ALARM';
-  return 'ACTIVE';
-}
+// Sequential-TC state lives in services/turbo-state.ts so the 3D engine view shows the same four
+// turbochargers rather than reading tcSpeeds[] and disagreeing. Behaviour here is unchanged.
+import {
+  TC_META,
+  REF,
+  INITIAL_CUTIN,
+  nextCutInState,
+  deriveTCInfos,
+  turboWheelPeriodS,
+  type TCInfo,
+  type TCStatus,
+} from '../services/turbo-state';
 
 // ── SVG Turbocharger Wheel ────────────────────────────────────────────────────
 function makeBladePath(
@@ -157,12 +64,8 @@ function TurboWheel({ id, displaySpeed, status, size = 72, reducedMotion = false
                   : status === 'ALARM'  ? 'rgba(239,68,68,0.45)'
                   : 'transparent';
 
-  // Animation: map display speed → rotation period.
-  // 7 000 RPM idle → 3 s/rev;  28 000 RPM nominal → 0.5 s/rev;  41 000 → 0.18 s/rev
-  const speedClamped = Math.max(REF.idleRpm, Math.min(PHYS_MAX_DISPLAY, displaySpeed));
-  const periodS = status === 'STANDBY'
-    ? 8
-    : Math.max(0.18, 3.0 - ((speedClamped - REF.idleRpm) / (PHYS_MAX_DISPLAY - REF.idleRpm)) * 2.82);
+  // Animation: map display speed → rotation period. Shared with the 3D view so both spin alike.
+  const periodS = turboWheelPeriodS(displaySpeed, status);
 
   const blades = Array.from({ length: N }, (_, i) => makeBladePath(cx, cy, rI, rO, (i / N) * 360, N));
 
@@ -583,45 +486,6 @@ function TurboModal({ snap, tcInfos, onClose }: ModalProps) {
       </div>
     </div>
   );
-}
-
-// ── Shared TC data derivation ─────────────────────────────────────────────────
-interface TCInfo {
-  name: string;
-  status: TCStatus;
-  displaySpeed: number;
-  rawSpeed: number;
-  deviation: number;
-}
-
-function deriveTCInfos(
-  snap: EngineSnapshot,
-  expectedTcRPM: number,
-  cutInState: boolean[],
-): TCInfo[] {
-  const engineRunning = snap.rpm > 0;
-  const baseTcSpeed  = snap.tcRPM * SPEED_SCALE;  // physics output: 4-TC-equivalent speed
-  const activeCount  = cutInState.filter(Boolean).length || 2;
-  // Each active TC spins at (4/N)× the base speed because fewer TCs share the boost load.
-  const activeMult   = 4 / activeCount;
-  const activeSpeed  = baseTcSpeed * activeMult;
-  const expectedDisp = expectedTcRPM * SPEED_SCALE * activeMult;
-
-  return TC_META.map((meta, i) => {
-    // Engine fully stopped -> zero exhaust flow -> every TC is at rest, full stop, no exceptions.
-    // (Also a defensive floor against the physics model's tcSpeed_MTU8000() having a small nonzero
-    // base term that isn't meant to represent a genuinely-stopped engine — real turbos don't spin
-    // on their own.)
-    if (!engineRunning) {
-      return { name: meta.name, status: 'STANDBY' as TCStatus, displaySpeed: 0, rawSpeed: 0, deviation: 0 };
-    }
-    const isActive = cutInState[i]!;
-    // Standby TCs windmill at ~15% of base (very low — bypass valves closed)
-    const displaySpeed = isActive ? activeSpeed : baseTcSpeed * 0.15;
-    const deviation    = isActive ? activeSpeed - expectedDisp : 0;
-    const status       = tcStatusFromFlags(isActive, displaySpeed, deviation);
-    return { name: meta.name, status, displaySpeed, rawSpeed: baseTcSpeed, deviation };
-  });
 }
 
 // ── Public component ──────────────────────────────────────────────────────────

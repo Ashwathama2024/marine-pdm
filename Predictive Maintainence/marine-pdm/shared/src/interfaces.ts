@@ -17,7 +17,7 @@ export interface EngineSnapshot {
   // A fuel rack is the linkage of a MECHANICAL governor. The MTU 20V 8000 M71/M71L is common-rail:
   // fuel is metered by rail pressure and injection timing, and there is no rack to measure. The field
   // survives only because EngineSnapshot is the wire format an OPC-UA source fills in, and a real
-  // plant's tag list may still carry the point (the 52-tag map in `ingestion` does not).
+  // plant's tag list may still carry the point (the tag map in `ingestion` does not).
   //
   // Nothing derives from it: no baseline curve, no deviation feature, no alarm band, no gauge, no
   // trend card. If a future engine variant genuinely has a rack — or a fuel-index/injection-quantity
@@ -238,6 +238,9 @@ export interface MTU8000Snapshot {
   lubeLastBearingPressure: number;       // B5.3/B5.4 bar — SS trigger
   lubeOilTemp: number;                   // B7 °C
   bearingTemps: number[];                // [11] — B57.1–B57.11
+  sprayOilTemps: number[];               // [10] — B77.11–B77.20, one per crank throw. The ECS
+                                         //   alarms on the SPREAD, not the value: see
+                                         //   MTU8000_LIMITS.sprayOil
 
   // Cooling
   coolantTempAfterEngine: number;  // B6.1 °C

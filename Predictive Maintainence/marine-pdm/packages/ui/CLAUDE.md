@@ -60,7 +60,7 @@ src/
 ├── simulator/
 │   ├── FaultInjector.tsx          # F02–F06/F08/F09 + intensity/speed + SEVERITY RAMP toggle
 │   ├── CylinderInjectorPanel.tsx  # F01/F07 per-cylinder
-│   ├── SensorFailurePanel.tsx     # 52-tag search, 5 failure modes, health badges
+│   ├── SensorFailurePanel.tsx     # tag search (list derived from ingestion TAG_MAP), 5 failure modes
 │   ├── EngineControlPanel.tsx · InterlockPanel.tsx · LopDisplay.tsx · StartAirGauge.tsx
 │   └── ValueInjectionPanel.tsx · FaultPlacard.tsx · registry.ts
 ├── management/                    # BaselineEditor (UI-only) · PatternLibraryView · SensorManager
@@ -212,6 +212,12 @@ reduces the 11 to a max adds `MTU8000_LIMITS.bearingMaxPositionBias` (+5 °C) ba
 It compares the lagged baseline against the instant one, so an error in the curve itself sits in both
 and cancels — the row reports `OK`. When a label contradicts the live sensor, suspect `seed.ts`. This is
 how a 10.8 °C bearing-baseline shortfall stayed invisible until `analyticRul()` divided by it.
+
+⚠ **This is currently masking a whole-envelope error, not just one curve.** The physics is not
+calibrated to the OEM alarm limits (see [`../../OEM-CALIBRATION-GAP.md`](../../OEM-CALIBRATION-GAP.md)),
+so `analyticRul()` divides by wrong baselines against wrong limits and **every training row in
+IndexedDB is mislabelled** — silently, with `rulQuality` reporting OK. Treat `/training` exports as
+untrusted until Phase 7 of that document bumps `SCHEMA_VERSION` and the set is re-recorded.
 
 **8. Effects that alter the docs**
 Root `CLAUDE.md` makes it mandatory: a new fault, a new sensor, a changed physics coefficient, a changed

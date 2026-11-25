@@ -7,8 +7,11 @@ import {
   exhaustTemp_MTU8000, cylExhaustTemp_MTU8000, lubeOilPressure_MTU8000, bearingTemp_MTU8000,
   chargeAirPressure_MTU8000, chargeAirTemp_MTU8000, lubeOilTemp_MTU8000, fuelRailPressure_MTU8000,
   sfoc_MTU8000, crankcasePressure_MTU8000, exhaustBackPressure_MTU8000, tcSpeed_MTU8000,
+  sprayOilTemp_MTU8000,
 } from '@marine-pdm/simulator';
-import { MTU8000, MTU8000_CYL_SPREAD, BSIDE_TEMP_BIAS } from '@marine-pdm/shared';
+import {
+  MTU8000, MTU8000_CYL_SPREAD, BSIDE_TEMP_BIAS, MTU8000_LIMITS as LIM,
+} from '@marine-pdm/shared';
 import {
   Section, SubSection, P, Code, Hi, Callout, DataTable, EquationBlock, Bullets,
 } from '../HelpPrimitives';
@@ -20,6 +23,7 @@ const sLubeT = lubeOilTemp_MTU8000(L, R, 36, 1.0);
 const sLube = lubeOilPressure_MTU8000(R, L, sLubeT, 0.15, 0);
 const sExhaust = exhaustTemp_MTU8000(L, R, 1.0, 1.0);
 const sBearing = bearingTemp_MTU8000(L, R, sLubeT, sLube, 10, 0);
+const sSpray = sprayOilTemp_MTU8000(L, R, sLubeT, 0, 0);
 const sCaP = chargeAirPressure_MTU8000(R, L, 1.0);
 const sCaT = chargeAirTemp_MTU8000(L, R, 36);
 const sFuelRail = fuelRailPressure_MTU8000(L, R, 0);
@@ -103,7 +107,7 @@ export function PhysicsSection() {
           rated={`${n(sCoolant)} °C`}
           drivers="load + HT-cooling efficiency"
           expect="The primary F05 signal — a fouled cooler pushes this up first."
-          band="HI 95 °C · SS 100 °C" />
+          band={`HI ${LIM.cooling.coolant_temp_after_engine_max} °C · SS ${LIM.cooling.coolant_temp_ss} °C`} />
       </SubSection>
 
       <SubSection title="Pressure & speed equations">
@@ -124,7 +128,13 @@ export function PhysicsSection() {
           rated={`${n(sBearing)} °C (free-end)`}
           drivers="load, oil temp, pressure starvation, per-bearing fault"
           expect="Rises from hot oil (F05) OR low pressure (F03) OR a direct bearing fault (F04)."
-          band="HI 115 °C · SS 130 °C" />
+          band={`HI ${LIM.lubeOil.bearing_temp_hi} °C · SS ${LIM.lubeOil.bearing_temp_max} °C`} />
+        <EquationBlock name="Spray-oil temperature" tag="B77.11–B77.20"
+          formula="oilTemp + 6 + load·14 + (rpm/1150)·5 + throwScatter + throwFault·25"
+          rated={`${n(sSpray)} °C`}
+          drivers="oil supply temperature and load — common to all ten; plus distress at THIS crank throw"
+          expect="Ten sensors, one per crank throw, reading the oil thrown off the con-rod big end. What alarms is the SPREAD, never the value: a hot bearing warms the two throws either side of it, while blow-by lifts all ten equally and correctly does not alarm. Leads B57 on the same fault — oil in transit heats faster than the casting."
+          band={`difference HI +${LIM.sprayOil.diff_warn} °C · SS +${LIM.sprayOil.diff_shutdown} °C above the mean of the ten`} />
         <EquationBlock name="Charge-air pressure (boost)" tag="B10"
           formula="1.35 + ((rpm/1150)·1.46 + load·0.47)·tcEff"
           rated={`${n(sCaP, 2)} bar`}

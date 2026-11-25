@@ -4,6 +4,7 @@
 
 import React from 'react';
 import { FAULT_DEFINITIONS, FAULT_MAX_EFFECTS, FAULT_GROWTH_RATES } from '@marine-pdm/simulator';
+import { TAG_MAP } from '@marine-pdm/ingestion';
 import {
   Section, SubSection, P, Code, Hi, Callout, DataTable, Bullets,
 } from '../HelpPrimitives';
@@ -110,7 +111,7 @@ export function FaultsSection() {
 export function SensorFailuresSection() {
   return (
     <Section id="sensorfail" title="6 · Sensor-Failure Modes"
-      subtitle="Distinct from engine faults: these corrupt the measurement, not the machine. All 52 tags are injectable.">
+      subtitle={`Distinct from engine faults: these corrupt the measurement, not the machine. All ${TAG_MAP.length} tags are injectable.`}>
       <P>
         A degrading <em>engine</em> and a degrading <em>sensor</em> look different, and the system must not
         confuse them. Sensor failures are injected from the Simulator’s Sensor-Failure panel and drive a

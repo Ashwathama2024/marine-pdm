@@ -4,7 +4,7 @@
 // WHY THIS EXISTS. Gauges bind to ALARM_LIMITS (the UI band system) while the safety layer runs on
 // MTU8000_LIMITS (the coded ECS thresholds). Nothing connected the two, so a parameter could be fully
 // modelled in physics, enforced by applyMTU8000SafetyOverride, and still have no display anywhere.
-// Bearing temperature was exactly that: HI T-Bearing at 115 °C and an SS Emergency Stop at 130 °C,
+// Bearing temperature was exactly that: HI T-Bearing at 115 °C and an SS Emergency Stop above it,
 // with no gauge, no trend, no RUL column — an operator watching the dashboard would have seen the
 // shutdown and not the parameter that caused it.
 //
@@ -34,6 +34,10 @@ const gaugedSensorIds = new Set(
  */
 const DISPLAYED_OUTSIDE_GAUGE_GRID: Record<string, string> = {
   'ME.TCSpeed': 'TurbochargerPanel renders all four TC speeds individually, not as one arc',
+  'ME.SprayOilDiff':
+    'SprayOilPanel renders all ten B77 channels as deviations from their mean. Not an arc gauge ' +
+    'because MTU codes no absolute band for spray oil — only a difference — and because the ECS ' +
+    'names the offending channel ("HI T-Splash Oil B7"), which one arc could not show.',
 };
 
 describe('dashboard display coverage', () => {
@@ -99,6 +103,11 @@ describe('ECS safety trips are visible to the operator', () => {
     // not the last bearing; "FO Pressure" is the ~8 bar supply, not the ~1770 bar common rail.
     'lubeOil.pressure_last_bearing_min':  'ME.LubeOilPressure.LastBearing',
     'fuel.rail_pressure_min':             'ME.FuelRailPressure',
+
+    // Spray oil (B77.11–B77.20). Both are deviation limits, not absolute ones, so the display is a
+    // ten-channel panel rather than a gauge — see DISPLAYED_OUTSIDE_GAUGE_GRID.
+    'sprayOil.diff_warn':                 'ME.SprayOilDiff',
+    'sprayOil.diff_shutdown':             'ME.SprayOilDiff',
   };
 
   const tripsInSource = [...new Set(

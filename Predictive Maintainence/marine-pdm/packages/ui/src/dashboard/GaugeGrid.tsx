@@ -1,6 +1,8 @@
 import React from 'react';
 import type { EngineSnapshot, BaselineSnapshot, DecisionOutput } from '@marine-pdm/shared';
 import { ALARM_LIMITS, bearingTempMax } from '@marine-pdm/shared';
+import { hasCodedBand, sensorSeverity, severityTier } from '../services/sensor-severity';
+import type { SeverityTier } from '../services/sensor-severity';
 
 const CX = 60, CY = 64, R = 48;
 const CIRC      = 2 * Math.PI * R;
@@ -192,83 +194,49 @@ function sfocBaselineColor(actual: number, expected: number): string {
 }
 
 // Returns a color based on where `value` sits relative to alarm thresholds.
-// When `expected` (load-adjusted baseline) + `alarmBandDev` (MTU pre-alarm gap) are provided,
-// uses deviation-from-baseline coloring so gauges read GREEN at low load when values are
-// physically correct for that load point (fixes false orange on LO/piston cooling at idle).
 //
-// Coloring bands (deviation-from-baseline mode):
-//   green  — deviation < 20% of alarm band (deadband: normal sensor scatter)
-//   yellow — deviation 50–80% toward pre-alarm threshold (trend concern)
-//   orange — deviation ≥ 80% toward pre-alarm threshold (approaching alarm)
-//   red    — absolute ECS shutdown/alarm limit crossed (always fires regardless of load)
+// When a `sensorId` with a coded MTU alarm band and a load-adjusted `expected` are both available,
+// the judgement is delegated wholesale to services/sensor-severity.ts and this function only paints
+// the tier. That module owns the deadband, the tier boundaries, the direction awareness and the
+// per-sensor band widths — including the dynamic recomputation for pressure sensors, whose absolute
+// pre-alarm floor is fixed while expected falls with load. All of it used to be duplicated here,
+// with the band widths spelled out again at every call site below; the 3D engine view reads the same
+// severities, so a second copy meant the two surfaces could disagree about the same sensor.
 //
-// Direction awareness:
-//   pressure sensors (preAlarmLow present): only penalise drops below expected
-//   temperature / ΔP (preAlarmHigh present): only penalise rises above expected
-//   sensors with both limits: use absolute deviation (symmetric)
+// Without those two inputs (the ShaftPower strip, LO filter ΔP) there is nothing to deviate FROM, so
+// the absolute-threshold fallback at the bottom applies instead.
 type AlarmBand = {
   physMin?: number; physMax?: number;
   preAlarmHigh?: number; alarmHigh?: number; slowdownHigh?: number; shutdownHigh?: number;
   preAlarmLow?: number; alarmLow?: number; slowdownLow?: number; shutdownLow?: number;
   normalMin?: number; normalMax?: number;
 };
+
+const TIER_COLOR: Record<SeverityTier, string> = {
+  normal:   'var(--risk-normal)',
+  warning:  'var(--risk-warning)',
+  high:     'var(--risk-high)',
+  critical: 'var(--risk-critical)',
+};
+
 function sensorValueColor(
   value: number,
   physMin: number,
   physMax: number,
   limits: AlarmBand,
-  expected?: number,    // load-adjusted baseline (from BaselineSnapshot)
-  alarmBandDev?: number, // MTU 8000 deviation from expected to pre-alarm threshold
+  sensorId?: string,  // SENSOR_META id — unlocks the load-aware path
+  expected?: number,  // load-adjusted baseline (from BaselineSnapshot)
 ): string {
   // ── 1. True ECS shutdown limits — unconditional at any load ────────────────
   if (limits.shutdownHigh !== undefined && value >= limits.shutdownHigh) return 'var(--risk-critical)';
   if (limits.shutdownLow  !== undefined && value <= limits.shutdownLow)  return 'var(--risk-critical)';
 
-  // ── 2. Load-aware absolute L1/L2 alarm checks ───────────────────────────────
-  // These thresholds are rated-load values. At idle, expected pressure drops BELOW the
-  // preAlarmLow → the check would false-alarm every tick. So we only apply them when
-  // expected is on the "safe" side of the limit (engine is genuinely in loaded operation).
-  //
-  // Example: LO preAlarmLow=5.5 bar.
-  //   Idle (expected=4.68):  4.68 > 5.5? NO → skip → no false alarm ✓
-  //   80% load (expected=6.05): 6.05 > 5.5? YES → if actual=4.80 ≤ 5.5 → orange ✓
-  if (expected !== undefined) {
-    if (limits.alarmHigh    !== undefined && expected <  limits.alarmHigh    && value >= limits.alarmHigh)    return 'var(--risk-critical)';
-    if (limits.slowdownHigh !== undefined && expected <  limits.slowdownHigh && value >= limits.slowdownHigh) return 'var(--risk-critical)';
-    if (limits.preAlarmHigh !== undefined && expected <  limits.preAlarmHigh && value >= limits.preAlarmHigh) return 'var(--risk-high)';
-    if (limits.alarmLow     !== undefined && expected >  limits.alarmLow     && value <= limits.alarmLow)     return 'var(--risk-critical)';
-    if (limits.slowdownLow  !== undefined && expected >  limits.slowdownLow  && value <= limits.slowdownLow)  return 'var(--risk-critical)';
-    if (limits.preAlarmLow  !== undefined && expected >  limits.preAlarmLow  && value <= limits.preAlarmLow)  return 'var(--risk-high)';
+  // ── 2. Load-aware coloring, single-sourced from sensor-severity.ts ─────────
+  if (sensorId !== undefined && expected !== undefined && hasCodedBand(sensorId)) {
+    return TIER_COLOR[severityTier(sensorSeverity(sensorId, value, expected))];
   }
 
-  // ── 3. Deviation-from-baseline coloring (load-aware) ────────────────────────
-  // Ratio tiers (based on effective deviation / alarmBandDev):
-  //   ≥ 1.25 → red   (well past pre-alarm into alarm zone)
-  //   ≥ 0.80 → orange (at / crossed pre-alarm — ratio=0.80 exactly = preAlarmLow hit)
-  //   ≥ 0.50 → yellow (50–80% toward pre-alarm, trend concern)
-  //   <  0.50 → green (within normal operating scatter)
-  if (expected !== undefined && alarmBandDev !== undefined && alarmBandDev > 0) {
-    const hasHighAlarm = limits.preAlarmHigh !== undefined;
-    const hasLowAlarm  = limits.preAlarmLow  !== undefined;
-    let dev: number;
-    if (hasLowAlarm && !hasHighAlarm) {
-      dev = Math.max(0, expected - value);   // pressure: only drops below expected are dangerous
-    } else if (hasHighAlarm && !hasLowAlarm) {
-      dev = Math.max(0, value - expected);   // temperature / ΔP: only rises above expected
-    } else {
-      dev = Math.abs(value - expected);      // symmetric (both sides alarm)
-    }
-    const deadband  = alarmBandDev * 0.20;
-    const effective = Math.max(0, dev - deadband);
-    const ratio     = effective / alarmBandDev;
-    if (ratio >= 1.25) return 'var(--risk-critical)'; // deep into alarm zone
-    if (ratio >= 0.80) return 'var(--risk-high)';     // at / past pre-alarm → orange
-    if (ratio >= 0.50) return 'var(--risk-warning)';  // approaching → yellow
-    return 'var(--risk-normal)';
-  }
-
-  // ── 4. Fallback: absolute-threshold coloring (no expected provided) ──────────
-  // Used when baseline expected is not available (ShaftPower strip, etc.)
+  // ── 3. Fallback: absolute-threshold coloring (no baseline to deviate from) ──
   if (limits.slowdownHigh !== undefined && value >= limits.slowdownHigh) return 'var(--risk-critical)';
   if (limits.slowdownLow  !== undefined && value <= limits.slowdownLow)  return 'var(--risk-critical)';
   if (limits.alarmHigh    !== undefined && value >= limits.alarmHigh)    return 'var(--risk-critical)';
@@ -345,21 +313,6 @@ export function GaugeGrid({ snap, baseline, decision, isOperational = true, onGa
   const dimmed = !isOperational;
   const AL = ALARM_LIMITS;
 
-  // ── Dynamic alarm band for pressure sensors ───────────────────────────────
-  // The MTU8000_ALARM_BANDS dev values were calibrated at rated (100%) load.
-  // At partial load, expected pressure drops but absolute preAlarmLow stays fixed,
-  // so the gap from expected→preAlarmLow shrinks. dynamicPressBand computes the
-  // ACTUAL gap so that orange fires exactly when the sensor hits the ECS L1 level,
-  // regardless of current load. Falls back to ratedBand at idle (where expected
-  // may sit below preAlarmLow — normal at low load, no alarm is intended).
-  const dynamicPressBand = (expected: number, preAlarmLow: number | undefined, ratedBand: number): number => {
-    if (preAlarmLow !== undefined) {
-      const gap = expected - preAlarmLow;
-      if (gap > ratedBand * 0.35) return gap;  // above idle: use actual limit gap
-    }
-    return ratedBand; // low load / no preAlarmLow → use standard rated band
-  };
-
   // ── Section 1: Core thermodynamic sensors ──────────────────────────────
   const coreGauges: (ArcGaugeProps & { sensorId: string })[] = [
     {
@@ -369,7 +322,7 @@ export function GaugeGrid({ snap, baseline, decision, isOperational = true, onGa
       unit: '°C', risk: decision.exhaustRisk,
       physMin: AL.exhaustTemp.physMin, physMax: AL.exhaustTemp.physMax,
       ribbonColor: 'var(--risk-high)',
-      gaugeColor: sensorValueColor(snap.exhaustTemp, AL.exhaustTemp.physMin, AL.exhaustTemp.physMax, AL.exhaustTemp, baseline.expectedExhaust, 20),
+      gaugeColor: sensorValueColor(snap.exhaustTemp, AL.exhaustTemp.physMin, AL.exhaustTemp.physMax, AL.exhaustTemp, 'ME.ExhaustTemp', baseline.expectedExhaust),
       alarmTicks: [
         { value: AL.exhaustTemp.preAlarmHigh, color: L1, label: 'L1' },
         { value: AL.exhaustTemp.alarmHigh,    color: L2, label: 'L2' },
@@ -384,7 +337,7 @@ export function GaugeGrid({ snap, baseline, decision, isOperational = true, onGa
       unit: 'bar', risk: decision.lubeRisk, decimals: 2,
       physMin: AL.lubeOilPressure.physMin, physMax: AL.lubeOilPressure.physMax,
       ribbonColor: 'var(--accent-blue)',
-      gaugeColor: sensorValueColor(snap.lubeOilPressure, AL.lubeOilPressure.physMin, AL.lubeOilPressure.physMax, AL.lubeOilPressure, baseline.expectedLube, dynamicPressBand(baseline.expectedLube, AL.lubeOilPressure.preAlarmLow, 0.8)),
+      gaugeColor: sensorValueColor(snap.lubeOilPressure, AL.lubeOilPressure.physMin, AL.lubeOilPressure.physMax, AL.lubeOilPressure, 'ME.LubeOilPressure', baseline.expectedLube),
       alarmTicks: [
         { value: AL.lubeOilPressure.alarmHigh,   color: L2, label: 'L2↑' },
         { value: AL.lubeOilPressure.preAlarmLow, color: L1, label: 'L1↓', inner: true },
@@ -400,7 +353,7 @@ export function GaugeGrid({ snap, baseline, decision, isOperational = true, onGa
       unit: 'bar', risk: derivedRisk(decision.exhaustRisk, 0.5), decimals: 2,
       physMin: AL.scavengeAir.physMin, physMax: AL.scavengeAir.physMax,
       ribbonColor: 'var(--accent-cyan, #22D3EE)',
-      gaugeColor: sensorValueColor(snap.scavengeAir, AL.scavengeAir.physMin, AL.scavengeAir.physMax, AL.scavengeAir, baseline.expectedScavenge, 0.5),
+      gaugeColor: sensorValueColor(snap.scavengeAir, AL.scavengeAir.physMin, AL.scavengeAir.physMax, AL.scavengeAir, 'ME.ScavengeAirPressure', baseline.expectedScavenge),
       alarmTicks: [
         { value: AL.scavengeAir.alarmHigh, color: L2, label: 'L2↑' },
         { value: AL.scavengeAir.alarmLow,  color: L2, label: 'L2↓', inner: true },
@@ -413,7 +366,7 @@ export function GaugeGrid({ snap, baseline, decision, isOperational = true, onGa
       unit: '°C', risk: derivedRisk(decision.exhaustRisk, 0.35), decimals: 1,
       physMin: AL.chargeAirTemp.physMin, physMax: AL.chargeAirTemp.physMax,
       ribbonColor: 'var(--accent-cyan, #22D3EE)',
-      gaugeColor: sensorValueColor(snap.chargeAirTemp, AL.chargeAirTemp.physMin, AL.chargeAirTemp.physMax, AL.chargeAirTemp, baseline.expectedChargeAirTemp, 12),
+      gaugeColor: sensorValueColor(snap.chargeAirTemp, AL.chargeAirTemp.physMin, AL.chargeAirTemp.physMax, AL.chargeAirTemp, 'ME.ChargeAirTemp', baseline.expectedChargeAirTemp),
       alarmTicks: [
         { value: AL.chargeAirTemp.preAlarmHigh,  color: L1, label: 'L1' },
         { value: AL.chargeAirTemp.alarmHigh,     color: L2, label: 'L2' },
@@ -428,7 +381,7 @@ export function GaugeGrid({ snap, baseline, decision, isOperational = true, onGa
       unit: '°C', risk: decision.coolingRisk,
       physMin: AL.jacketOutlet.physMin, physMax: AL.jacketOutlet.physMax,
       ribbonColor: 'var(--accent-steel, #94A3B8)',
-      gaugeColor: sensorValueColor(snap.jacketOutlet, AL.jacketOutlet.physMin, AL.jacketOutlet.physMax, AL.jacketOutlet, baseline.expectedJacket, 8),
+      gaugeColor: sensorValueColor(snap.jacketOutlet, AL.jacketOutlet.physMin, AL.jacketOutlet.physMax, AL.jacketOutlet, 'ME.JacketCoolingOutlet', baseline.expectedJacket),
       alarmTicks: [
         { value: AL.jacketOutlet.preAlarmHigh,  color: L1, label: 'L1' },
         { value: AL.jacketOutlet.alarmHigh,     color: L2, label: 'L2' },
@@ -447,7 +400,7 @@ export function GaugeGrid({ snap, baseline, decision, isOperational = true, onGa
       unit: 'bar', risk: derivedRisk(decision.lubeRisk, 0.4), decimals: 2,
       physMin: AL.fuelOilPressure.physMin, physMax: AL.fuelOilPressure.physMax,
       ribbonColor: 'var(--risk-warning)',
-      gaugeColor: sensorValueColor(snap.fuelOilPressure, AL.fuelOilPressure.physMin, AL.fuelOilPressure.physMax, AL.fuelOilPressure, baseline.expectedFuelOilPressure, dynamicPressBand(baseline.expectedFuelOilPressure, AL.fuelOilPressure.preAlarmLow, 1.5)),
+      gaugeColor: sensorValueColor(snap.fuelOilPressure, AL.fuelOilPressure.physMin, AL.fuelOilPressure.physMax, AL.fuelOilPressure, 'ME.FuelOilPressure', baseline.expectedFuelOilPressure),
       alarmTicks: [
         { value: AL.fuelOilPressure.alarmHigh,   color: L2, label: 'L2↑' },
         { value: AL.fuelOilPressure.preAlarmLow, color: L1, label: 'L1↓', inner: true },
@@ -462,7 +415,7 @@ export function GaugeGrid({ snap, baseline, decision, isOperational = true, onGa
       unit: '°C', risk: derivedRisk(decision.lubeRisk, 0.2), decimals: 1,
       physMin: AL.fuelOilTemp.physMin, physMax: AL.fuelOilTemp.physMax,
       ribbonColor: 'var(--risk-warning)',
-      gaugeColor: sensorValueColor(snap.fuelOilTemp, AL.fuelOilTemp.physMin, AL.fuelOilTemp.physMax, AL.fuelOilTemp, baseline.expectedFuelOilTemp, 15),
+      gaugeColor: sensorValueColor(snap.fuelOilTemp, AL.fuelOilTemp.physMin, AL.fuelOilTemp.physMax, AL.fuelOilTemp, 'ME.FuelOilTemp', baseline.expectedFuelOilTemp),
       alarmTicks: [
         { value: AL.fuelOilTemp.preAlarmHigh, color: L1, label: 'L1' },
         { value: AL.fuelOilTemp.alarmHigh,    color: L2, label: 'L2' },
@@ -492,7 +445,7 @@ export function GaugeGrid({ snap, baseline, decision, isOperational = true, onGa
       unit: 'bar', risk: derivedRisk(decision.coolingRisk, 0.6), decimals: 2,
       physMin: AL.pistonCoolingPress.physMin, physMax: AL.pistonCoolingPress.physMax,
       ribbonColor: 'var(--accent-steel, #94A3B8)',
-      gaugeColor: sensorValueColor(snap.pistonCoolingPress, AL.pistonCoolingPress.physMin, AL.pistonCoolingPress.physMax, AL.pistonCoolingPress, baseline.expectedPistonCoolingPress, dynamicPressBand(baseline.expectedPistonCoolingPress, AL.pistonCoolingPress.preAlarmLow, 0.8)),
+      gaugeColor: sensorValueColor(snap.pistonCoolingPress, AL.pistonCoolingPress.physMin, AL.pistonCoolingPress.physMax, AL.pistonCoolingPress, 'ME.PistonCoolingPress', baseline.expectedPistonCoolingPress),
       alarmTicks: [
         { value: AL.pistonCoolingPress.alarmHigh,   color: L2, label: 'L2↑' },
         { value: AL.pistonCoolingPress.preAlarmLow, color: L1, label: 'L1↓', inner: true },
@@ -513,7 +466,7 @@ export function GaugeGrid({ snap, baseline, decision, isOperational = true, onGa
       gaugeColor: sensorValueColor(
         (snap.lubeLastBearingPressure as number | undefined) ?? 0,
         AL.lubeLastBearingPressure.physMin, AL.lubeLastBearingPressure.physMax,
-        AL.lubeLastBearingPressure, baseline.expectedLubeLastBearing, 0.5,
+        AL.lubeLastBearingPressure, 'ME.LubeOilPressure.LastBearing', baseline.expectedLubeLastBearing,
       ),
       alarmTicks: [
         { value: AL.lubeLastBearingPressure.preAlarmLow, color: L1, label: 'L1↓', inner: true },
@@ -534,7 +487,7 @@ export function GaugeGrid({ snap, baseline, decision, isOperational = true, onGa
       gaugeColor: sensorValueColor(
         (snap.fuelRailPressure as number | undefined) ?? 0,
         AL.fuelRailPressure.physMin, AL.fuelRailPressure.physMax,
-        AL.fuelRailPressure, baseline.expectedFuelRailPressure, 120,
+        AL.fuelRailPressure, 'ME.FuelRailPressure', baseline.expectedFuelRailPressure,
       ),
       alarmTicks: [
         { value: AL.fuelRailPressure.preAlarmLow, color: L1, label: 'L1↓', inner: true },
@@ -555,7 +508,7 @@ export function GaugeGrid({ snap, baseline, decision, isOperational = true, onGa
       ribbonColor: 'var(--risk-high)',
       gaugeColor: sensorValueColor(
         bearingTempMax(snap, baseline.expectedBearingTemp),
-        AL.bearingTemp.physMin, AL.bearingTemp.physMax, AL.bearingTemp, baseline.expectedBearingTemp, 8,
+        AL.bearingTemp.physMin, AL.bearingTemp.physMax, AL.bearingTemp, 'ME.BearingTemp', baseline.expectedBearingTemp,
       ),
       alarmTicks: [
         { value: AL.bearingTemp.preAlarmHigh, color: L1, label: 'L1' },

@@ -13,6 +13,7 @@
 //      the SS override, the gauge, the RUL label — tracks the HOTTEST of the 11.
 
 import { describe, it, expect } from 'vitest';
+import { MTU8000_LIMITS } from '@marine-pdm/shared';
 import { ENGINE_KNOWLEDGE } from './engine-knowledge';
 import { FORECAST_LIMITS } from './forecast';
 import { LABEL_ERROR_TOLERANCE_MIN } from './rul-quality';
@@ -37,6 +38,28 @@ describe('ENGINE_KNOWLEDGE — causal magnitudes', () => {
 
   it('quotes the hottest bearing, not the mid-engine one', () => {
     expect(ENGINE_KNOWLEDGE).toContain('Bearing temp (hottest of 11)');
+  });
+
+  it('tells the assistant spray oil is judged as a difference, never as a value', () => {
+    // The one parameter with no absolute band anywhere in the MTU limit list. An assistant that
+    // reads the raw temperature and compares it to something would invent a threshold and then
+    // reason confidently from it — the exact failure mode this file exists to prevent.
+    expect(ENGINE_KNOWLEDGE).toContain('B77.11–B77.20');
+    expect(ENGINE_KNOWLEDGE).toMatch(/MTU codes no absolute band/i);
+    expect(ENGINE_KNOWLEDGE).toMatch(/all ten rising together is not a fault/i);
+  });
+
+  it('carries the live spray-oil difference limits, not typed-in ones', () => {
+    const so = MTU8000_LIMITS.sprayOil;
+    expect(ENGINE_KNOWLEDGE).toContain(`+${so.diff_shutdown}`);
+    expect(ENGINE_KNOWLEDGE).toContain(`+${so.diff_warn}`);
+  });
+
+  it('does not repeat the retired bearing thresholds', () => {
+    // 130 °C was never an MTU number and 100 °C was the HI that fired false. Both appeared here
+    // verbatim before the limits were put back on ZNG00028788.
+    expect(ENGINE_KNOWLEDGE).not.toMatch(/any bearing > 130/);
+    expect(ENGINE_KNOWLEDGE).not.toMatch(/coolant > 100 °C/);
   });
 });
 
