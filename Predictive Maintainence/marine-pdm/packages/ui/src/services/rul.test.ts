@@ -3,7 +3,8 @@
 // FAULT_MAX_EFFECTS, FAULT_GROWTH_RATES, MTU8000_LIMITS), so a drift in any of them fails here.
 
 import { describe, it, expect } from 'vitest';
-import { MTU8000_LIMITS } from '@marine-pdm/shared';
+import { MTU8000, MTU8000_LIMITS, oemCurve } from '@marine-pdm/shared';
+import { lubeOilPressure_MTU8000, lubeOilTemp_MTU8000 } from '@marine-pdm/simulator';
 import { DEGRADATION_MODES, ROOT_FACTORS, GROWTH_RATES, FAULT_MAX_EFFECTS, createFaultConfig } from '@marine-pdm/simulator';
 import type { FaultConfig } from '@marine-pdm/simulator';
 import { analyticRul, baseFaultId } from './rul';
@@ -155,39 +156,53 @@ describe('analyticRul — direction and coverage guards', () => {
     expect(meanWeight).toBeCloseTo(65 / 20, 10);
 
     const r = analyticRul([fault('F01_cyl_3', { targetCyls: [3], intensity: 100 })], 'exhaust', 440);
-    // margin 460 − 440 = 20 °C over 3.25 °C of authority → severity 6.15, far past the 1.0 cap.
-    expect(r.severityAtCross).toBeCloseTo(20 / 3.25, 6);
+    // Margin to the alarm over 3.25 °C of authority. Derived from the limit rather than typed:
+    // this read `20 / 3.25` while exhaust.mean_hi was an invented 460 °C, and Phase 5 restored it
+    // to the OEM 700 °C (curve 10), so the margin is now 260 °C. Either way the point stands —
+    // the mean is far past the 1.0 severity cap, so F01 never trips it through the mean series.
+    const margin = MTU8000_LIMITS.exhaust.mean_hi - 440;
+    expect(r.severityAtCross).toBeCloseTo(margin / 3.25, 6);
     expect(r.minutes).toBeNull();
   });
 });
 
 describe('analyticRul — F03 lube pressure loss (the reachable alarm band)', () => {
-  // The one single-fault case in this model that can actually trip a forecastable band, so it is the
-  // case the browser end-to-end check uses. Hand-worked:
-  //   weight −3.8 bar/severity (rootMax 1.0), healthy gallery 6.44 bar, alarm min 5.5 bar
-  //   severityAtCross = (5.5 − 6.44) / −3.8 = 0.24737
-  //   MEDIUM 0.003/s from severity 0 → 82.46 s → 1.374 min
-  const HEALTHY_GALLERY = 6.44;
+  // The one single-fault case in this model that can actually trip a forecastable band, so it is
+  // the case the browser end-to-end check uses.
+  //
+  //   severityAtCross = (alarm − healthy) / weight,  weight −3.8 bar/severity (rootMax 1.0)
+  //   minutes = severityAtCross / GROWTH_RATE[MEDIUM] / 60
+  //
+  // Both inputs moved in OEM-CALIBRATION-GAP.md Phase 2/5 — the healthy gallery from 6.44 to
+  // 7.16 bar, and the gallery alarm from a flat invented 5.5 bar to curve 3 over the last-bearing
+  // takeoff ratio (6.30 at rated). They are now DERIVED here rather than typed, because this
+  // block previously hardcoded 6.44, 5.5, 0.24737 and 1.374 in four places and every one of them
+  // went stale together.
+  const HEALTHY_GALLERY = lubeOilPressure_MTU8000(1150, 85, lubeOilTemp_MTU8000(85, 1150), 0.15, 0);
+  const GALLERY_ALARM = MTU8000_LIMITS.lubeOil.pressure_before_filter_min;
+  const CROSS = (GALLERY_ALARM - HEALTHY_GALLERY) / -3.8;
 
   it('rests on the expected weight and threshold', () => {
     const w = DEGRADATION_MODES.find(m => m.id === 'F03')!
       .effects.find(e => e.sensorId === 'lubeOilPressure')!.weight;
     expect(w).toBe(-3.8);
     expect(ROOT_FACTORS.lubeFault.rootMax).toBe(1.0);
-    expect(MTU8000_LIMITS.lubeOil.pressure_before_filter_min).toBe(5.5);
+    // The alarm is the gallery pressure at which the last bearing reaches its coded warning.
+    expect(GALLERY_ALARM).toBeCloseTo(oemCurve(3, 1150) / MTU8000.LUBE_CIRCUIT.lastBearingRatio, 10);
+    expect(GALLERY_ALARM).toBeLessThan(HEALTHY_GALLERY);   // healthy clears it, as it must
   });
 
   it('solves a falling-pressure crossing', () => {
     const r = analyticRul([fault('F03', { intensity: 80 })], 'lube', HEALTHY_GALLERY);
     expect(r.reason).toBe('crosses');
-    expect(r.severityAtCross).toBeCloseTo((5.5 - HEALTHY_GALLERY) / -3.8, 8);
-    expect(r.minutes).toBeCloseTo(0.24737 / 0.003 / 60, 3);
-    expect(r.minutes).toBeCloseTo(1.374, 2);
+    expect(r.severityAtCross).toBeCloseTo(CROSS, 8);
+    expect(r.minutes).toBeCloseTo(CROSS / 0.003 / 60, 3);
   });
 
   it('is unreachable when intensity caps below the crossing severity', () => {
-    // severityAtCross 0.247 > cap 0.20
-    const r = analyticRul([fault('F03', { intensity: 20 })], 'lube', HEALTHY_GALLERY);
+    // Intensity capped an order below the crossing severity, whatever that severity now is.
+    const capPct = Math.floor(CROSS * 100) - 5;
+    const r = analyticRul([fault('F03', { intensity: capPct })], 'lube', HEALTHY_GALLERY);
     expect(r.reason).toBe('capped-below-threshold');
     expect(r.minutes).toBeNull();
   });

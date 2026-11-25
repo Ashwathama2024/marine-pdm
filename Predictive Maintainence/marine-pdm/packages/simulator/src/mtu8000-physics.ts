@@ -48,8 +48,11 @@ import { MTU8000, MTU8000_CYL_SPREAD, BSIDE_TEMP_BIAS } from '@marine-pdm/shared
 // Exported because three modules derive these pressures — the steady-state physics, the engine's
 // start handover and the start-sequence snapshot — and they had drifted to two different pairs
 // (0.55/0.68 here, 0.35/0.6 in both of the others).
-export const LAST_BEARING_PRESSURE_RATIO   = 0.92;  // B5.3/B5.4 — far end of the main gallery
-export const PISTON_COOLING_PRESSURE_RATIO = 0.85;  // B5.2 — fed through metering restrictors
+// Re-exported from MTU8000.LUBE_CIRCUIT rather than restated: the derived OEM limits in
+// shared/mtu8000.constants.ts need the same two numbers (the gallery alarm is curve 3 divided by
+// the last-bearing ratio), and shared cannot import the simulator. One definition, two consumers.
+export const LAST_BEARING_PRESSURE_RATIO   = MTU8000.LUBE_CIRCUIT.lastBearingRatio;    // B5.3/B5.4
+export const PISTON_COOLING_PRESSURE_RATIO = MTU8000.LUBE_CIRCUIT.pistonCoolingRatio;  // B5.2
 
 /** Gallery pressure at the rated point — the reference the bearing starvation term zeroes on. */
 export const RATED_GALLERY_PRESSURE_BAR = 7.15;
@@ -300,7 +303,9 @@ export function crankcasePressure_MTU8000(
 ): number {
   const base        = -2.0;  // mbar
   const loadEffect  = loadN(load) * 1.5;
-  const blowbyEffect = pistonBlowby * 8;
+  // Matches FAULT_MAX_EFFECTS.F08_blowby_pressure. Grown 8 → 45 in Phase 5 so blow-by can still
+  // reach P-Crankcase Lim1 once that limit is the OEM 27 mbar (curve 9) rather than an invented 5.
+  const blowbyEffect = pistonBlowby * 45;
   return base + loadEffect + blowbyEffect;
 }
 

@@ -188,7 +188,7 @@ export const DEGRADATION_MODES: DegradationMode[] = [
     id: 'F08', name: 'Piston Blow-by', ecsAlarmCode: 'HI P-Crankcase',
     componentId: 'piston_rings', rootFactor: 'pistonBlowby', scope: 'whole power section',
     effects: [
-      { sensorId: 'crankcasePressure', kind: 'PRIMARY',   weight: 8, unit: 'mbar', modeled: true,  physicsRef: 'crankcasePressure_MTU8000 blowbyEffect = pb·8' },
+      { sensorId: 'crankcasePressure', kind: 'PRIMARY',   weight: 45, unit: 'mbar', modeled: true,  physicsRef: 'crankcasePressure_MTU8000 blowbyEffect = pb·45 (was ·8, grown in Phase 5 to reach the OEM 27 mbar curve-9 limit)' },
       { sensorId: 'sfoc',              kind: 'SECONDARY', weight: 2, unit: 'g/kWh',modeled: true,  physicsRef: 'sfoc_MTU8000 blowbyPenalty = pistonBlowby·2' },
     ],
   },

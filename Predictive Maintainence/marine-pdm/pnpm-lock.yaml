@@ -30,6 +30,9 @@ importers:
         specifier: workspace:*
         version: link:../../shared
     devDependencies:
+      '@marine-pdm/simulator':
+        specifier: workspace:*
+        version: link:../simulator
       typescript:
         specifier: ^5.4.5
         version: 5.9.3
