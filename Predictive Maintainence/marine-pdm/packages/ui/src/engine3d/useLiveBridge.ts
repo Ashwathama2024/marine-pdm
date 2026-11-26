@@ -114,7 +114,7 @@ export function useLiveBridge(): LiveRef {
         continue;
       }
       const expected = baseline ? (baseline[meta.baselineKey] as number) : undefined;
-      v.devByTag[tag] = sensorSeverity(tag, readSensorValue(snapshot, meta), expected);
+      v.devByTag[tag] = sensorSeverity(tag, readSensorValue(snapshot, meta), expected, snapshot.rpm);
     }
   }, [snapshot, decision, baseline, isOperational]);
 

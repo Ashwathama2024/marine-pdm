@@ -8,7 +8,8 @@
 // Everything here is deterministic: the caller hands numbers to an LLM rather than asking it to
 // estimate a rate or a timeline. The math is unchanged from the original tool implementation.
 
-import { MTU8000_LIMITS } from '@marine-pdm/shared';
+import { MTU8000, MTU8000_LIMITS, MTU8000_LIMIT_CURVES, oemCurve, resolveLimit } from '@marine-pdm/shared';
+import type { LimitValue } from '@marine-pdm/shared';
 import type { SensorHistory } from '../context/EngineContext';
 
 /** Round for LLM/JSON consumption; NaN → null so a bad value is visibly absent, not silently 0. */
@@ -40,25 +41,69 @@ export function downsample(a: number[], max: number): number[] {
 // with a real coded alarm band are forecastable — everything else stays a trend question.
 const L = MTU8000_LIMITS;
 
+/**
+ * A band as authored. `hi`/`ss`/`lo` may be RPM curves — several of the MTU limits these point at
+ * are tabulated against engine speed on ZNG00028788 sheet 2, not fixed numbers.
+ */
 export type ForecastLimit = {
+  key: keyof SensorHistory; unit: string; label: string;
+  hi?: LimitValue; ss?: LimitValue; lo?: LimitValue; dir: 'high' | 'low';
+};
+
+/** The same band at one engine speed — what the ETA math and every display actually need. */
+export type ResolvedForecastLimit = {
   key: keyof SensorHistory; unit: string; label: string;
   hi?: number; ss?: number; lo?: number; dir: 'high' | 'low';
 };
 
+/**
+ * Forecasts are referenced to the rated operating point unless a caller supplies the live speed.
+ * Every baseline and alarm band in this app is calibrated at 85 % load / 1150 RPM, so this is the
+ * speed the documentation pages mean when they print "the alarm threshold".
+ */
+export const FORECAST_DEFAULT_RPM = MTU8000.RATED_RPM;
+
+export function resolveForecastLimit(lim: ForecastLimit, rpm: number = FORECAST_DEFAULT_RPM): ResolvedForecastLimit {
+  return {
+    key: lim.key, unit: lim.unit, label: lim.label, dir: lim.dir,
+    hi: resolveLimit(lim.hi, rpm),
+    ss: resolveLimit(lim.ss, rpm),
+    lo: resolveLimit(lim.lo, rpm),
+  };
+}
+
+/** Look up a forecastable metric's band, already resolved at `rpm`. */
+export function forecastLimit(key: string, rpm: number = FORECAST_DEFAULT_RPM): ResolvedForecastLimit | undefined {
+  const lim = FORECAST_LIMITS[key];
+  return lim ? resolveForecastLimit(lim, rpm) : undefined;
+}
+
+// `hi`/`lo` is the WARNING — the first thing the ECS does — and `ss` the escalation above it.
+// That is what "minutes to alarm" has to mean for a lead-time comparison to be meaningful.
+//
+// Where ZNG00028788 tabulates a limit against engine speed, the entry is the CURVE, resolved at
+// the live RPM by `forecastLimit(key, rpm)`. A scalar taken from the rated point would make every
+// part-load ETA wrong in the same direction: the last-bearing warning is 5.8 bar at rated but
+// 2.37 at idle, so a rated scalar says a healthy idling engine is already past its alarm.
 export const FORECAST_LIMITS: Record<string, ForecastLimit> = {
-  exhaust:            { key: 'exhaustTemp',       unit: '°C',   label: 'Mean exhaust temp',      dir: 'high', hi: L.exhaust.mean_hi,                          ss: L.exhaust.critical_max },
+  exhaust:            { key: 'exhaustTemp',       unit: '°C',   label: 'Mean exhaust temp',      dir: 'high', hi: (rpm) => oemCurve(10, rpm),                 ss: L.exhaust.critical_max },
   jacket:             { key: 'jacketOutlet',      unit: '°C',   label: 'Jacket / coolant temp',  dir: 'high', hi: L.cooling.coolant_temp_after_engine_max,    ss: L.cooling.coolant_temp_ss },
   chargeAirTemp:      { key: 'chargeAirTemp',     unit: '°C',   label: 'Charge-air temp',        dir: 'high', hi: L.chargeAir.temp_after_intercooler_hi,      ss: L.chargeAir.temp_after_intercooler_max },
   tcSpeed:            { key: 'tcRPM',             unit: 'RPM',  label: 'TC speed (overspeed)',   dir: 'high', hi: L.turbocharger.speed_overspeed_l1,          ss: L.turbocharger.speed_overspeed_l2 },
-  lube:               { key: 'lubeOilPressure',   unit: 'bar',  label: 'LO gallery pressure',    dir: 'low',  lo: L.lubeOil.pressure_before_filter_min },
-  pistonCoolingPress: { key: 'pistonCoolingPress',unit: 'bar',  label: 'Piston-cooling pressure',dir: 'low',  lo: L.lubeOil.piston_cooling_min },
+  // Gallery: no coded OEM limit, so the band is the gallery pressure at which the LAST BEARING
+  // reaches its coded warning — curve 3 over the takeoff ratio. See MTU8000_LIMIT_CURVES.
+  lube:               { key: 'lubeOilPressure',   unit: 'bar',  label: 'LO gallery pressure',    dir: 'low',  lo: (rpm) => MTU8000_LIMIT_CURVES.galleryPressHI(rpm) },
+  // Piston cooling: curve 1 warns (2D-26), curve 2 shuts down (2D-27).
+  pistonCoolingPress: { key: 'pistonCoolingPress',unit: 'bar',  label: 'Piston-cooling pressure',dir: 'low',  lo: (rpm) => oemCurve(1, rpm),  ss: (rpm) => oemCurve(2, rpm) },
   // Hottest of the 11 mains. The band is the one the safety override already enforces, so this key
   // makes bearing temperature forecastable (minsToAlarm_*) and labellable (rulTrue_*/rulQuality_*) —
   // it was the only SS-trip parameter with no RUL column, despite F04 being a modelled fault.
   bearingTemp:        { key: 'bearingTemp',       unit: '°C',   label: 'Bearing temp (hottest)', dir: 'high', hi: L.lubeOil.bearing_temp_hi,                  ss: L.lubeOil.bearing_temp_max },
   // The other two Emergency-class trips. Both are `dir: 'low'` — the alarm is a COLLAPSE, so the
   // band is `lo` and the fault must drive the reading down to reach it.
-  lubeLastBearing:    { key: 'lubeLastBearing',   unit: 'bar',  label: 'Last-bearing LO pressure',dir: 'low', lo: L.lubeOil.pressure_last_bearing_min },
+  // Last bearing: curve 3 warns (2D-17), curve 4 shuts down (2D-29). `lo` was the SHUTDOWN, so
+  // the "time to alarm" it reported skipped the warning the operator actually acts on first.
+  lubeLastBearing:    { key: 'lubeLastBearing',   unit: 'bar',  label: 'Last-bearing LO pressure',dir: 'low', lo: (rpm) => oemCurve(3, rpm),  ss: (rpm) => oemCurve(4, rpm) },
   fuelRailPressure:   { key: 'fuelRailPressure',  unit: 'bar',  label: 'Common-rail pressure',   dir: 'low',  lo: L.fuel.rail_pressure_min },
   systemRisk:         { key: 'systemRisk',        unit: '0–100',label: 'System risk',            dir: 'high', hi: 70,                                          ss: 90 },
 };
@@ -82,15 +127,23 @@ export function eta(current: number, threshold: number | undefined, slopePerMin:
 
 export function forecastFrom(
   series: number[],
-  lim: { unit: string; label: string; hi?: number; ss?: number; lo?: number; dir: 'high' | 'low' },
+  limSpec: { unit: string; label: string; hi?: LimitValue; ss?: LimitValue; lo?: LimitValue; dir: 'high' | 'low' },
   horizonMin: number,
+  rpm: number = FORECAST_DEFAULT_RPM,
 ): Record<string, unknown> {
+  const lim = {
+    unit: limSpec.unit, label: limSpec.label, dir: limSpec.dir,
+    hi: resolveLimit(limSpec.hi, rpm), ss: resolveLimit(limSpec.ss, rpm), lo: resolveLimit(limSpec.lo, rpm),
+  };
   const recent = series.slice(-SLOPE_TICKS);
   const st = stats(recent);
   const slopePerMin = st.slope * 60;
   const current = st.last;
   const target = lim.dir === 'high' ? lim.hi : lim.lo;
-  const critical = lim.dir === 'high' ? lim.ss : undefined;
+  // `ss` applies in BOTH directions now. It used to be dropped for falling metrics, which meant a
+  // pressure collapse — the one fault class that actually reaches a shutdown here — reported no
+  // time-to-shutdown at all, the single most useful number for it.
+  const critical = lim.ss;
   const etaHi = eta(current, target, slopePerMin, lim.dir);
   const etaSs = eta(current, critical, slopePerMin, lim.dir);
   const trendWord = Math.abs(slopePerMin) < 1e-6 ? 'flat'
@@ -114,8 +167,8 @@ export function forecastFrom(
  * Observable minutes-to-alarm for one forecastable metric — the naive linear-projection baseline the
  * training set records alongside the analytic `rulTrue_*` label. `null` when not projected to cross.
  */
-export function minutesToAlarm(series: number[], forecastKey: string): number | null {
-  const lim = FORECAST_LIMITS[forecastKey];
+export function minutesToAlarm(series: number[], forecastKey: string, rpm: number = FORECAST_DEFAULT_RPM): number | null {
+  const lim = forecastLimit(forecastKey, rpm);
   if (!lim || series.length < 3) return null;
   const st = stats(series.slice(-SLOPE_TICKS));
   const target = lim.dir === 'high' ? lim.hi : lim.lo;

@@ -22,13 +22,15 @@ describe('ENGINE_KNOWLEDGE — causal magnitudes', () => {
   it('reports F05 and F06 excursions with rootMax applied', () => {
     // The physics values, pinned in simulator/tests/degradation-matrix.test.ts.
     expect(ENGINE_KNOWLEDGE).toContain('coolantTempAfterEngine +3.75°C at full severity');
-    expect(ENGINE_KNOWLEDGE).toContain('exhaustBackPressure +16.00mbar at full severity');
+    // 0.4 (F06 rootMax) × 16 (the Phase 2 tcFoulEffect coefficient) = 6.40 mbar. This read
+    // +16.00 while the coefficient was 40 and the healthy back pressure was 99.5 mbar.
+    expect(ENGINE_KNOWLEDGE).toContain('exhaustBackPressure +6.40mbar at full severity');
   });
 
   it('does not present the bare weights as the excursion', () => {
     // The pre-fix strings. Their absence is the regression guard.
     expect(ENGINE_KNOWLEDGE).not.toContain('coolantTempAfterEngine +15°C');
-    expect(ENGINE_KNOWLEDGE).not.toContain('exhaustBackPressure +40mbar');
+    expect(ENGINE_KNOWLEDGE).not.toContain('exhaustBackPressure +16mbar');
     expect(ENGINE_KNOWLEDGE).not.toContain('per unit severity·intensity');
   });
 

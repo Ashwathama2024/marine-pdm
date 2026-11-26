@@ -24,7 +24,8 @@ import { MTU8000FeatureBuilder } from '@marine-pdm/features';
 import { baselineStore } from '@marine-pdm/knowledge';
 import type { FaultConfig } from '@marine-pdm/simulator';
 import {
-  putRun, putSamples, getRun, reconcileOpenRuns, SCHEMA_VERSION,
+  putRun, putSamples, getRun, reconcileOpenRuns, purgeStaleCalibration,
+  SCHEMA_VERSION, CALIBRATION_REVISION,
   type TrainingRun, type TrainingSample,
 } from './training-store';
 import { analyticRul, baseFaultId } from './rul';
@@ -97,6 +98,23 @@ if (typeof window !== 'undefined') {
       }
     })
     .catch(err => console.warn('[training-recorder] run reconciliation failed', err));
+
+  // Drop runs recorded against a superseded calibration. Their labels were solved from wrong
+  // baselines against wrong thresholds, and nothing in the row content gives them away —
+  // rulQuality_* reports OK on them, because a bias in the baseline CURVE cancels out of the
+  // lagged-vs-instant comparison it makes. Deleting beats filtering: an export carries sample
+  // rows only, so a "filter before training" instruction is unfollowable downstream.
+  void purgeStaleCalibration()
+    .then(({ removed }) => {
+      if (removed) {
+        console.info(
+          `[training-recorder] discarded ${removed} run(s) recorded before calibration ` +
+          `${CALIBRATION_REVISION} — their RUL labels were solved against the pre-OEM envelope`,
+        );
+        notify();
+      }
+    })
+    .catch(err => console.warn('[training-recorder] stale-calibration purge failed', err));
 }
 
 export interface RecordInput {
@@ -130,6 +148,7 @@ export function startRun(): TrainingRun {
     endedAt: null,
     sampleCount: 0,
     schemaVersion: SCHEMA_VERSION,
+    calibrationRevision: CALIBRATION_REVISION,
     engineModel: MTU8000.MODEL,
     rampMode: isRampMode(),
   };
@@ -280,6 +299,11 @@ export function recordTrainingSample(input: RecordInput): boolean {
     // Mixing schema versions silently is exactly what made the previous capture untrainable, so the
     // discriminator has to travel with the rows that would be mixed.
     schemaVersion: SCHEMA_VERSION,
+    // Which calibration the labels in this row were solved against. Travels with the row for the
+    // same reason schemaVersion does, and answers a different question: schemaVersion says what
+    // columns exist, this says what truth they were measured against. The next time the envelope
+    // moves, affected rows are identifiable from the export alone.
+    calibrationRevision: CALIBRATION_REVISION,
     t: snapshot.timestamp,
     tickIndex: tickIndex++,
     engineState: input.engineState,
@@ -335,15 +359,21 @@ export function recordTrainingSample(input: RecordInput): boolean {
   // appears to INCREASE as the fault develops — so without a per-row flag a regressor silently
   // averages poison. Per-key rather than per-row because the lag alphas span 10x: a slow-settling
   // jacket must not discard a perfectly good lube label on the same tick.
+  // Both the label and the observable baseline are solved against the band in force AT THIS
+  // ENGINE SPEED. Several MTU limits are RPM curves (ZNG00028788 sheet 2) and the spread is wide —
+  // the last-bearing warning is 5.8 bar at rated and 2.37 at idle — so resolving them at the rated
+  // point would mislabel every row recorded at part load, systematically and in one direction.
+  const liveRpm = snapshot.rpm;
+
   for (const key of FORECAST_KEYS) {
     const refKey = HEALTHY_REF[key];
     const healthy = refKey !== undefined ? lagged[refKey] : undefined;
-    const detail = healthy === undefined ? null : analyticRul(faults, key, healthy);
+    const detail = healthy === undefined ? null : analyticRul(faults, key, healthy, liveRpm);
 
     row[`rulTrue_${key}`] = detail ? fx(detail.minutes ?? undefined, 2) : null;
 
     const series = (history[FORECAST_LIMITS[key]!.key] as number[] | undefined) ?? [];
-    row[`minsToAlarm_${key}`] = fx(minutesToAlarm(series, key) ?? undefined, 2);
+    row[`minsToAlarm_${key}`] = fx(minutesToAlarm(series, key, liveRpm) ?? undefined, 2);
 
     if (detail && healthy !== undefined && input.instantBaseline) {
       const { quality, errorMinutes } = classifyRulQuality({

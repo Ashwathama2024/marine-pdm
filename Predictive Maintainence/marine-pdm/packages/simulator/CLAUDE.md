@@ -24,13 +24,19 @@
 | Equation | Expected | Tolerance | Notes |
 |----------|----------|-----------|-------|
 | `exhaustTemp_MTU8000(85, 1150, 1.0, 1.0)` | 440°C | ±5°C | base=276 → 276+136+28=440 |
-| `lubeOilPressure_MTU8000(1150, 85, 85, 0, 0)` | 6.7 bar | ±0.2 | Cold oil (85°C). Hot oil (105°C) → ~6.4 bar |
+| `lubeOilPressure_MTU8000(1150, 85, oilT, 0.15, 0)` | 7.16 bar | ±0.15 | At the rated oil temp + nominal filter ΔP — how physics.ts calls it |
+| `lubeOilTemp_MTU8000(85, 1150)` | 78.3°C | ±0.8 | Inside T-Oil Lim1 (83°C). Was 98.2 — past the OEM power-reduction point |
+| `bearingTemp_MTU8000(...)` hottest | ~100°C | ±2 | 15°C clear of T-Bearing Lim1 |
+| `exhaustBackPressure_MTU8000(85, 1150)` | 38.3 mbar | ±1 | Below the 50 mbar warning. Was 99.5 |
+| `coolantPressure_MTU8000(1150)` | 5.0 bar | ±0.1 | Clears curve 0 (4.1 bar). Was 2.0 |
 | `chargeAirPressure_MTU8000(1150, 85, 1.0)` | 3.2 bar | ±0.1 | |
 | `sfoc_MTU8000(85, 1150, {}, 1.0)` | 185 g/kWh | ±1 | base=180, coef=0.333 |
 | `chargeAirTemp_MTU8000(85, 1150, 36)` | ~63°C | ±3°C | Pass LT_COOLANT=36, NOT `lagCoolantTemp` |
 | `jacketCoolingOutlet` at steady state | ~76.8°C | ±2°C | `lagCoolantTemp` init = 30 + load/100×55 |
 
-Tests in `tests/physics.test.ts` — run with `pnpm test` from this directory.
+Magnitude targets live in `tests/physics.test.ts`. Whether a value is SAFE is a separate question,
+asserted against the manual in **`tests/oem-envelope.test.ts`** — the two are deliberately split so
+that nobody can satisfy a safety check by loosening a magnitude target. Run both with `pnpm test`.
 
 ---
 
@@ -146,32 +152,36 @@ Natural `CYL_SPREAD + BSIDE_TEMP_BIAS` gives B5 a permanent +17°C deviation fro
 **`sfoc_MTU8000` coefficients**
 `base=180, coef=0.333` → `180 + 15×0.333 = 185 g/kWh`. These are calibrated. Do not adjust without re-running physics tests.
 
-**⚠ The rated operating point is wrong — see [`../../OEM-CALIBRATION-GAP.md`](../../OEM-CALIBRATION-GAP.md)**
-`lubeOilTemp_MTU8000` returns 98.2 °C at rated against an OEM power-reduction limit of 85; piston
-cooling and last-bearing pressures sit *below* their OEM shutdown thresholds; exhaust back pressure
-is 99.5 mbar against a 70 mbar fuel-limitation point. Phase 2 of that document recalibrates these in
-dependency order. Do not adjust one in isolation — `degradation-matrix.ts` weights are the partials of
-these functions and its finite-difference test will fail until both move together.
+**The rated point is calibrated to the OEM envelope — keep it that way**
+Every healthy rated value clears the limit MTU codes for it, at every speed from idle to rated, and
+`tests/oem-envelope.test.ts` asserts that against `oemCurve`/`oemScalar` rather than against typed
+numbers. Two consequences for anyone touching these equations:
+- **Do not adjust one in isolation.** `degradation-matrix.ts` weights are the partials of these
+  functions and the finite-difference test fails until both move together. That failure is a signal,
+  not noise — do not silence it.
+- **The lube takeoff ratios are fixed by the manual, not free parameters.** ZNG00028788 warns on
+  last-bearing pressure at 5.8 bar but on piston cooling at 5.2, so the last bearing is the HIGHER of
+  the two. They were 0.55 and 0.68 — the wrong way round, and so low that no realistic gallery
+  pressure could clear either warning. Now `MTU8000.LUBE_CIRCUIT`, one definition for all consumers.
 
 **`bearingTemp_MTU8000` faultHeat = `bearingFault·45` (was 20)**
 The 6th param only ever receives `bearingFaults[i]` (F04) — F03 lube loss reaches bearings via
 `pressureDef`, F05 cooler fouling via `oilHeat`, never through this term. It was `·20`, so F04 at full
-severity only added +20 °C and the **SS T-Bearing trip never fired** (then >130 °C, now >120 °C — the
-`·20` term missed either). Now `·45` (matches
+severity only added +20 °C and the **SS T-Bearing trip never fired** (>120 °C, the OEM T-Bearing Lim2). Now `·45` (matches
 `FAULT_MAX_EFFECTS.F04_bearing_temp_rise` and the matrix weight). Zero at healthy (`fault=0`) so rated
 bearing temps and the physics validation targets are unchanged.
 
 **ECS alarm preview works in RISES; crankcase alarms are ABSOLUTE — convert, don't compare**
 `getECSAlarmPreview` computes a delta from healthy (`eff × maxEffect`). `MTU8000_LIMITS.crankcase.pressure_hi`
-is an **absolute** 5 mbar, and healthy crankcase at rated is ≈ **−0.725 mbar**, so the rise needed is
-**5.725 mbar**, not 5. Comparing the rise straight to the limit made F08 trip at 63% intensity when the
+is an **absolute** 27 mbar (OEM curve 9, flat across the speed range), and healthy crankcase at rated is
+≈ **−0.725 mbar**, so the rise needed is **27.7 mbar**, not 27. Comparing the rise straight to the limit made F08 trip at 63% intensity when the
 physics crosses at 72%. `CRANKCASE_HI_RISE` now derives this from `crankcasePressure_MTU8000` so it can't
 drift. Every other alarm in that switch uses hand-picked *delta* thresholds — only crankcase is pinned to a
 coded absolute limit.
 
 **F07's crankcase term is sub-alarm BY DESIGN — do not "fix" it by raising the coupling**
-F07 sets `pistonBlowby = sev × F07_blowby_coupling (0.3)`, ceiling ≈ **1.68 mbar** against the 5 mbar HI
-limit — it can never trip HI P-Crankcase at any intensity. That is intentional: the rest of the system reads
+F07 sets `pistonBlowby = sev × F07_blowby_coupling (0.3)`, ceiling ≈ **12.8 mbar** against the 27 mbar
+OEM HI limit — it can never trip HI P-Crankcase at any intensity. That is intentional: the rest of the system reads
 it as a **rate** tell, not an alarm (`patterns-mtu8000.ts` P07 matches `crankcaseRate > 0.05`; only P08
 carries `ecsAlarmCode: 'HI P-Crankcase'`). P07 and P08 discriminate on exactly this axis, so raising the
 coupling until F07 trips the alarm would collapse that separation. The effect is surfaced in

@@ -6,6 +6,10 @@
 
 import { MTU8000, addNoise } from '@marine-pdm/shared';
 import type { EngineSnapshot } from '@marine-pdm/shared';
+import {
+  LAST_BEARING_PRESSURE_RATIO,
+  PISTON_COOLING_PRESSURE_RATIO,
+} from './mtu8000-physics';
 
 const AMBIENT = 25;   // °C ambient
 const TC_COUNT = 4;
@@ -169,8 +173,8 @@ export function startStateToSnapshot(s: StartPhysicsState, timestamp: number): E
     lubeOilPressure: lube,
     lubeOilPressureBeforeFilter: lube,
     lubeOilPressureAfterFilter: Math.max(0, lube - 0.1),
-    lubeOilPressurePistonCooling: lube * 0.6,
-    lubeLastBearingPressure: lube * 0.35,
+    lubeOilPressurePistonCooling: lube * PISTON_COOLING_PRESSURE_RATIO,
+    lubeLastBearingPressure: lube * LAST_BEARING_PRESSURE_RATIO,
     lubeOilTemp: addNoise(s.coolantTemp + 2, 0.4),
     fuelRack: 0,
     scavengeAir: 1.013,
@@ -199,7 +203,7 @@ export function startStateToSnapshot(s: StartPhysicsState, timestamp: number): E
     fuelOilTemp: addNoise(AMBIENT, 0.3),
     loFilterDP: 0,
     filterDifferentialP: 0,
-    pistonCoolingPress: lube * 0.6,
+    pistonCoolingPress: lube * PISTON_COOLING_PRESSURE_RATIO,
     shaftPower: 0,
     aSideMeanExhaust: aSide,
     bSideMeanExhaust: bSide,

@@ -38,13 +38,22 @@ export const FAULT_MAX_EFFECTS = {
   F06_tc_eff_drop:          0.40, // tcEff: 1.0 → 0.60
   F07_spray_erratic_amp:    30,   // °C peak-to-peak oscillation on top of F01
   F07_blowby_coupling:      0.3,  // fraction of severity F07 leaks into pistonBlowby (see note below)
-  F08_blowby_pressure:      8,    // mbar crankcase pressure rise
+  // mbar crankcase pressure rise at full severity. Was 8, which cleared the app's invented 5 mbar
+  // limit but could never have reached MTU's real one: ZNG00028788 curve 9 codes P-Crankcase Lim1
+  // at 27 mbar (flat across the speed range) and Lim2, a SHUTDOWN, 10 mbar above that. From a
+  // healthy −0.725 mbar at rated, a span of 8 peaked at 7.28 mbar — a quarter of the warning. With
+  // the limit corrected in Phase 5 the fault would have become undetectable, so the span grows to
+  // match the envelope rather than the limit being left tuned to the fault.
+  //   crosses Lim1 (27 mbar) at severity 0.616, Lim2 (37 mbar) at 0.838, peaks at 44.3.
+  F08_blowby_pressure:      45,
   F09_multi_injector_delta: 55,   // °C per B-side cylinder (mirror of F02)
 } as const;
 
 // F07's crankcase term is DELIBERATELY sub-alarm. At coupling 0.3 its ceiling is
-// `crankcasePressure(85, 0) + 0.3·8` ≈ 1.68 mbar against a 5 mbar HI limit, so it can never trip
-// HI P-Crankcase at any intensity — that is the intent, not a miscalibration. The rest of the system
+// `crankcasePressure(85, 0) + 0.3·45` ≈ 12.8 mbar against the 27 mbar OEM HI limit, so it can
+// never trip HI P-Crankcase at any intensity — that is the intent, not a miscalibration. (It was
+// 1.68 against 5; the ratio is essentially unchanged by the Phase 5 recalibration, so the
+// separation this relies on survives it.) The rest of the system
 // reads it as a RATE tell, not an alarm: P07 matches on `crankcaseRate > 0.05` (patterns-mtu8000.ts)
 // and only P08 carries `ecsAlarmCode: 'HI P-Crankcase'`. Raising this coupling until F07 trips the
 // alarm would collapse the P07/P08 discrimination, which separates on exactly this axis.

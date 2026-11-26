@@ -108,11 +108,34 @@ describe('ECS safety trips are visible to the operator', () => {
     // ten-channel panel rather than a gauge — see DISPLAYED_OUTSIDE_GAUGE_GRID.
     'sprayOil.diff_warn':                 'ME.SprayOilDiff',
     'sprayOil.diff_shutdown':             'ME.SprayOilDiff',
+
+    // RPM-curve trips (MTU8000_LIMIT_CURVES, referenced through the local alias `C`). These are
+    // the same parameters as the scalars above, resolved at the live engine speed because
+    // ZNG00028788 tabulates them against RPM — so they map to the same gauges.
+    'C.lastBearingPressSS':               'ME.LubeOilPressure.LastBearing',
+    'C.lastBearingPressHI':               'ME.LubeOilPressure.LastBearing',
+    'C.pistonCoolingPressSS':             'ME.PistonCoolingPress',
+    'C.pistonCoolingPressHI':             'ME.PistonCoolingPress',
+    'C.exhaustMeanHI':                    'ME.ExhaustTemp',
+    // The gallery alarm is now curve-valued too: curve 3 over the last-bearing takeoff
+    // ratio, i.e. the gallery pressure at which the far end reaches its coded warning.
+    'C.galleryPressHI':                   'ME.LubeOilPressure',
   };
 
-  const tripsInSource = [...new Set(
-    [...OVERRIDE_SRC.matchAll(/MTU8000_LIMITS\.([a-zA-Z]+)\.([a-zA-Z_]+)/g)].map(m => `${m[1]}.${m[2]}`),
-  )].sort();
+  // Two trip spellings now exist and BOTH must be parsed, or a curve-valued trip could land with
+  // no display — the precise gap this file was written to close. Scalars read
+  // `MTU8000_LIMITS.group.name`; curve limits read `C.name(rpm)`, `C` being the file's alias for
+  // MTU8000_LIMIT_CURVES.
+  const tripsInSource = [...new Set([
+    ...[...OVERRIDE_SRC.matchAll(/MTU8000_LIMITS\.([a-zA-Z]+)\.([a-zA-Z_]+)/g)].map(m => `${m[1]}.${m[2]}`),
+    ...[...OVERRIDE_SRC.matchAll(/\bC\.([a-zA-Z]+)\(/g)].map(m => `C.${m[1]}`),
+  ])].sort();
+
+  it('actually finds the curve-valued trips, not only the scalar ones', () => {
+    // Guards the guard: if the alias or the call shape in override-mtu8000.ts changes, the second
+    // regex silently matches nothing and this whole describe block stops checking anything.
+    expect(tripsInSource.filter(t => t.startsWith('C.')).length).toBeGreaterThanOrEqual(6);
+  });
 
   it('every limit the safety override trips on is accounted for here', () => {
     // Fails when a NEW safety trip is added, forcing an explicit display decision rather than letting

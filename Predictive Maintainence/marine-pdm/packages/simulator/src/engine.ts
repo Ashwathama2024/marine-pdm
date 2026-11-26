@@ -21,7 +21,13 @@ import {
   clutchRpmDip,
 } from './mtu8000-start-physics';
 import type { StartPhysicsState } from './mtu8000-start-physics';
-import { cylExhaustTemp_MTU8000, sfoc_MTU8000, sprayOilTemp_MTU8000 } from './mtu8000-physics';
+import {
+  cylExhaustTemp_MTU8000,
+  sfoc_MTU8000,
+  sprayOilTemp_MTU8000,
+  LAST_BEARING_PRESSURE_RATIO,
+  PISTON_COOLING_PRESSURE_RATIO,
+} from './mtu8000-physics';
 import { CYLINDER_COUNT } from '@marine-pdm/shared';
 
 export type SimMode = 'NORMAL' | 'STRESS' | 'FAULT';
@@ -377,8 +383,10 @@ export class SimulatorEngine implements IDataSource {
       lagCoolantTemp:         s.coolantTemp,
       lagLubeOilTemp:         s.coolantTemp + 2,
       lagLubeAfterFilter:     Math.max(0, s.lubePress - 0.1),
-      lagLubeLastBearing:     s.lubePress * 0.35,
-      lagPistonCoolingPress:  s.lubePress * 0.6,
+      // The same circuit ratios the running physics uses. These were 0.35 and 0.6 — a third pair of
+      // hand-written numbers that agreed neither with the steady-state model nor with each other.
+      lagLubeLastBearing:     s.lubePress * LAST_BEARING_PRESSURE_RATIO,
+      lagPistonCoolingPress:  s.lubePress * PISTON_COOLING_PRESSURE_RATIO,
       lagFuelRailPressure:    s.fuelRailPress,
       lagFuelTemp:            25,
       // Idle no-load SFOC (rpm penalty dominates: (1150-400)*0.08=60 on top of the

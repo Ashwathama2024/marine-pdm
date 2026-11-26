@@ -5,6 +5,8 @@
 import { CYLINDER_COUNT } from './interfaces';
 // mtu8000.constants.ts has no imports of its own, so this cannot cycle.
 import { MTU8000_LIMITS } from './mtu8000.constants';
+// Curve-valued bands read the drawing directly. oem-limits.ts imports nothing, so no cycle.
+import { oemCurve, oemScalar } from './oem-limits';
 export { CYLINDER_COUNT };
 
 export const TICK_MS = 1000;
@@ -25,6 +27,55 @@ export const CYL_SPREAD: number[] = [
 // L2 ALARM     — audible/visual, must acknowledge
 // L3 SLOWDOWN  — automatic slowdown if not overridden
 // L4 SHUTDOWN  — automatic shutdown
+
+// ── CURVE-VALUED LIMITS ────────────────────────────────────────────────────
+// Most of the MTU 8000's coded limits are NOT scalars. Sheet 2 of ZNG00028788 tabulates thirteen
+// of them against engine speed, so "the piston-cooling shutdown" has no single value — it is
+// 4.7 bar at 1150 RPM, 3 bar at 800, and 0.2 bar at 300. Writing one of them down as a scalar
+// silently picks a speed, which is how several thresholds here drifted away from the manual.
+//
+// A threshold may therefore be either a plain number or a function of engine RPM. Scalar entries
+// behave exactly as before; a curve entry is resolved by the consumer at the speed the engine is
+// actually turning. The curves themselves live in `oem-limits.ts`, cited to the drawing — a limit
+// written as `rpm => oemCurve(2, rpm)` carries its provenance with it.
+export type LimitValue = number | ((rpm: number) => number);
+
+export function resolveLimit(v: LimitValue, rpm: number): number;
+export function resolveLimit(v: LimitValue | undefined, rpm: number): number | undefined;
+export function resolveLimit(v: LimitValue | undefined, rpm: number): number | undefined {
+  return typeof v === 'function' ? v(rpm) : v;
+}
+
+/** One sensor's alarm band as authored — entries may be scalars or RPM curves. */
+export type AlarmBandSpec = Record<string, LimitValue | undefined>;
+/** The same band at one engine speed — every entry a plain number. */
+export type ResolvedAlarmBand = Record<string, number | undefined>;
+
+/** Collapse a band to plain numbers at `rpm`. A band of scalars is returned unchanged in value. */
+export function resolveAlarmBand(spec: AlarmBandSpec, rpm: number): ResolvedAlarmBand {
+  const out: ResolvedAlarmBand = {};
+  for (const key of Object.keys(spec)) out[key] = resolveLimit(spec[key], rpm);
+  return out;
+}
+
+/** A whole limit set with every curve resolved — same keys, every threshold a plain number. */
+export type ResolvedLimitSet<T> = { [K in keyof T]: { [P in keyof T[K]]: number } };
+
+/**
+ * Resolve every band of a limit set at one engine speed. The gauges use this so that a gauge's
+ * painted alarm ticks and the colour of its needle come from the same RPM — reading a curve limit
+ * at two different speeds within one gauge would put the tick somewhere the colour does not change.
+ */
+export function resolveLimitSet<T extends Record<string, Record<string, LimitValue>>>(
+  limits: T,
+  rpm: number,
+): ResolvedLimitSet<T> {
+  const out = {} as ResolvedLimitSet<T>;
+  for (const band of Object.keys(limits) as Array<keyof T>) {
+    out[band] = resolveAlarmBand(limits[band] as AlarmBandSpec, rpm) as ResolvedLimitSet<T>[keyof T];
+  }
+  return out;
+}
 
 export const ALARM_LIMITS = {
   exhaustTemp: {
@@ -126,13 +177,16 @@ export const ALARM_LIMITS = {
     alarmHigh:    1.2,  // L2 — filter blocked, bypass opening
     shutdownHigh: 1.8,  // L4 — critical filter blockage
   },
+  // Piston-cooling oil pressure (B5.2). CURVE-VALUED for the same reason as the last bearing:
+  // curves 1 and 2 run from 0.4/0.2 bar at 300 RPM to 5.2/4.7 at rated.
   pistonCoolingPress: {
-    physMin: 2.0,
+    physMin: 0,
     physMax: 10.0,
-    alarmHigh:    8.5,  // L2 — overpressure
-    preAlarmLow:  4.0,  // L1 (was 4.5 — physics gives ~4.35 bar at rated with hot oil)
-    alarmLow:     3.5,  // L2 (was 4.0)
-    shutdownLow:  3.0,  // L4
+    alarmHigh:    8.5,  // NOT OEM — app overpressure step, no coded upper limit for B5.2
+    preAlarmLow:  (rpm: number) => oemCurve(1, rpm),   // L1 — Piston Cooling Lim1, warning
+    // NOT OEM: interpolated so the gauge has an amber band between the two coded steps.
+    alarmLow:     (rpm: number) => (oemCurve(1, rpm) + oemCurve(2, rpm)) / 2,
+    shutdownLow:  (rpm: number) => oemCurve(2, rpm),   // L4 — Lim2, SHUTDOWN
   },
   shaftPower: {
     physMin: 0,
@@ -147,16 +201,22 @@ export const ALARM_LIMITS = {
   // and an SS Emergency Stop) while having no display at all, so a hand-copied second set of numbers
   // here is exactly the drift this file should not introduce. L1 sits below the coded HI so the gauge
   // warns before the ECS alarm rather than at the same instant.
-  // Last-bearing LO pressure (B5.3/B5.4) — the furthest lubrication point, ~55 % of gallery.
-  // shutdownLow IS the coded SS Emergency Stop, so the L1/L2 steps above it are the only warning an
-  // operator gets before the engine trips. They must clear the IDLE value (2.61 bar at 400 RPM), not
-  // just the rated one (3.51) — a pre-alarm below rated but above idle would sit latched at idle.
+  // Last-bearing LO pressure (B5.3/B5.4) — the far end of the main gallery, 0.92 of it.
+  //
+  // CURVE-VALUED. ZNG00028788 tabulates both of its limits against engine speed (curves 3 and 4),
+  // and the spread is large: the shutdown is 5.3 bar at rated but 2.07 bar at 400 RPM. A scalar
+  // band taken from the rated point would put a healthy idling engine (3.11 bar) permanently in
+  // L4, because sensorSeverity treats shutdownLow as unconditional at any load — which is exactly
+  // right for a real shutdown limit, and exactly why the limit itself has to follow the speed.
+  //
+  // L1 and L4 are the two OEM steps. Only L2 is interpolated between them, and it is marked.
   lubeLastBearingPressure: {
     physMin: 0,
-    physMax: 6,
-    preAlarmLow:  2.5,   // L1 — below idle's 2.61, so no permanent idle alarm
-    alarmLow:     2.2,   // L2
-    shutdownLow:  MTU8000_LIMITS.lubeOil.pressure_last_bearing_min,  // L4 — SS P-Oil Last Bearing
+    physMax: 8,
+    preAlarmLow:  (rpm: number) => oemCurve(3, rpm),   // L1 — P-Oil last bearing Lim1, warning
+    // NOT OEM: MTU codes only the two steps. Midway between them, so the gauge has an amber band.
+    alarmLow:     (rpm: number) => (oemCurve(3, rpm) + oemCurve(4, rpm)) / 2,
+    shutdownLow:  (rpm: number) => oemCurve(4, rpm),   // L4 — Lim2, SHUTDOWN
   },
   // Common-rail pressure (B48). rail_pressure_min is an SD → Emergency Operation, not a full stop.
   fuelRailPressure: {
@@ -166,15 +226,30 @@ export const ALARM_LIMITS = {
     alarmLow:     1300,  // L2
     shutdownLow:  MTU8000_LIMITS.fuel.rail_pressure_min,  // L4 — SD P-Fuel Rail
   },
+  // Main-bearing temperature (B57.1–B57.11), reported as the HOTTEST of the 11.
+  //
+  // NOTE ON THE COMMENTS BELOW: they name the SOURCE of each number, never the number itself.
+  // The previous version restated the computed values — "L3 — 122.5 °C", "L4 — 130 °C, SS" — and
+  // when `bearing_temp_max` was corrected 130 → 120 both went stale on the spot. Worse, the L3
+  // expression silently moved the slowdown from 122.5 to 117.5 °C with nothing recording it. A
+  // comment that repeats a derived value is a second source of truth, and this file is where that
+  // habit did its damage; see OEM-CALIBRATION-GAP.md §0.
   bearingTemp: {
     physMin: 20,
     physMax: 150,
     normalMin: 60,
     normalMax: 110,
-    preAlarmHigh: MTU8000_LIMITS.lubeOil.bearing_temp_hi - 5,   // L1 — 110 °C, early warning
-    alarmHigh:    MTU8000_LIMITS.lubeOil.bearing_temp_hi,       // L2 — 115 °C, HI T-Bearing
-    slowdownHigh: (MTU8000_LIMITS.lubeOil.bearing_temp_hi + MTU8000_LIMITS.lubeOil.bearing_temp_max) / 2, // L3 — 122.5 °C
-    shutdownHigh: MTU8000_LIMITS.lubeOil.bearing_temp_max,      // L4 — 130 °C, SS T-Bearing
+    // L1 — the coded T-Bearing MEAN warning (MDEC 50,03). On a hottest-of-11 observable that is
+    // not the limit MTU applies, but it IS a real coded value sitting just below Lim1, so it
+    // serves as the lead-in step instead of an invented one. Deliberately conservative.
+    preAlarmHigh: MTU8000_LIMITS.lubeOil.bearing_temp_mean_hi,
+    // L2 — T-Bearing Lim1, warning (MDEC 49,04).
+    alarmHigh:    MTU8000_LIMITS.lubeOil.bearing_temp_hi,
+    // L3 — NOT OEM. ZNG00028788 codes no third bearing step; this is an app slowdown placed
+    // midway between the coded warning and the coded shutdown, and it moves whenever either does.
+    slowdownHigh: (MTU8000_LIMITS.lubeOil.bearing_temp_hi + MTU8000_LIMITS.lubeOil.bearing_temp_max) / 2,
+    // L4 — T-Bearing Lim2, SHUTDOWN (MDEC 49,05).
+    shutdownHigh: MTU8000_LIMITS.lubeOil.bearing_temp_max,
   },
 };
 

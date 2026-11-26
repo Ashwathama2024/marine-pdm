@@ -2,6 +2,22 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import type { EngineSnapshot } from '@marine-pdm/shared';
 import { SensorRegistry, BaselineStore, DependencyMap, PatternLibrary, seedKnowledgeBase } from '@marine-pdm/knowledge';
 import { FeatureEngine } from '@marine-pdm/features';
+import {
+  exhaustTemp_MTU8000,
+  lubeOilTemp_MTU8000,
+  lubeOilPressure_MTU8000,
+  bearingTemp_MTU8000,
+  chargeAirPressure_MTU8000,
+  chargeAirTemp_MTU8000,
+  fuelRailPressure_MTU8000,
+  fuelTemp_MTU8000,
+  sfoc_MTU8000,
+  crankcasePressure_MTU8000,
+  sprayOilTemp_MTU8000,
+  tcSpeed_MTU8000,
+  LAST_BEARING_PRESSURE_RATIO,
+  PISTON_COOLING_PRESSURE_RATIO,
+} from '@marine-pdm/simulator';
 import { DecisionEngine } from '../src/decision-engine';
 
 // Full-pipeline regression test for wiring the real P01-P08 MTU8000 patterns into
@@ -11,19 +27,31 @@ import { DecisionEngine } from '../src/decision-engine';
 // between test cases.
 
 const L = 85, R = 1150;
+
+// Built from the REAL physics functions, not retyped equations.
+//
+// This fixture used to spell the equations out by hand, and Phase 2 of OEM-CALIBRATION-GAP.md
+// turned every one of them stale at a stroke: it still produced a 6.39 bar gallery and a 3.51 bar
+// last bearing, the latter below the OEM shutdown the override now enforces. The tests below kept
+// passing because they only assert pattern behaviour — so a fixture named `healthySnapshot` was
+// quietly describing an engine the ECS would have stopped. Deriving it means it cannot drift from
+// the physics again. (`@marine-pdm/simulator` is a devDependency here for exactly this; the
+// runtime graph is unchanged — decision imports shared/knowledge/features only.)
 function healthySnapshot(): EngineSnapshot {
-  const exhaustTemp = 276 + (L / 100) * 160 + (R / 1150) * 28; // 440
-  const lubeOilPressure = 3.5 + (R / 1150) * 4.0 - (L / 100) * 1.13 - 0.15; // ~6.39
-  const jacketOutlet = Math.max(50, 30 + (L / 100) * 55); // 76.75
-  const scavengeAir = 1.35 + (R / 1150) * 1.46 + (L / 100) * 0.47; // ~3.21
-  const tcRPM = 500 + (R / 1150) * 17300 + (L / 100) * 12000; // 28000
-  const sfoc = 180 + (100 - L) * 0.333 + (1150 - R) * 0.08; // ~184.995
-  const chargeAirTemp = 48 + (L / 100) * 18; // 63.3
+  const exhaustTemp = exhaustTemp_MTU8000(L, R, 1.0, 1.0);
+  const lubeOilTemp = lubeOilTemp_MTU8000(L, R);
+  const lubeOilPressure = lubeOilPressure_MTU8000(R, L, lubeOilTemp, 0.15, 0);
+  const jacketOutlet = Math.max(50, 30 + (L / 100) * 55); // 76.75 — inline in tickPhysics
+  const scavengeAir = chargeAirPressure_MTU8000(R, L, 1.0);
+  const tcRPM = tcSpeed_MTU8000(R, L, 1.0);
+  const sfoc = sfoc_MTU8000(L, R, {}, 1.0);
+  const chargeAirTemp = chargeAirTemp_MTU8000(L, R, 36);
   const fuelOilPressure = 6.0 + (L / 100) * 1.8;
-  const fuelOilTemp = 30 + (L / 100) * 13;
-  const pistonCoolingPress = (3.5 + (R / 1150) * 4.0 - (L / 100) * 1.13 - 0.15) * 0.68;
-  const bearingTempMean = 58 + (L / 100) * 28 + (R / 1150) * 10; // matches ME.BearingTemp.Mean
-  const fuelRailPressure = 1600 + (L / 100) * 200; // matches ME.FuelRailPressure
+  const fuelOilTemp = fuelTemp_MTU8000(L);
+  const pistonCoolingPress = lubeOilPressure * PISTON_COOLING_PRESSURE_RATIO;
+  // The per-bearing curve, which ME.BearingTemp.Mean mirrors (positionBias excluded — index 0).
+  const bearingTempMean = bearingTemp_MTU8000(L, R, lubeOilTemp, lubeOilPressure, 0, 0);
+  const fuelRailPressure = fuelRailPressure_MTU8000(L, R, 0);
 
   const snap: any = {
     timestamp: Date.now(), rpm: R, load: L,
@@ -34,13 +62,17 @@ function healthySnapshot(): EngineSnapshot {
     shaftPower: 9100 * (L / 100),
     // MTU8000-specific extras via the index signature — self-consistent with the generic fields
     // above (same physical sensors under the MTU8000 field names), so deviations read ~0 healthy.
-    bearingTemps: new Array(11).fill(bearingTempMean),
+    bearingTemps: Array.from({ length: 11 }, (_, i) =>
+      bearingTemp_MTU8000(L, R, lubeOilTemp, lubeOilPressure, i, 0)),
+    sprayOilTemps: Array.from({ length: 10 }, (_, t) =>
+      sprayOilTemp_MTU8000(L, R, lubeOilTemp, t, 0)),
     tcSpeeds: new Array(4).fill(tcRPM),
-    lubeLastBearingPressure: lubeOilPressure * 0.55,
+    lubeLastBearingPressure: lubeOilPressure * LAST_BEARING_PRESSURE_RATIO,
+    lubeOilTemp,
     coolantTempAfterEngine: jacketOutlet,
     chargeAirPressure: scavengeAir,
     fuelRailPressure,
-    crankcasePressure: -2.0 + (L / 100) * 1.5,
+    crankcasePressure: crankcasePressure_MTU8000(L, 0),
     exhaustMeanTemp: exhaustTemp,
     aSideMeanExhaust: exhaustTemp,
     bSideMeanExhaust: exhaustTemp,

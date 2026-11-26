@@ -3,31 +3,43 @@
 
 ---
 
-## ⚠ READ FIRST — open calibration defect
+## ⚠ READ FIRST — how the limits work here
 
-**[`OEM-CALIBRATION-GAP.md`](./OEM-CALIBRATION-GAP.md) — OPEN, Phases 1–8 not started.**
+**[`OEM-CALIBRATION-GAP.md`](./OEM-CALIBRATION-GAP.md) — CLOSED. Phases 0–8 complete.**
+Verification of the source drawing: [`ZNG00028788-VERIFICATION.md`](./ZNG00028788-VERIFICATION.md).
 
-The simulator's physics is not calibrated to the MTU 8000's own alarm envelope. On five parameters a
-*healthy* engine here sits on the wrong side of an OEM limit — three of them past a **shutdown**
-threshold (piston-cooling pressure, last-bearing pressure, LO temperature; also exhaust back pressure
-and coolant pressure). Two more limits are several times tighter than the OEM codes. Everything
-downstream inherits it: `seed.ts` baselines, the degradation weight matrix, risk scores, the analytic
-RUL labels and **every training row already in IndexedDB**.
+This simulator is a **proof of concept for the prognosis method**, not a certified MTU digital twin.
+What that means in practice: the structure is meant to be right and the numbers are meant to be
+traceable, so that re-pointing the model at a different engine or build state is a DATA change, not
+a code change. It does not mean the numbers are approximate — they are the OEM ones, and they got
+that way the hard way.
 
-Consequences for any work you do here:
+**`shared/src/oem-limits.ts` is the single source of truth for every coded limit.** It holds MTU
+drawing `ZNG00028788` — all 41 rows of sheet 1 and all 13 limit curves of sheet 2 — transcribed and
+verified at 340 dpi. The PDF is image-only (its text layer is control characters, so `pdftotext`
+silently corrupts digits); it lives at
+`D:\1 Work\05 Engines\ECS 8K MTU I 2024\4e_ Alarm Limit XZ56900100007.pdf`, and §1.3 of the gap doc
+explains how to read it.
 
-- **Do not tune a threshold to make an alarm stop firing.** That is exactly how this happened — the
-  comment trail in `constants.ts` records each local fix, and together they walked the envelope away
-  from the manual. Fix the physics, or log it in that file's Progress Log.
-- **Every limit, threshold, baseline target and model coefficient must trace to a manual page**, cited
-  by drawing number in the code comment. The master limit list is MTU `ZNG00028788`
-  (`D:\ECS 8K MTU I 2024\4e_ Alarm Limit XZ56900100007.pdf`) — it is **image-only**, so text search
-  will not find it; §1.3 of the gap doc explains how to read it. A value with no citation is a guess
-  and must say so.
-- **Treat stored training data as untrusted** until Phase 7 bumps `SCHEMA_VERSION`. `rulQuality`
-  cannot detect the mislabelling — see gotcha 15.
-- Phases are dependency-ordered. Recalibrating physics while the degradation matrix is stale produces
-  finite-difference failures that mask real errors.
+Rules that still bind, and are the reason the defect is closed:
+
+- **Every limit, threshold, baseline target and model coefficient must trace to a manual page**,
+  cited by drawing number. In code this means DERIVING it — `oemCurve(2, rpm)`, `oemScalar(
+  'oilTempLim2')` — not typing the number. **A value with no citation is a guess and must say so
+  in its comment.** `MTU8000_LIMITS` marks every non-OEM entry `NOT OEM` for exactly this reason.
+- **Do not tune a threshold to make an alarm stop firing.** That is how the defect arose: the
+  comment trail in `constants.ts` recorded each local fix, and together they walked the whole
+  envelope away from the manual. Fix the physics, or log the decision in the gap doc's Progress Log.
+- **Do not restate a derived number in a comment.** `ALARM_LIMITS.bearingTemp` carried "L4 — 130 °C"
+  against a value that had become 120, and its L3 expression had silently moved 5 °C. A comment that
+  repeats a computed value is a second source of truth. Name the source instead.
+- **Many MTU limits are RPM CURVES, not scalars** (sheet 2). Anything comparing a LIVE reading to one
+  must resolve it at the live speed — `MTU8000_LIMIT_CURVES`, or `ALARM_LIMITS` via `getAlarmBand(id,
+  rpm)`. The last-bearing shutdown is 5.3 bar at rated and 2.07 at 400 RPM; checking a running engine
+  against the rated scalar trips an Emergency Stop at idle.
+- **If you change a baseline, a threshold or a weight in a way that moves the RUL labels**, bump
+  `CALIBRATION_REVISION` in `services/training-store.ts`. Stored rows are discarded, not migrated:
+  `rulQuality` cannot detect mislabelling (gotcha 15), so a stale row looks trustworthy.
 
 ---
 
@@ -200,16 +212,17 @@ its `Section title=` and every `§n` reference that follows it — `grep -rn "§
 | 5 | `packages/simulator` | `chargeAirTemp_MTU8000` must receive constant `LT_COOLANT=36`, never `lagCoolantTemp` |
 | 6 | `packages/simulator` | `makeInitialPhysicsState()` must use rated steady-state values or false alarms at startup |
 | 7 | `packages/simulator` | Cylinder persistence threshold = 20°C (B5 natural spread is +17°C from mean) |
-| 8 | `packages/decision` | Bearing thresholds: SS=120°C / HI=115°C, both from MTU ZNG00028788. Hot oil at rated puts the hottest bearing at ~112°C, so HI has only 3°C of headroom by OEM design. The old 120/**100** pair fired false because of the HI, not the SS |
+| 8 | `packages/decision` | Bearing thresholds: SS=120°C / HI=115°C, both from MTU ZNG00028788. The hottest bearing now sits ~100°C at rated, 15°C clear of HI — it used to reach ~112°C because it inherited a lube-oil temperature running 13°C past the OEM power-reduction point |
 | 9 | `packages/decision` | LO pressure HI check uses `lubeOilPressure` (main gallery), not `lubeLastBearingPressure` |
 | 10 | root | Parent-level `vite.config.ts` exists only for preview tool CWD workaround — canonical is `packages/ui/vite.config.ts` |
 | 11 | `packages/simulator` | `degradation-matrix.ts` is the model SPEC — its `weight`s must equal the `mtu8000-physics.ts` partials. `tests/degradation-matrix.test.ts` (finite-difference) fails on drift. See `simulator/CLAUDE.md` → Degradation Model |
 | 12 | `shared` / `packages/simulator` | `chargeAirTemp_MTU8000` rated ≈ 63°C is intended (LT-cooled). `MTU8000_LIMITS.chargeAir` alarm band is hi 75 / max 80 (above rated), NOT 50/55. Don't lower the physics to match old limits — it desyncs the `seed.ts` baseline mirror. See `simulator/CLAUDE.md` |
 | 13 | `packages/ui` | StrictMode is ON — every per-tick consumer needs a duplicate-timestamp guard, or prev-tick-state features (`*Rate`) zero out. See `ui/CLAUDE.md` gotcha 5 |
 | 14 | `packages/ui` / `packages/knowledge` | Bearing temperature is the MAX of 11, never a mean — and the `ME.BearingTemp.Mean` seed curve excludes `positionBias`, so the consumer adds `bearingMaxPositionBias` (+5°C) back. See `ui/CLAUDE.md` gotcha 6 |
-| 15 | `packages/ui` | `rulQuality` compares the lagged baseline against the instant one, so a bias in the seed CURVE cancels and reports `OK`. A label that contradicts the live sensor indicts `seed.ts`, not the flag |
-| 17 | **everywhere** | **The physics is not calibrated to the OEM alarm envelope** — healthy rated values violate five MTU limits, three of them shutdowns. Baselines, degradation weights, risk and every stored ML label inherit it. Read [`OEM-CALIBRATION-GAP.md`](./OEM-CALIBRATION-GAP.md) before changing any threshold, baseline or coefficient |
+| 15 | `packages/ui` | `rulQuality` compares the lagged baseline against the instant one, so a bias in the seed CURVE cancels and reports `OK`. A label that contradicts the live sensor indicts `seed.ts`, not the flag. This is why a recalibration discards stored rows rather than filtering them |
 | 16 | `packages/ui` | Importing `services/training-recorder.ts` has side effects (pagehide listeners + IndexedDB reconciliation). Read constants from `training-store.ts` / `forecast.ts` instead — both are pure |
+| 17 | **everywhere** | Limits are DERIVED from `shared/src/oem-limits.ts` (drawing ZNG00028788), never typed. Several are RPM curves — resolve at the live speed before comparing a live reading. Anything not OEM is marked `NOT OEM`. See the READ FIRST section |
+| 18 | `packages/decision` | **HI T-Exhaust Mean is unreachable by any modelled fault, deliberately.** The OEM limit is 700°C (curve 10) against a healthy 440; F02 at full severity reaches ~472. MTU catches that fault with its RELATIVE limits, which here is the deviation layer's job — do not lower the absolute limit to make it fire |
 
 ---
 

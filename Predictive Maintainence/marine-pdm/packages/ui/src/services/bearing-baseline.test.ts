@@ -38,44 +38,46 @@ function baselineHottestBearing(load: number, rpm: number): number {
   return v + MTU8000_LIMITS.bearingMaxPositionBias;
 }
 
-/** The one term the curve deliberately omits — see the seed comment. */
-function pressureDef(gallery: number): number {
-  return Math.max(0, 6.5 - gallery) * 4.5;
-}
-
 describe('bearing baseline tracks the bearing physics', () => {
-  it('matches the physics at the rated point, to within the omitted pressureDef term', () => {
-    const { max, gallery } = physicsHottestBearing(85, 1150);
-    const gap = max - baselineHottestBearing(85, 1150);
-
-    // pressureDef is ~0.5 °C at rated: the gallery sits just under its 6.5 bar reference.
-    expect(gap).toBeCloseTo(pressureDef(gallery), 5);
-    expect(Math.abs(gap)).toBeLessThan(1);
+  it('matches the physics EXACTLY at the rated point', () => {
+    const { max } = physicsHottestBearing(85, 1150);
+    // No tolerated residual any more. The curve now carries every healthy term of
+    // bearingTemp_MTU8000 — base, load, rpm, oilHeat AND pressureDef — so the only thing the
+    // consumer adds is the hottest bearing's positionBias, which baselineHottestBearing applies.
+    expect(max - baselineHottestBearing(85, 1150)).toBeCloseTo(0, 6);
   });
 
   it('is not the pre-fix curve, which sat 10.8 °C low at rated', () => {
-    // Guard against a revert: the old equation was 58 + load/100·28 + rpm/1150·10 = 91.8 at rated,
-    // and with the +5 bias that is still 5.8 °C under the physics.
+    // Guard against a revert to the version that dropped oilHeat.
     const old = 58 + (85 / 100) * 28 + (1150 / 1150) * 10;
     expect(baselineHottestBearing(85, 1150)).not.toBeCloseTo(old + 5, 1);
-    expect(baselineHottestBearing(85, 1150)).toBeGreaterThan(100);
   });
 
-  it('keeps F04 at 50 % intensity able to reach the HI band', () => {
-    // The regression in one assertion. perSeverity for F04 is weight 45 × rootMax 1.0.
+  it('expects the hottest bearing near 100 °C at rated, inside the OEM warning', () => {
+    // The whole envelope moved in Phase 2 of OEM-CALIBRATION-GAP.md: with the oil recalibrated to
+    // 78.3 °C the hottest bearing sits ~100 °C, not the ~112 °C it used to, and T-Bearing Lim1 is
+    // 115 °C. A baseline back above 110 would mean the oil temperature has drifted up again.
+    const healthy = baselineHottestBearing(85, 1150);
+    expect(healthy).toBeGreaterThan(95);
+    expect(healthy).toBeLessThan(105);
+    expect(healthy).toBeLessThan(MTU8000_LIMITS.lubeOil.bearing_temp_hi);
+  });
+
+  it('keeps F04 at full intensity able to reach the HI band', () => {
+    // perSeverity for F04 is weight 45 × rootMax 1.0. With 15 °C of headroom to HI instead of the
+    // old 3 °C, the crossing now needs ~1/3 severity rather than ~1/15 — a later, but still
+    // comfortably reachable, trip. It must stay strictly inside a full-intensity ramp.
     const healthy = baselineHottestBearing(85, 1150);
     const severityAtCross = (MTU8000_LIMITS.lubeOil.bearing_temp_hi - healthy) / 45;
 
     expect(severityAtCross).toBeGreaterThan(0);
-    expect(severityAtCross).toBeLessThan(0.5);   // reachable within a 50 % intensity cap
+    expect(severityAtCross).toBeLessThan(1.0);
   });
 
   it('tracks the physics across the operating envelope, not just at rated', () => {
-    for (const [load, rpm] of [[0, 400], [40, 800], [60, 1000], [100, 1150]] as const) {
-      const { max, gallery } = physicsHottestBearing(load, rpm);
-      const gap = max - baselineHottestBearing(load, rpm);
-      // The residual is pressureDef and nothing else, at every point.
-      expect(gap, `load ${load} rpm ${rpm}`).toBeCloseTo(pressureDef(gallery), 5);
+    for (const [load, rpm] of [[0, 400], [40, 800], [60, 1000], [85, 1150], [100, 1150]] as const) {
+      const gap = physicsHottestBearing(load, rpm).max - baselineHottestBearing(load, rpm);
+      expect(gap, `load ${load} rpm ${rpm}`).toBeCloseTo(0, 6);
     }
   });
 });

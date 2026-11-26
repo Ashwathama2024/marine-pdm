@@ -21,6 +21,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { computeRiskBreakdown, MTU8000_ALARM_BANDS } from '@marine-pdm/decision';
 import type { RiskBreakdown } from '@marine-pdm/decision';
+import { MTU8000, MTU8000_LIMITS, MTU8000_LIMIT_CURVES } from '@marine-pdm/shared';
 import { Section, SubSection, P, Code, Hi, Callout, DataTable, Bullets } from '../AboutPrimitives';
 
 // ── Friendly labels for the alarm-band keys (falls back to the raw key for any sensor added to
@@ -260,7 +261,8 @@ function RiskCalculator() {
           This shows the <Hi color="var(--risk-warning)">advisory scoring layer</Hi> only (step 2 of the
           4-step pipeline). It does not run these values through the{' '}
           <Hi color="var(--risk-critical)">safety-override layer</Hi> (step 4) — on the real engine, e.g.
-          last-bearing pressure below 2.0 bar or bearing temp above 130°C forces risk to <Code>100</Code>{' '}
+          last-bearing pressure below its MTU curve ({MTU8000_LIMIT_CURVES.lastBearingPressSS(MTU8000.RATED_RPM).toFixed(1)} bar
+          at rated) or bearing temp above {MTU8000_LIMITS.lubeOil.bearing_temp_max}°C forces risk to <Code>100</Code>{' '}
           immediately, deterministically, regardless of what this weighted formula computes. See §8 Hidden
           Strengths and <Link to="/help#algorithm" style={{ color: 'var(--accent-blue)' }}>the User Manual's
           Algorithm section</Link> for the override thresholds this calculator intentionally leaves out.

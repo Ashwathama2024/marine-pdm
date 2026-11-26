@@ -12,18 +12,19 @@
 
 ---
 
-> ⚠ These thresholds are Phase 5 of an open calibration defect —
-> [`../../OEM-CALIBRATION-GAP.md`](../../OEM-CALIBRATION-GAP.md). They cannot be moved onto their OEM
-> values until the physics is back inside the OEM envelope (Phase 2), because several healthy rated
-> readings currently violate OEM shutdown limits. Phase 5 also re-audits that every fault F01–F09 can
-> still *reach* its alarm: F08 blow-by peaks at 7.28 mbar against a 27 mbar OEM crankcase limit.
+> Every threshold below is DERIVED from `shared/src/oem-limits.ts` (MTU drawing ZNG00028788), not
+> typed. **Several are RPM curves**, resolved at `snap.rpm` through `MTU8000_LIMIT_CURVES` — the
+> last-bearing shutdown is 5.3 bar at rated and 2.07 at 400 RPM, so comparing a live reading to the
+> rated-point scalar fires an Emergency Stop on a healthy idling engine. `tests/override-oem.test.ts`
+> pins that, and that no override fires at healthy from idle to full power.
 
 ## Safety Override Triggers — `src/override-mtu8000.ts`
 
 ### Shutdown (SS) — `systemRisk = 100` immediately
 | Condition | ECS Code |
 |-----------|---------|
-| `lubeLastBearingPressure < 2.0 bar` | SS P-Oil Last Bearing |
+| `lubeLastBearingPressure <` curve 4 (5.3 bar at rated) | SS P-Oil Last Bearing |
+| `pistonCoolingPress <` curve 2 (4.7 bar at rated) | SS P-Oil Piston Cooling |
 | `bearingTemps[i] > 120°C` | SS T-Bearing N |
 | `coolantTempAfterEngine > 97°C` | SS T-Coolant |
 | `sprayOilDeviation(snap).dev > 6°C` | SS T-Splash Oil Bn |
@@ -31,7 +32,9 @@
 ### High-priority floors
 | Condition | Risk floor | ECS Code |
 |-----------|-----------|---------|
-| `exhaustMeanTemp > 460°C` | ≥80 | HI T-Exhaust Mean |
+| `exhaustMeanTemp >` curve 10 (700°C at rated) | ≥80 | HI T-Exhaust Mean — **unreachable by any modelled fault, deliberately; see below** |
+| `lubeLastBearingPressure <` curve 3 (5.8 bar at rated) | ≥80 | LO P-Oil Last Bearing |
+| `pistonCoolingPress <` curve 1 (5.2 bar at rated) | ≥80 | LO P-Oil Piston Cooling |
 | `fuelRailPressure < 1200 bar` | ≥85 | SD P-Fuel Rail |
 | `bearingTemps[i] > 115°C` | ≥75 | HI T-Bearing N |
 | `sprayOilDeviation(snap).dev > 4°C` | ≥75 | HI T-Splash Oil Bn |
@@ -44,14 +47,24 @@ load, a cold start) cancels and cannot alarm, which is what insulates this trip 
 defect in `OEM-CALIBRATION-GAP.md`; and the trip fires BEFORE `HI T-Bearing` on the same fault,
 because oil in transit responds faster than the bearing casting it came off.
 
-**Why 120°C SS / 115°C HI (not 120/100, and no longer 130/115)?**
-Hot lube oil at rated (105°C oil temp, 85% load) naturally drives bearing temps to ~107°C via
-`bearingTemp_MTU8000()`, and the hottest of the 11 carries a further +5°C `positionBias` → ~112°C.
-The original 120/100 pair fired false overrides during normal operation, but the culprit was the **HI
-at 100**, which sat below that healthy 112 — not the SS. Raising HI to 115 fixed it; the SS was raised
-to 130 at the same time, past the OEM figure. MTU ZNG00028788 (ALARM/GRENZWERTLISTE) codes T-Bearing
-Lim1 = 115 warning and **Lim2 = 120 shutdown**, so the SS is back on the OEM number with 8°C of
-headroom over healthy. The same drawing codes T-Coolant Lim2 = 97°C, hence the SS T-Coolant change.
+**Why HI T-Exhaust Mean no longer fires — and must not be "fixed"**
+The OEM limit is 700°C (curve 10 at rated) against a healthy mean of 440°C. F02 at full severity — ten
+cylinders at +55°C — lifts the mean to ~472°C, so no modelled fault reaches it. That is faithful to
+the real ECS, which catches a single-bank injector fault through its RELATIVE limits: the
+single-cylinder UL (curve 12, against the running mean) and the mean's own 20°C offset step (MDEC
+51,03). In this app that relative job belongs to the deviation-based risk scoring and to patterns
+P01/P02/P09, not to this absolute override. Lowering the limit to make it fire would re-create the
+exact defect `OEM-CALIBRATION-GAP.md` was written about — it had been coded at 460°C, 20°C above
+healthy, which is how it became the de-facto detector for everything exhaust-related.
+
+**Why 120°C SS / 115°C HI**
+MTU ZNG00028788 codes T-Bearing Lim1 = 115 warning and **Lim2 = 120 shutdown**. The hottest bearing at
+healthy rated now sits ~100°C, 15°C clear of the warning. This parameter has been misread twice in
+opposite directions: once with the HI at 100°C, *below* the healthy value, which produced constant
+false alarms; then by raising the SS to 130°C to chase them, past the OEM figure. The real culprit was
+upstream — the lube-oil temperature was running 98°C, past the point the ECS reduces power, dragging
+every bearing up with it. Fix the physics, not the threshold. The same drawing codes T-Coolant
+Lim2 = 97°C.
 
 ---
 

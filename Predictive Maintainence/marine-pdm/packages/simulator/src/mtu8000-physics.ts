@@ -1,13 +1,64 @@
 // packages/simulator/src/mtu8000-physics.ts
 // All equations calibrated to MTU 8000 M71L at Group 1B load profile.
 // Primary operating point: 85% load, 1150 RPM.
-// Validation targets (PDF §3):
-//   exhaustTemp_MTU8000(85,1150,1.0,1.0)          → ~440 °C
-//   lubeOilPressure_MTU8000(1150,85,85,0,0)        → ~6.7 bar
+//
+// ──── CALIBRATED TO THE OEM ALARM ENVELOPE ───────────────────────────────────
+// Every rated target below is set so a HEALTHY engine sits on the safe side of the limit MTU codes
+// for it, with margin. The limits are drawing ZNG00028788 (`oemCurve` / `oemScalar` in
+// @marine-pdm/shared); the physics is fitted to them, never the other way round. Before this
+// calibration five healthy rated values sat on the WRONG side of a coded limit — three of them
+// past a shutdown — because thresholds had been tuned to fit the simulator instead.
+// See OEM-CALIBRATION-GAP.md.
+//
+// Healthy at rated (85 % load, 1150 RPM) against the OEM limit it has to clear:
+//
+//   exhaustTemp            440 °C    curve 10 mean warning 700 °C      — 260 °C of margin
+//   lubeOilTemp           78.3 °C    T-Oil Lim1 83 / Lim2 85           — 4.7 °C below warning
+//   lubeOilPressure       7.16 bar   (no coded gallery limit; drives the two below)
+//   lubeLastBearingP      6.59 bar   curve 3 warn 5.8 / curve 4 SS 5.3  — 0.79 bar above warning
+//   pistonCoolingPress    6.09 bar   curve 1 warn 5.2 / curve 2 SS 4.7  — 0.89 bar above warning
+//   bearingTemp (max)      100 °C    T-Bearing Lim1 115 / Lim2 SS 120   — 15 °C below warning
+//   coolantPressure        5.0 bar   curve 0 warn 4.1                   — 0.9 bar above warning
+//   exhaustBackPressure  38.3 mbar   50 warn / >70 fuel limitation      — 11.7 mbar below warning
+//   chargeAirTemp           63 °C    T-Charge Air UL 75 / LL 20         — inside both
+//   fuelTemp                43 °C    T-Fuel Lim1 45 / Lim2 50           — below both
+//
+// Other validation targets (unchanged):
 //   chargeAirPressure_MTU8000(1150,85,1.0)         → ~3.2 bar
 //   sfoc_MTU8000(85,1150,{},1.0)                   → ~185 g/kWh
+//
+// `tests/physics.test.ts` asserts all of this against the OEM data itself, not against this comment.
 
 import { MTU8000, MTU8000_CYL_SPREAD, BSIDE_TEMP_BIAS } from '@marine-pdm/shared';
+
+// ──── LUBE-OIL CIRCUIT PRESSURE RATIOS ───────────────────────────────────────
+// The gallery feeds both the main bearings and the piston-cooling nozzles, at different pressures.
+// Their RELATIVE order is fixed by the manual, not invented: ZNG00028788 warns on last-bearing
+// pressure at 5.8 bar but on piston-cooling pressure at only 5.2 bar (curves 3 and 1 at 1150 RPM),
+// so in service the last bearing is the HIGHER of the two. That rules out the old model, which had
+// the last bearing at 0.55 of the gallery and piston cooling at 0.68 — the wrong way round, and
+// both so far below the gallery that neither could clear its OEM warning at any realistic gallery
+// pressure. Chasing it with a bigger pump would have needed ~11.8 bar, which an MTU 8000 does not
+// run: the ratios were the error, not the pump.
+//
+// Physically the last main bearing is the far end of the same drilled gallery and loses only the
+// flow-dependent drop along it, while the piston-cooling rail is fed through metering restrictors
+// and deliberately runs lower.
+//
+// Exported because three modules derive these pressures — the steady-state physics, the engine's
+// start handover and the start-sequence snapshot — and they had drifted to two different pairs
+// (0.55/0.68 here, 0.35/0.6 in both of the others).
+// Re-exported from MTU8000.LUBE_CIRCUIT rather than restated: the derived OEM limits in
+// shared/mtu8000.constants.ts need the same two numbers (the gallery alarm is curve 3 divided by
+// the last-bearing ratio), and shared cannot import the simulator. One definition, two consumers.
+export const LAST_BEARING_PRESSURE_RATIO   = MTU8000.LUBE_CIRCUIT.lastBearingRatio;    // B5.3/B5.4
+export const PISTON_COOLING_PRESSURE_RATIO = MTU8000.LUBE_CIRCUIT.pistonCoolingRatio;  // B5.2
+
+/** Gallery pressure at the rated point — the reference the bearing starvation term zeroes on. */
+export const RATED_GALLERY_PRESSURE_BAR = 7.15;
+
+/** Lube-oil temperature at the rated point — reference for oil-temperature-relative terms. */
+export const RATED_LUBE_OIL_TEMP_C = 78;
 
 // Normalise helpers (0.0–1.0 relative to rated)
 const loadN = (load: number) => load / 100;
@@ -42,30 +93,48 @@ export function cylExhaustTemp_MTU8000(
   return baseMeanExhaust + spread + biasSide + faultDelta;
 }
 
-// ── 3.4 Lube Oil Pressure Model ───────────────────────────────────────────────
-// Main gallery pressure driven by engine-driven pump.
-// Idle (400 RPM, 0% load, 65°C oil): 4.5–5.0 bar
-// Rated (1150 RPM, 85% load, 85°C oil): ~6.7 bar
+// ──── 3.4 Lube Oil Pressure Model ─────────────────────────────────────────────
+// Main gallery pressure driven by the engine-driven pump.
+//
+// The pump curve is fitted so the two pressures the ECS actually trips on clear their OEM curves AT
+// EVERY SPEED, not merely at rated. These limits are RPM-indexed, so a pump curve of the wrong
+// SHAPE passes at 1150 and fails at 600; tests/physics.test.ts checks curves 1–4 of ZNG00028788
+// sheet 2 at 400, 500, 600, 800 and 1150 RPM.
+//
+//   Idle  (400 RPM,   0 % load, 59.7 °C oil): 3.38 bar → last bearing 3.11 (OEM warn 2.37 at 400)
+//   Rated (1150 RPM, 85 % load, 78.3 °C oil): 7.16 bar → last bearing 6.59 (OEM warn 5.80)
+//
+// Was `3.5 + rpmN·4.0`, giving 6.43 bar at rated. The LEVEL was not far wrong; what was wrong were
+// the downstream ratios above, which put the last bearing at 3.51 bar against a 5.3 bar shutdown.
 export function lubeOilPressure_MTU8000(
   rpm: number,
   load: number,
-  oilTemp: number  = 85,  // °C — B7
+  oilTemp: number  = RATED_LUBE_OIL_TEMP_C,  // °C — B7
   filterDp: number = 0,   // bar — B5.1 minus B5.5
   lubeFault: number = 0,  // 0–1 pump/filter degradation
 ): number {
-  const base       = 3.5 + rpmN(rpm) * 4.0;  // pump curve: 3.5 bar idle, 7.5 bar rated
+  const base       = 1.15 + rpmN(rpm) * 6.85;  // pump curve: 3.53 bar at idle, 8.00 bar at rated
   const loadDrop   = loadN(load) * 0.8;
-  const viscDrop   = Math.max(0, (oilTemp - 85) * 0.018);  // hot oil: lower viscosity → lower press
-  const coldDrop   = Math.max(0, (65 - oilTemp) * 0.056);  // cold oil: high filter ΔP → lower gallery press
+  // Both viscosity terms are referenced to the RATED oil temperature, so both are zero at the
+  // healthy rated point and the gallery there is set by the pump curve alone. They were referenced
+  // to 85 °C and 65 °C, which only made sense while the oil ran 98 °C.
+  const viscDrop   = Math.max(0, (oilTemp - RATED_LUBE_OIL_TEMP_C) * 0.018);  // hot oil: thinner → lower press
+  const coldDrop   = Math.max(0, (58 - oilTemp) * 0.056);  // cold oil: high filter ΔP → lower gallery press
   const faultDrop  = lubeFault * 3.8;   // lubeFault normalised 0–1; max drop 3.8 bar (F03 full)
   return Math.max(0.5, base - loadDrop - viscDrop - coldDrop - filterDp - faultDrop);
 }
 
-// ── 3.5 Bearing Temperature Model ────────────────────────────────────────────
+// ──── 3.5 Bearing Temperature Model ───────────────────────────────────────────
 // 11 crankshaft bearings (B57.1–B57.11)
 // Bearing 11 (free end = furthest from pump) runs 5 °C hotter.
-// Idle (400 RPM, 0% load, 65°C oil, 4.9 bar): 60–70°C
-// Rated (1150 RPM, 85% load, 98°C oil, 6.7 bar): ~97–102°C
+// Rated (1150 RPM, 85 % load, 78.3 °C oil, 7.16 bar): ~95 °C mean, ~100 °C hottest
+//
+// ZNG00028788 codes T-Bearing Mean 112 warning, Lim1 115 warning, Lim2 120 SHUTDOWN. The hottest
+// bearing at healthy rated now sits 15 °C below Lim1 and the mean 16 °C below the mean warning.
+// It used to reach ~112 °C — within 3 °C of the warning on a healthy engine — because it inherited
+// the 98 °C oil temperature. Fixing the oil fixed the bearings; `base` then went 58 → 61 so the
+// rise across the bearing stays physically sensible (~17 °C above supply at rated) rather than the
+// whole curve simply falling with the oil.
 export function bearingTemp_MTU8000(
   load: number,
   rpm: number,
@@ -76,15 +145,18 @@ export function bearingTemp_MTU8000(
                             // bearingFaults[i] — F03 lube loss reaches bearings via pressureDef,
                             // F05 cooler fouling via oilHeat (lubeOilTemp), not through this term.
 ): number {
-  const base        = 58;  // recalibrated: idle target 60-70°C at 400 RPM / no load
+  const base        = 61;  // recalibrated with the oil temperature: hottest ~100 °C at rated
   const loadHeat    = loadN(load) * 28;
   const rpmHeat     = rpmN(rpm) * 10;
-  const oilHeat     = (lubeOilTemp - 85) * 0.4;
-  const pressureDef = Math.max(0, (6.5 - lubePressure)) * 4.5;
+  // Both references are the RATED operating point, so each term is zero on a healthy engine at
+  // rated and the bearing temperature there is base + load + rpm + positionBias. They used to be
+  // 85 °C and 6.5 bar, neither of which is the rated value of anything after this recalibration.
+  const oilHeat     = (lubeOilTemp - RATED_LUBE_OIL_TEMP_C) * 0.4;
+  const pressureDef = Math.max(0, (RATED_GALLERY_PRESSURE_BAR - lubePressure)) * 4.5;
   const positionBias = bearingIndex === 10 ? 5 : bearingIndex > 7 ? 3 : 0;
-  const faultHeat   = bearingFault * 45;  // F04 spec = +45°C at full severity (reaches SS T-Bearing >130°C).
-                                          // Was 20 — under-delivered so the SS trip never fired. Zero at
-                                          // healthy (fault=0) so rated bearing temps are unchanged.
+  const faultHeat   = bearingFault * 45;  // F04 spec = +45°C at full severity (reaches SS T-Bearing).
+                                          // Was 20, which under-delivered so the SS trip never fired.
+                                          // Zero at healthy (fault=0) so rated temps are unchanged.
   return base + loadHeat + rpmHeat + oilHeat + pressureDef + positionBias + faultHeat;
 }
 
@@ -94,8 +166,9 @@ export function bearingTemp_MTU8000(
 //
 // The whole diagnostic value is in the SPREAD, so the model is built that way: a term common to all
 // ten channels (oil supply temperature, load, speed) plus a per-throw term. Only the per-throw term
-// can ever raise the difference, which means the absolute-scale errors in OEM-CALIBRATION-GAP.md —
-// lubeOilTemp runs 13 °C hot — shift all ten equally and cancel out of the alarm.
+// can ever raise the difference, so any common offset cancels out of the alarm. That is what made
+// these channels safe to add while lubeOilTemp was still running 13 °C hot; the absolute scale has
+// since been corrected, and the ten channels now sit near 99 °C at rated rather than 119 °C.
 //
 // THROW_SCATTER is the fixed manufacturing spread the real ECS removes with its static calibration.
 // It is kept deliberately small: T-Splash Oil Difference Lim1 is only 4 °C, so a healthy engine has
@@ -156,19 +229,32 @@ export function chargeAirTemp_MTU8000(
   // Rated ~63°C — HI T-Charge Air alarm at 75°C, B9 max 80°C (see MTU8000_LIMITS.chargeAir).
 }
 
-// ── 3.7 Lube Oil Temperature ──────────────────────────────────────────────────
-// Idle (400 RPM, 0% load): 63 + 0 + 2.78 ≈ 65.8°C  (below operating range 70–78°C — normal at idle)
-// Rated (1150 RPM, 85% load): 63 + 27.2 + 8 ≈ 98°C  (normal range 85–105°C)
+// ──── 3.7 Lube Oil Temperature ────────────────────────────────────────────────
+// B7. ZNG00028788: T-Oil Lim1 = 83 °C warning (MDEC 72,01, 5 s), Lim2 = 85 °C POWER REDUCTION
+// (72,03, 3 s). A healthy engine must therefore run the oil meaningfully below 83 °C — holding it
+// there is what the thermostatic oil cooler is for, and an engine whose oil sits above the warning
+// is by definition not healthy.
+//
+// This equation returned 98.2 °C at rated: 13.2 °C past the point the real ECS reduces power, on a
+// perfectly healthy engine. It was the root of three of the five Class A violations, because the
+// bearing model and the spray-oil model both hang off it. OEM-CALIBRATION-GAP.md §3.1.
+//
+//   Idle  (400 RPM,   0 % load): 58 + 0    + 1.7 = 59.7 °C  (cool at idle — little heat going in)
+//   Rated (1150 RPM, 85 % load): 58 + 15.3 + 5.0 = 78.3 °C  (4.7 °C below T-Oil Lim1)
+//   Full  (1150 RPM,100 % load): 58 + 18.0 + 5.0 = 81.0 °C  (still inside Lim1, as it must be)
+//
+// Even F05 at full severity (coolingEff 0.75, +3.75 °C) reaches only 82.1 °C at rated — below the
+// oil warning, which is right: F05's coded alarm is HI T-Coolant, not T-Oil.
 export function lubeOilTemp_MTU8000(
   load: number,
   rpm: number,
   coolantTemp: number  = 36,
   coolingEff: number   = 1.0,
 ): number {
-  const base           = 63;  // recalibrated: was 70 (gave 105°C at rated, formula comment said ~98°C)
-  const loadHeat       = loadN(load) * 32;
-  const rpmHeat        = rpmN(rpm) * 8;
-  const coolingPenalty = (1 - coolingEff) * 15;
+  const base           = 58;  // recalibrated to the OEM envelope (was 63, giving 98.2 °C at rated)
+  const loadHeat       = loadN(load) * 18;  // was 32
+  const rpmHeat        = rpmN(rpm) * 5;     // was 8
+  const coolingPenalty = (1 - coolingEff) * 15;  // unchanged — this is F05's matrix weight
   return base + loadHeat + rpmHeat + coolingPenalty;
 }
 
@@ -217,24 +303,36 @@ export function crankcasePressure_MTU8000(
 ): number {
   const base        = -2.0;  // mbar
   const loadEffect  = loadN(load) * 1.5;
-  const blowbyEffect = pistonBlowby * 8;
+  // Matches FAULT_MAX_EFFECTS.F08_blowby_pressure. Grown 8 → 45 in Phase 5 so blow-by can still
+  // reach P-Crankcase Lim1 once that limit is the OEM 27 mbar (curve 9) rather than an invented 5.
+  const blowbyEffect = pistonBlowby * 45;
   return base + loadEffect + blowbyEffect;
 }
 
-// ── 3.11 Exhaust Back Pressure ───────────────────────────────────────────────
-// B41.1 — downstream of turbochargers.
-// Rises with load/RPM and if TC is fouled (reduced flow).
+// ──── 3.11 Exhaust Back Pressure ─────────────────────────────────────────────
+// B41.1 — downstream of the turbochargers. The sensor-location deck names it "Exhaust pressure
+// after turbocharger", which is what makes this a back-pressure series and not a port temperature.
+//
+// ZNG00028788 limits it twice: the per-variant block warns at 50 mbar (MDEC 2D-45, 5 s delay) and
+// the main table applies FUEL LIMITATION above 70 mbar (3D-107, no delay). This equation returned
+// 99.5 mbar at rated — a healthy engine permanently in fuel limitation.
+//
+//   Idle  (400 RPM,   4 % load): 8 +  1.0 + 3.1 = 12.1 mbar
+//   Rated (1150 RPM, 85 % load): 8 + 21.3 + 9.0 = 38.3 mbar  (11.7 below the 50 mbar warning)
+//   Full  (1150 RPM,100 % load): 8 + 25.0 + 9.0 = 42.0 mbar  (still inside the warning)
 export function exhaustBackPressure_MTU8000(
   load: number,
   rpm: number,
   tcEff: number = 1.0,
 ): number {
-  const base         = 20;   // mbar at low load
-  const loadEffect   = loadN(load) * 70;
-  const rpmEffect    = rpmN(rpm) * 20;
-  const tcFoulEffect = (1 - tcEff) * 40;  // fouled TC raises back pressure
+  const base         = 8;    // mbar at low load (was 20)
+  const loadEffect   = loadN(load) * 25;  // was 70
+  const rpmEffect    = rpmN(rpm) * 9;     // was 20
+  // Scaled with the healthy level (40 → 16) so a fouled turbine still produces the same FRACTIONAL
+  // rise as before — about 17 % of the healthy reading at F06's full tcEff drop of 0.4. Keeping 40
+  // against a 38 mbar base would have let one fouled TC more than double the back pressure.
+  const tcFoulEffect = (1 - tcEff) * 16;  // fouled TC raises back pressure
   return base + loadEffect + rpmEffect + tcFoulEffect;
-  // At 85%, 1150 RPM healthy: ~90 mbar; normal <120 mbar alarm at 150 mbar
 }
 
 // ── TC Speed Model ────────────────────────────────────────────────────────────
@@ -260,14 +358,30 @@ export function tcSpeed_MTU8000(
   //   full  (1150 /100%): 500 + 17 300 + 12 000 = 29 800 RPM (well below L1 40 500)
 }
 
-// ── Coolant Pressure Model ────────────────────────────────────────────────────
+// ──── Coolant Pressure Model ──────────────────────────────────────────────────
+// B16.1. ZNG00028788 curve 0 is the P-Coolant Lim1 WARNING floor and it is steep: 0 bar below
+// 380 RPM, 1.6 at 800, 3.2 at 1000, 4.1 from 1150 up. The old linear `1.2 + rpmN·0.8` gave 2.0 bar
+// at rated — 2.1 bar BELOW the warning, so a healthy engine sat permanently in LO P-Coolant.
+//
+// Rebuilt as centrifugal pump head, which rises with the SQUARE of speed. That is also the shape
+// curve 0 itself has, so the margin stays roughly proportional across the range instead of closing
+// at one end. tests/physics.test.ts checks it against curve 0 at six speeds.
+//
+//    400 RPM: 1.31 bar (OEM floor 0.03)     800 RPM: 2.83 bar (OEM 1.60)
+//   1000 RPM: 3.98 bar (OEM 3.20)          1150 RPM: 5.00 bar (OEM 4.10)
 export function coolantPressure_MTU8000(
   rpm: number,
   coolingFault: number = 0,
 ): number {
-  const base      = 1.2;
-  const rpmBoost  = rpmN(rpm) * 0.8;
-  const faultDrop = coolingFault * 0.8;
+  const n         = rpmN(rpm);
+  const base      = 0.8;
+  const rpmBoost  = n * n * 4.2;          // centrifugal head ∝ speed² → 5.0 bar at rated
+  // Scaled with the level (0.8 → 2.0) so a cooling fault moves the same fraction of the healthy
+  // reading as before. NOTE: nothing passes this argument today — physics.ts calls
+  // coolantPressure_MTU8000(rpm) with one argument, so the term is currently dead, and no
+  // degradation-matrix effect references coolantPressure. Kept because a coolant-pump fault is the
+  // obvious next mode, and flagged here so it is not mistaken for a modelled path.
+  const faultDrop = coolingFault * 2.0;
   return Math.max(0.2, base + rpmBoost - faultDrop);
 }
 

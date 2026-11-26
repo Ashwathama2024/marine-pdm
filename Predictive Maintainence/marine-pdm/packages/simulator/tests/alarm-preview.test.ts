@@ -86,9 +86,17 @@ describe('ECS alarm preview — crankcase is an absolute-limit alarm', () => {
     expect(physicsCross).not.toBeNull();
     expect(previewCross!).toBeCloseTo(physicsCross!, 4);
 
-    // Pin the absolute value too: −0.725 + 8s ≥ 5 → s ≥ 0.7156, NOT the 0.625 the old `>= 5` gave.
-    expect(physicsCross!).toBeCloseTo(0.7156, 3);
-    expect(previewCross!).toBeGreaterThan(0.65);
+    // Pin the absolute value too, DERIVED rather than typed — this assertion read 0.7156 while
+    // the limit was an invented 5 mbar and the blow-by span 8. Both moved in Phase 5 (the limit to
+    // the OEM 27 mbar of curve 9, the span to 45 so the fault can still reach it), and the
+    // crossing with it, to ~0.616. The relationship is what matters, not the number:
+    //   healthy + span·s ≥ limit  →  s = (limit − healthy) / span
+    const healthy = crankcasePressure_MTU8000(RATED_LOAD, 0);
+    const expectedCross =
+      (MTU8000_LIMITS.crankcase.pressure_hi - healthy) / FAULT_MAX_EFFECTS.F08_blowby_pressure;
+    expect(physicsCross!).toBeCloseTo(expectedCross, 3);
+    // Still comfortably inside a full ramp, i.e. the alarm is reachable rather than theoretical.
+    expect(physicsCross!).toBeLessThan(0.9);
   });
 
   it('F08 blow-by actually reaches the limit at full severity (the alarm is live, not dead)', () => {

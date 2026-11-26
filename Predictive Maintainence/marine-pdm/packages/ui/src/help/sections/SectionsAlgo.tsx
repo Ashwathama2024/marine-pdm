@@ -4,7 +4,7 @@
 
 import React from 'react';
 import { MTU8000_ALARM_BANDS } from '@marine-pdm/decision';
-import { MTU8000_LIMITS as LIM } from '@marine-pdm/shared';
+import { MTU8000, MTU8000_LIMITS as LIM, MTU8000_LIMIT_CURVES as CURVE } from '@marine-pdm/shared';
 import { DEGRADATION_MODES, FAULT_GROWTH_RATES } from '@marine-pdm/simulator';
 import {
   Section, SubSection, P, Code, Hi, Callout, DataTable, DiagramFrame, Bullets,
@@ -109,6 +109,7 @@ export function AlgorithmSection() {
             pre-correction 130 °C bearing and 100 °C coolant values and said so with total confidence. */}
         <DataTable columns={['Condition', 'Action', 'ECS code']} rows={[
           [<>last-bearing pressure &lt; {LIM.lubeOil.pressure_last_bearing_min} bar</>, <Hi color="var(--risk-critical)">risk = 100</Hi>, 'SS P-Oil Last Bearing'],
+          [<>piston-cooling pressure &lt; {CURVE.pistonCoolingPressSS(MTU8000.RATED_RPM)} bar</>, <Hi color="var(--risk-critical)">risk = 100</Hi>, 'SS P-Oil Piston Cooling'],
           [<>bearing temp &gt; {LIM.lubeOil.bearing_temp_max} °C</>, <Hi color="var(--risk-critical)">risk = 100</Hi>, 'SS T-Bearing N'],
           [<>coolant &gt; {LIM.cooling.coolant_temp_ss} °C</>, <Hi color="var(--risk-critical)">risk = 100</Hi>, 'SS T-Coolant'],
           [<>spray-oil spread &gt; {LIM.sprayOil.diff_shutdown} °C</>, <Hi color="var(--risk-critical)">risk = 100</Hi>, 'SS T-Splash Oil Bn'],
@@ -116,6 +117,8 @@ export function AlgorithmSection() {
           [<>fuel-rail &lt; {LIM.fuel.rail_pressure_min} bar</>, <>risk ≥ 85</>, 'SD P-Fuel Rail'],
           [<>spray-oil spread &gt; {LIM.sprayOil.diff_warn} °C</>, <>risk ≥ 75</>, 'HI T-Splash Oil Bn'],
           [<>bearing temp &gt; {LIM.lubeOil.bearing_temp_hi} °C</>, <>risk ≥ 75</>, 'HI T-Bearing N'],
+          [<>last-bearing pressure &lt; {CURVE.lastBearingPressHI(MTU8000.RATED_RPM)} bar</>, <>risk ≥ 80</>, 'LO P-Oil Last Bearing'],
+          [<>piston-cooling pressure &lt; {CURVE.pistonCoolingPressHI(MTU8000.RATED_RPM)} bar</>, <>risk ≥ 80</>, 'LO P-Oil Piston Cooling'],
         ]} />
         <P>
           <Hi>Spray-oil spread</Hi> is not a temperature — it is how far the hottest of the ten B77
